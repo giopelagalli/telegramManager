@@ -1,0 +1,267 @@
+from __future__ import annotations
+
+from dataclasses import fields as _dc_fields
+from datetime import date, datetime
+
+from bot.knowledge.models import Profile
+
+PROFILE_SETTABLE: frozenset[str] = frozenset(
+    f.name for f in _dc_fields(Profile) if f.name not in ("home_latlng", "body")
+)
+
+TOOL_SCHEMAS: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "add_todo",
+            "description": "Add a new todo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "priority": {"type": "integer", "enum": [1, 2, 3], "description": "1 high, 2 medium, 3 low"},
+                    "due": {"type": "string", "format": "date"},
+                    "goal": {"type": "string", "description": "path to a goal file"},
+                    "backlog": {"type": "boolean"},
+                    "verify": {"type": "string", "enum": ["none", "photo", "location", "question"]},
+                    "notes": {"type": "string"},
+                },
+                "required": ["title", "priority"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_todo",
+            "description": "Update an existing todo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string", "description": "path to the todo file"},
+                    "status": {"type": "string", "enum": ["open", "done", "dropped"]},
+                    "priority": {"type": "integer", "enum": [1, 2, 3]},
+                    "due": {"type": "string", "format": "date"},
+                    "goal": {"type": "string"},
+                    "verify": {"type": "string", "enum": ["none", "photo", "location", "question"]},
+                    "notes": {"type": "string"},
+                },
+                "required": ["file"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_todo",
+            "description": "Move a todo between todos/ and backlog/.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string"},
+                    "to": {"type": "string", "enum": ["todos", "backlog"]},
+                },
+                "required": ["file", "to"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_event",
+            "description": "Add a new schedule event.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "start": {"type": "string", "format": "date-time"},
+                    "end": {"type": "string", "format": "date-time"},
+                    "location": {"type": "string"},
+                    "travel_minutes": {"type": "integer"},
+                    "prep_minutes": {"type": "integer"},
+                    "importance": {"type": "string", "enum": ["normal", "critical"]},
+                },
+                "required": ["title", "start"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_event",
+            "description": "Update an existing schedule event.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string"},
+                    "title": {"type": "string"},
+                    "start": {"type": "string", "format": "date-time"},
+                    "end": {"type": "string", "format": "date-time"},
+                    "location": {"type": "string"},
+                    "travel_minutes": {"type": "integer"},
+                    "prep_minutes": {"type": "integer"},
+                    "importance": {"type": "string", "enum": ["normal", "critical"]},
+                    "status": {"type": "string", "enum": ["upcoming", "left", "arrived", "done", "missed"]},
+                },
+                "required": ["file"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_event",
+            "description": "Delete a schedule event.",
+            "parameters": {
+                "type": "object",
+                "properties": {"file": {"type": "string"}},
+                "required": ["file"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_goal",
+            "description": "Add a new goal.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "period": {"type": "string", "description": '"2026", "2026-W36", or "2026-09"'},
+                    "notes": {"type": "string"},
+                },
+                "required": ["title", "period"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_goal",
+            "description": "Update an existing goal.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string"},
+                    "status": {"type": "string", "enum": ["active", "done", "dropped"]},
+                    "notes": {"type": "string"},
+                },
+                "required": ["file"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_profile",
+            "description": "Set a profile field.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field": {"type": "string", "description": "a settable profile field name"},
+                    "value": {"description": "the new value"},
+                },
+                "required": ["field", "value"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "snooze",
+            "description": 'Silence non-critical proactive messages, e.g. for "not now"/"stop"/"later".',
+            "parameters": {
+                "type": "object",
+                "properties": {"minutes": {"type": "integer"}},
+                "required": ["minutes"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reply",
+            "description": "The message to send back to the user. Required exactly once.",
+            "parameters": {
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+                "additionalProperties": False,
+            },
+        },
+    },
+]
+
+_TOOLS_BY_NAME: dict[str, dict] = {t["function"]["name"]: t["function"] for t in TOOL_SCHEMAS}
+
+_JSON_TYPES: dict[str, type | tuple[type, ...]] = {
+    "string": str,
+    "boolean": bool,
+    "integer": int,
+    "number": (int, float),
+}
+
+
+def validate_call(name: str, args: dict) -> list[str]:
+    tool = _TOOLS_BY_NAME.get(name)
+    if tool is None:
+        return [f"unknown tool {name}"]
+
+    schema = tool["parameters"]
+    properties: dict = schema.get("properties", {})
+    errors: list[str] = []
+
+    for required_field in schema.get("required", []):
+        if required_field not in args:
+            errors.append(f"missing required field {required_field}")
+
+    for key, value in args.items():
+        prop = properties.get(key)
+        if prop is None:
+            errors.append(f"unknown field {key} for {name}")
+            continue
+
+        json_type = prop.get("type")
+        if json_type is not None:
+            expected = _JSON_TYPES.get(json_type)
+            # bool is a subclass of int in Python; only accept it where the schema wants a boolean.
+            if expected is not None and (
+                not isinstance(value, expected) or (json_type != "boolean" and isinstance(value, bool))
+            ):
+                errors.append(f"{key} must be a {json_type}")
+                continue
+
+        enum = prop.get("enum")
+        if enum is not None and value not in enum:
+            errors.append(f"{key} must be one of {enum}, got {value!r}")
+
+        fmt = prop.get("format")
+        if fmt == "date":
+            try:
+                date.fromisoformat(value)
+            except (TypeError, ValueError):
+                errors.append(f"{key} must be an ISO date (YYYY-MM-DD)")
+        elif fmt == "date-time":
+            try:
+                dt = datetime.fromisoformat(value)
+            except (TypeError, ValueError):
+                errors.append(f"{key} must be an ISO datetime")
+            else:
+                if dt.tzinfo is None:
+                    errors.append(f"{key} must include a UTC offset")
+
+    if name == "set_profile" and "field" in args and args["field"] not in PROFILE_SETTABLE:
+        errors.append(f"set_profile.field {args['field']!r} is not a settable profile field")
+
+    return errors
