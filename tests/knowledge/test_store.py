@@ -38,6 +38,20 @@ def test_add_backlog_and_move(store):
     assert new == "todos/2026-09-03-garage.md" and not (store.root / p).exists()
     assert [t.path for t in store.todos()] == [new]
 
+def test_move_todo_avoids_collision(store):
+    (store.root / "todos" / "2026-09-03-x.md").write_text(
+        Todo(path="todos/2026-09-03-x.md", title="X").to_markdown()
+    )
+    backlog_path = "backlog/2026-09-03-x.md"
+    (store.root / backlog_path).write_text(
+        Todo(path=backlog_path, title="X").to_markdown()
+    )
+    new = store.move_todo(backlog_path, "todos")
+    assert new == "todos/2026-09-03-x-2.md"
+    assert (store.root / "todos" / "2026-09-03-x.md").exists()
+    assert (store.root / "todos" / "2026-09-03-x-2.md").exists()
+    assert not (store.root / backlog_path).exists()
+
 def test_commit_regenerates_index_and_log(store):
     p = store.add(Todo(path="", title="Call dentist", due=date(2026, 9, 5)))
     sha = store.commit("add todo")

@@ -33,7 +33,7 @@ class KnowledgeStore:
 
     def _git(self, *args: str) -> str:
         result = subprocess.run(
-            ["git", "-c", "user.name=assistant", "-c", "user.email=assistant@local", *args],
+            ["git", *args],
             cwd=self.root,
             check=True,
             capture_output=True,
@@ -56,6 +56,8 @@ class KnowledgeStore:
         self.regenerate_indexes()
         if not (self.root / ".git").exists():
             self._git("init", "-q")
+            self._git("config", "user.name", "assistant-bot")
+            self._git("config", "user.email", "bot@local")
             self._git("add", "-A")
             self._git("commit", "-q", "-m", "Initial knowledge bundle")
 
@@ -119,6 +121,15 @@ class KnowledgeStore:
 
     # -- write ------------------------------------------------------------
 
+    def _avoid_collision(self, folder: str, stem: str, ext: str = ".md") -> str:
+        suffix = 1
+        while True:
+            name = f"{stem}{ext}" if suffix == 1 else f"{stem}-{suffix}{ext}"
+            path = f"{folder}/{name}"
+            if not (self.root / path).exists():
+                return path
+            suffix += 1
+
     def add(self, item: Todo | Event | Goal, folder: str | None = None) -> str:
         now = self.clock()
         if folder is None:
@@ -127,13 +138,7 @@ class KnowledgeStore:
         created = now.date()
         slug = slugify(item.title)
         stem = f"{created:%Y-%m-%d}-{slug}"
-        suffix = 1
-        while True:
-            name = f"{stem}.md" if suffix == 1 else f"{stem}-{suffix}.md"
-            path = f"{folder}/{name}"
-            if not (self.root / path).exists():
-                break
-            suffix += 1
+        path = self._avoid_collision(folder, stem)
         item.path = path
         (self.root / path).write_text(item.to_markdown())
         self.log("add", path)
@@ -148,7 +153,8 @@ class KnowledgeStore:
         if to not in ("todos", "backlog"):
             raise ValueError(f"invalid destination folder: {to}")
         name = path.rsplit("/", 1)[-1]
-        new_path = f"{to}/{name}"
+        stem = name[:-3] if name.endswith(".md") else name
+        new_path = self._avoid_collision(to, stem)
         (self.root / path).rename(self.root / new_path)
         self.log("move", f"{path} -> {new_path}")
         return new_path
@@ -156,9 +162,6 @@ class KnowledgeStore:
     def delete(self, path: str) -> None:
         (self.root / path).unlink()
         self.log("delete", path)
-
-    def delete_event(self, path: str) -> None:
-        self.delete(path)
 
     def add_inbox(self, text: str) -> str:
         now = self.clock()
