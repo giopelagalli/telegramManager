@@ -34,18 +34,26 @@ async def test_capture_retries_then_inbox(store):
     assert not res.parsed and "inbox" in res.reply
     assert len(client.calls) == 2 and "Tool call errors" in client.calls[1]["messages"][-1]["content"]
     assert list((store.root / "inbox").glob("*.md"))
+    assert store.undo() == "inbox: saved unparsed message"
 
 async def test_capture_model_offline_goes_to_inbox(store):
     class Boom:
         async def chat(self, *a, **k): raise ConnectionError("down")
     res = await Agent(Boom(), None, store, lambda: NOW).capture("hi")
     assert not res.parsed and "offline" in res.reply
+    assert store.undo() == "inbox: saved unparsed message"
 
 async def test_compose_fallback_on_failure(store):
     class Boom:
         async def chat(self, *a, **k): raise ConnectionError("down")
     out = await Agent(Boom(), None, store, lambda: NOW).compose("checkin", "ctx", "fallback text")
     assert out == "fallback text"
+
+async def test_compose_truncates_at_last_sentence_end(store):
+    long_text = "Short intro." + "x" * 577 + "!" + "y" * 100
+    client = FakeModelClient([R(text=long_text)])
+    out = await Agent(client, None, store, lambda: NOW).compose("briefing", "ctx", "fallback")
+    assert out.endswith("!") and len(out) > 500
 
 def test_apply_done_with_verify_sets_unconfirmed(store):
     p = store.add(Todo(path="", title="Wash car", verify="photo")); store.commit("x")

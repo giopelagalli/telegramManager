@@ -53,31 +53,42 @@ class Agent:
             {"role": "user", "content": text},
         ]
 
-        try:
-            response = await self.client.chat(messages, tools=TOOL_SCHEMAS, temperature=0.1)
+        response = await self._chat_or_none(messages, TOOL_SCHEMAS, 0.1)
+        if response is None:
+            return self._to_inbox(text, "The model is offline; saved your message to the inbox.")
+
+        errors = self._check(response.tool_calls)
+        if errors:
+            retry_messages = messages + [
+                {"role": "assistant", "content": self._raw_calls_repr(response.tool_calls)},
+                {
+                    "role": "user",
+                    "content": "Tool call errors: "
+                    + "; ".join(errors)
+                    + ". Resend ALL tool calls, fixed, and include exactly one reply call.",
+                },
+            ]
+            response = await self._chat_or_none(retry_messages, TOOL_SCHEMAS, 0.1)
+            if response is None:
+                return self._to_inbox(text, "The model is offline; saved your message to the inbox.")
             errors = self._check(response.tool_calls)
-            if errors:
-                retry_messages = messages + [
-                    {"role": "assistant", "content": self._raw_calls_repr(response.tool_calls)},
-                    {
-                        "role": "user",
-                        "content": "Tool call errors: "
-                        + "; ".join(errors)
-                        + ". Resend ALL tool calls, fixed, and include exactly one reply call.",
-                    },
-                ]
-                response = await self.client.chat(retry_messages, tools=TOOL_SCHEMAS, temperature=0.1)
-                errors = self._check(response.tool_calls)
-        except Exception:
-            self.store.add_inbox(text)
-            return CaptureResult([], "The model is offline; saved your message to the inbox.", parsed=False)
 
         if errors:
-            self.store.add_inbox(text)
-            return CaptureResult([], "Saved that, but I couldn't parse it. It's in your inbox.", parsed=False)
+            return self._to_inbox(text, "Saved that, but I couldn't parse it. It's in your inbox.")
 
         reply_text = self._reply_text(response.tool_calls)
         return CaptureResult(response.tool_calls, reply_text, parsed=True)
+
+    async def _chat_or_none(self, messages, tools, temperature):
+        try:
+            return await self.client.chat(messages, tools=tools, temperature=temperature)
+        except Exception:
+            return None
+
+    def _to_inbox(self, text: str, reply: str) -> CaptureResult:
+        self.store.add_inbox(text)
+        self.store.commit("inbox: saved unparsed message")
+        return CaptureResult([], reply, parsed=False)
 
     @staticmethod
     def _check(tool_calls: list[ToolCall]) -> list[str]:
@@ -166,10 +177,9 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     truncated = text[:limit]
-    for punct in (".", "!", "?"):
-        idx = truncated.rfind(punct)
-        if idx != -1:
-            return truncated[: idx + 1]
+    idx = max(truncated.rfind("."), truncated.rfind("!"), truncated.rfind("?"))
+    if idx != -1:
+        return truncated[: idx + 1]
     return truncated.rstrip()
 
 
