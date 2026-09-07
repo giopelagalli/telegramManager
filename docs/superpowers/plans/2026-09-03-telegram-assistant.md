@@ -792,7 +792,9 @@ async def test_critical_leave_starts_state_not_message(store):
     p = store.add(Event(path="", title="Flight", start=T(18), travel_minutes=60, importance="critical")); store.commit("e")
     s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
     out = await due_reminders(T(16, 55), store, s, None)
-    assert out == [] and s.critical and s.critical.event_path == p and s.critical.phase == "lead"
+    # get-ready (due 16:45, still inside the late window) fires as usual; leave-at opens critical state instead of a message
+    assert [o.text for o in out] == ["Get ready for Flight. Leave by 5:00pm."]
+    assert s.critical and s.critical.event_path == p and s.critical.phase == "lead"
 
 async def test_maps_refresh_shifts_leave(store):
     prof = store.profile(); prof.home_latlng = (40.7, -74.0); store.save_profile(prof)
