@@ -26,24 +26,36 @@ def distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
 class MapsClient:
     def __init__(self, api_key: str, http: httpx.AsyncClient | None = None) -> None:
         self._api_key = api_key
+        self._owns_http = http is None
         self._http = http or httpx.AsyncClient(timeout=5.0)
 
-    async def geocode(self, address: str) -> tuple[float, float] | None:
+    async def aclose(self) -> None:
+        if self._owns_http:
+            await self._http.aclose()
+
+    async def _get_json(self, url: str, params: dict, what: str) -> dict | None:
         try:
-            resp = await self._http.get(
-                GEOCODE_URL, params={"address": address, "key": self._api_key}
-            )
+            resp = await self._http.get(url, params=params)
             resp.raise_for_status()
-            data = resp.json()
+            return resp.json()
+        except httpx.HTTPStatusError as exc:
+            logger.warning("maps.%s failed: HTTP %s", what, exc.response.status_code)
+            return None
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("maps.%s failed: %s", what, type(exc).__name__)
+            return None
+
+    async def geocode(self, address: str) -> tuple[float, float] | None:
+        data = await self._get_json(
+            GEOCODE_URL, {"address": address, "key": self._api_key}, "geocode"
+        )
+        if data is None:
+            return None
+        try:
             location = data["results"][0]["geometry"]["location"]
             return (location["lat"], location["lng"])
-        except httpx.HTTPStatusError as exc:
-            logger.warning(
-                "maps.geocode failed for %r: HTTP %s", address, exc.response.status_code
-            )
-            return None
-        except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
-            logger.warning("maps.geocode failed for %r: %s", address, type(exc).__name__)
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.warning("maps.geocode failed: %s", type(exc).__name__)
             return None
 
     async def travel_minutes(
@@ -52,32 +64,24 @@ class MapsClient:
         dest: tuple[float, float],
         depart_at: datetime,
     ) -> int | None:
+        data = await self._get_json(
+            DIRECTIONS_URL,
+            {
+                "origin": f"{origin[0]},{origin[1]}",
+                "destination": f"{dest[0]},{dest[1]}",
+                "departure_time": int(depart_at.timestamp()),
+                "mode": "driving",
+                "key": self._api_key,
+            },
+            "travel_minutes",
+        )
+        if data is None:
+            return None
         try:
-            resp = await self._http.get(
-                DIRECTIONS_URL,
-                params={
-                    "origin": f"{origin[0]},{origin[1]}",
-                    "destination": f"{dest[0]},{dest[1]}",
-                    "departure_time": int(depart_at.timestamp()),
-                    "mode": "driving",
-                    "key": self._api_key,
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
             leg = data["routes"][0]["legs"][0]
             duration = leg.get("duration_in_traffic", leg["duration"])
             seconds = duration["value"]
             return math.ceil(seconds / 60)
-        except httpx.HTTPStatusError as exc:
-            logger.warning(
-                "maps.travel_minutes failed for %r -> %r: HTTP %s",
-                origin, dest, exc.response.status_code,
-            )
-            return None
-        except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
-            logger.warning(
-                "maps.travel_minutes failed for %r -> %r: %s",
-                origin, dest, type(exc).__name__,
-            )
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.warning("maps.travel_minutes failed: %s", type(exc).__name__)
             return None

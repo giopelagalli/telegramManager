@@ -24,3 +24,19 @@ async def test_travel_minutes_prefers_traffic():
     assert await client(h).travel_minutes((0, 0), (1, 1), datetime(2026, 9, 4, 17, 0, tzinfo=timezone.utc)) == 26
     async def boom(req): raise httpx.ConnectError("x")
     assert await client(boom).travel_minutes((0, 0), (1, 1), datetime.now(timezone.utc)) is None
+
+async def test_non_json_body_returns_none():
+    async def h(req): return httpx.Response(200, text="<html>oops</html>")
+    assert await client(h).geocode("x") is None
+    assert await client(h).travel_minutes((0, 0), (1, 1), datetime.now(timezone.utc)) is None
+
+async def test_aclose_closes_owned_client_only():
+    owned = MapsClient("k")
+    await owned.aclose()
+    assert owned._http.is_closed
+
+    injected_http = httpx.AsyncClient()
+    injected = MapsClient("k", http=injected_http)
+    await injected.aclose()
+    assert not injected_http.is_closed
+    await injected_http.aclose()
