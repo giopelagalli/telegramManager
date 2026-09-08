@@ -9,6 +9,7 @@ from bot.scheduler.outbound import Outbound
 from bot.scheduler.state import CriticalLeaveState, RuntimeState
 
 LATE_WINDOW = timedelta(minutes=15)
+MISSED_AFTER = timedelta(minutes=15)
 
 
 class MapsClient(Protocol):
@@ -66,7 +67,7 @@ async def due_reminders(
                 )
 
         missed_key = f"missed:{ev.path}"
-        missed_at = ev.start + timedelta(minutes=15)
+        missed_at = ev.start + MISSED_AFTER
         if is_due(missed_key, missed_at, now, state):
             ev.status = "missed"
             store.save(ev)

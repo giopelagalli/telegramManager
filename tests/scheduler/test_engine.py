@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 import pytest
@@ -5,7 +6,8 @@ from bot.agent.client import FakeModelClient
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.models import Todo, Event
-from bot.scheduler.state import RuntimeState
+from bot.scheduler.checkins import checkin_slots
+from bot.scheduler.state import Chain, RuntimeState
 from bot.scheduler.clock import FakeClock
 from bot.scheduler.engine import Engine
 
@@ -67,3 +69,83 @@ async def test_wake_flow_sends_morning_after_done(rig):
     state.wake.phase = "done"; state.wake.verified = True
     await eng.tick()
     assert sink.sent[-1].kind == "briefing" and state.wake is None and "morning:2026-09-03" in state.fired
+
+
+async def test_run_survives_tick_exception(rig):
+    eng, clock, sink, state, store = rig
+    calls = []
+
+    async def flaky():
+        calls.append(len(calls))
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+
+    eng.tick = flaky
+    task = asyncio.create_task(eng.run(interval_seconds=0))
+    for _ in range(100):
+        if len(calls) >= 2:
+            break
+        await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(calls) >= 2
+
+
+async def test_late_start_after_wake_time_still_sends_morning(rig):
+    eng, clock, sink, state, store = rig
+    p = store.profile(); p.wake_time = "06:30"; store.save_profile(p)
+    clock.set(T(9)); eng.startup(clock.now())
+    state.last_user_message_at = T(9)  # keep check-ins out of the way
+    await eng.tick()
+    briefings = [o for o in sink.sent if o.kind == "briefing"]
+    assert len(briefings) == 1 and "Wake-up window missed." in briefings[0].text
+    assert state.wake is None
+    before = len(sink.sent)
+    await eng.tick()
+    assert len(sink.sent) == before
+
+
+async def test_budget_exhausted_checkin_consumes_slot_and_keeps_chain(rig):
+    eng, clock, sink, state, store = rig
+    day = date(2026, 9, 3)
+    key, due = checkin_slots(store.profile(), day)[0]
+    clock.set(due)
+    state.fired.add(f"morning:{day}")  # keep the briefing from touching the chain
+    state.proactive_sends = [due - timedelta(minutes=m) for m in (30, 20, 10)]
+    chain = Chain("briefing", due, due, 0, item="Dentist", history=["x"])
+    state.chain = chain
+    await eng.tick()
+    assert all(o.kind != "checkin" for o in sink.sent)
+    assert key in state.fired
+    assert state.chain is chain
+
+
+class RecordingEngine(Engine):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.reasons: list[str] = []
+
+    def escalate_external(self, reason: str) -> None:
+        self.reasons.append(reason)
+
+
+async def test_escalate_external_called_at_caps(rig):
+    eng, clock, sink, state, store = rig
+    eng = RecordingEngine(eng.store, eng.agent, eng.state, eng.state_path, eng.clock, eng.sender, eng.maps)
+
+    p = store.profile(); p.wake_time = "07:00"; store.save_profile(p)
+    await eng.tick()  # 07:00 — wake starts
+    assert state.wake is not None
+    clock.set(T(7, 31))  # past wakeup_cap_minutes (30)
+    await eng.tick()
+    assert "wake-up hit its cap" in eng.reasons
+
+    store.add(Event(path="", title="Flight", start=T(12), travel_minutes=0, prep_minutes=15, importance="critical"))
+    store.commit("critical event")
+    clock.set(T(11, 55))  # leave_at
+    await eng.tick()
+    assert state.critical is not None
+    clock.set(T(12, 20))  # leave_by + critical_leave_cap_minutes (20)
+    await eng.tick()
+    assert "critical leave hit its cap" in eng.reasons

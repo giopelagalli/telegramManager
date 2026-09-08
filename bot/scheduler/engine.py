@@ -8,12 +8,11 @@ from pathlib import Path
 from bot.scheduler import briefings, chains, checkins, critical
 from bot.scheduler.budget import budget_ok, record_send
 from bot.scheduler.outbound import Outbound
-from bot.scheduler.reminders import LATE_WINDOW, due_reminders
+from bot.scheduler.reminders import LATE_WINDOW, MISSED_AFTER, due_reminders
 
 logger = logging.getLogger(__name__)
 
 PENDING_VERIFY_TTL = timedelta(minutes=10)
-MISSED_AFTER = timedelta(minutes=15)
 
 
 class Engine:
@@ -39,15 +38,18 @@ class Engine:
 
     async def run(self, interval_seconds: int = 10) -> None:
         while True:
-            await self.tick()
+            try:
+                await self.tick()
+            except Exception:
+                logger.exception("tick failed")
             await asyncio.sleep(interval_seconds)
 
     async def tick(self) -> list[Outbound]:
         now = self.clock.now()
-        self.state.prune(now)
         sent: list[Outbound] = []
 
         for step in (
+            self._prune,
             self._reminders,
             self._critical_leave,
             self._wake,
@@ -97,6 +99,9 @@ class Engine:
 
     # -- steps -----------------------------------------------------------
 
+    async def _prune(self, now: datetime, sent: list[Outbound]) -> None:
+        self.state.prune(now)
+
     async def _reminders(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await due_reminders(now, self.store, self.state, self.maps):
             await self._send(out, now, sent)
@@ -112,6 +117,7 @@ class Engine:
             self.escalate_external("critical leave hit its cap")
 
     async def _wake(self, now: datetime, sent: list[Outbound]) -> None:
+        profile = self.store.profile()
         if critical.wake_due(now, self.state, self.store):
             await self._send(critical.wake_start(now, self.state, self.store), now, sent)
         elif self.state.wake is not None and self.state.wake.phase != "done":
@@ -120,6 +126,8 @@ class Engine:
                 await self._send(out, now, sent)
             if self.state.wake.phase == "done":
                 self.escalate_external("wake-up hit its cap")
+        elif self.state.wake is None and profile.wake_time:
+            await self._missed_wake_morning(now, profile, sent)
 
         wake = self.state.wake
         if wake is not None and wake.phase == "done":
@@ -127,6 +135,22 @@ class Engine:
             out = await briefings.send_morning(now, self.store, self.state, self.agent, note)
             await self._send(out, now, sent)
             self.state.wake = None
+
+    async def _missed_wake_morning(self, now: datetime, profile, sent: list[Outbound]) -> None:
+        """Started after the wake window: the morning briefing would be lost otherwise."""
+        day = now.date()
+        guard_key = f"wake-missed:{day}"
+        if guard_key in self.state.fired or f"morning:{day}" in self.state.fired:
+            return
+        hh, mm = (int(x) for x in profile.wake_time.split(":"))
+        wake_at = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if now <= wake_at + LATE_WINDOW:
+            return
+        self.state.fired.add(guard_key)
+        out = await briefings.send_morning(
+            now, self.store, self.state, self.agent, "Wake-up window missed."
+        )
+        await self._send(out, now, sent)
 
     async def _briefings(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await briefings.due_briefings(now, self.store, self.state, self.agent):
