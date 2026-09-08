@@ -58,6 +58,31 @@ def test_no_home_accepts_any_fix(store):
     s = fresh(store)
     o = C.leave_on_location(T(16, 57), s, store, 40.7001, -74.0001)
     assert s.critical is None and "taking your word" in o.text
+    assert store.events()[0].status == "left"
+
+def test_stale_left_event_ignored(store):
+    ev = store.events()[0]
+    ev.status = "left"
+    ev.start = T(16) - timedelta(days=1)
+    store.save(ev)
+    store.commit("stale")
+    s = RuntimeState.load(Path("/nonexistent"))
+    s.critical = None
+    o = C.leave_on_location(T(16, 57), s, store, 40.9, -74.9)
+    assert o is None
+    assert store.get_event(ev.path).status == "left"
+
+def test_leave_on_text_no_critical_returns_none(store):
+    s = RuntimeState.load(Path("/nonexistent"))
+    s.critical = None
+    assert C.leave_on_text(s, store) is None
+
+def test_storm_message_alternates(store):
+    s = fresh(store)
+    C.leave_tick(T(16, 55), s, store)
+    o1 = C.leave_tick(T(17, 0), s, store)
+    o2 = C.leave_tick(T(17, 1), s, store)
+    assert o1.text != o2.text
 
 # wake-up
 @pytest.fixture
@@ -94,3 +119,20 @@ def test_wake_photo_three_failures_moves_on(wstore):
     for _ in range(2): C.wake_on_photo(T(6, 31), s, wstore, False, "no")
     o = C.wake_on_photo(T(6, 31), s, wstore, False, "no")
     assert s.wake.phase == "engage" and s.wake.verified is False and "moving on" in o.text
+
+def test_wake_photo_none_then_tick_stays_in_engage(wstore):
+    s = RuntimeState.load(Path("/nonexistent")); C.wake_start(T(6, 30), s, wstore)
+    C.wake_on_message(T(6, 31), s, wstore, "hi")
+    C.wake_on_photo(T(6, 33), s, wstore, None, "")
+    assert C.wake_tick(T(6, 33, 30), s, wstore) is None and s.wake.phase == "engage"
+
+def test_wake_tick_after_done_is_noop(wstore):
+    s = RuntimeState.load(Path("/nonexistent")); C.wake_start(T(6, 30), s, wstore)
+    C.wake_on_message(T(6, 31), s, wstore, "hi")
+    C.wake_on_photo(T(6, 31, 30), s, wstore, True, "")
+    C.wake_on_message(T(6, 32), s, wstore, "gym then emails")
+    C.wake_on_message(T(6, 33), s, wstore, "then the dentist call")
+    o = C.wake_on_message(T(6, 34), s, wstore, "and lunch with Sam")
+    assert o.text == "You're up." and s.wake.phase == "done" and s.wake.verified is True
+    assert C.wake_tick(T(7, 5), s, wstore) is None
+    assert s.wake.verified is True

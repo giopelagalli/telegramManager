@@ -17,10 +17,10 @@ _NON_SUBSTANTIVE = {"ok", "okay", "yes", "yeah", "fine", "sure", "yep", "no", "n
 
 
 def _event(store: KnowledgeStore, path: str):
-    for ev in store.events():
-        if ev.path == path:
-            return ev
-    return None
+    try:
+        return store.get_event(path)
+    except KeyError:
+        return None
 
 
 def leave_tick(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Outbound | None:
@@ -56,6 +56,7 @@ def leave_tick(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Out
             store.save(ev)
             store.commit("critical: leave missed")
             crit_text = f"I'll stop now. {ev.title} is marked missed."
+            crit.phase = "done"
             state.critical = None
             return Outbound(text=crit_text, kind="critical")
 
@@ -63,7 +64,10 @@ def leave_tick(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Out
         if crit.last_sent_at is not None and now < crit.last_sent_at + cadence:
             return None
 
-        text = f"{profile.name}, if you don't leave now you will be late for {ev.title}. Share your location to confirm."
+        if crit.sent_count % 2 == 0:
+            text = f"{profile.name}, if you don't leave now you will be late for {ev.title}. Share your location to confirm."
+        else:
+            text = f"{profile.name}, you need to leave now. {ev.title} at {fmt_time(ev.start)}. Tap the button and share your location."
         crit.sent_count += 1
         crit.last_sent_at = now
         return Outbound(text=text, location_button=True, critical=True, kind="critical")
@@ -73,13 +77,18 @@ def leave_tick(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Out
 
 def leave_on_location(
     now: datetime, state: RuntimeState, store: KnowledgeStore, lat: float, lng: float
-) -> Outbound:
+) -> Outbound | None:
     profile = store.profile()
     crit = state.critical
     if crit is not None:
         ev = _event(store, crit.event_path)
     else:
-        ev = next((e for e in store.events() if e.status == "left"), None)
+        ev = next(
+            (e for e in store.events() if e.status == "left" and e.start.date() == now.date()),
+            None,
+        )
+        if ev is None:
+            return None
 
     if ev is not None and ev.location_latlng and distance_m((lat, lng), ev.location_latlng) < DEST_RADIUS_M:
         ev.status = "arrived"
@@ -93,8 +102,14 @@ def leave_on_location(
 
     home = profile.home_latlng
     if home is None:
+        ev.status = "left"
+        store.save(ev)
+        store.commit("critical: left home")
         state.critical = None
-        return Outbound(text="Can't check home, taking your word for it.", kind="critical")
+        return Outbound(
+            text=f"Can't check home, taking your word for it, {profile.name}. On your way to {ev.title}.",
+            kind="critical",
+        )
 
     if distance_m((lat, lng), home) > HOME_RADIUS_M:
         ev.status = "left"
@@ -106,7 +121,9 @@ def leave_on_location(
     return Outbound(text=f"You are still at home, {profile.name}.", kind="critical")
 
 
-def leave_on_text(state: RuntimeState, store: KnowledgeStore) -> Outbound:
+def leave_on_text(state: RuntimeState, store: KnowledgeStore) -> Outbound | None:
+    if state.critical is None:
+        return None
     profile = store.profile()
     return Outbound(text=f"Words don't count, {profile.name}. Tap the button and share your location.", kind="critical")
 
@@ -136,6 +153,9 @@ def wake_start(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Out
 def wake_tick(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Outbound | None:
     w = state.wake
     profile = store.profile()
+
+    if w.phase == "done":
+        return None
 
     if now >= w.started_at + timedelta(minutes=profile.wakeup_cap_minutes):
         w.phase = "done"
@@ -206,6 +226,7 @@ def wake_on_photo(
     if ok is None:
         w.verified = False
         w.phase = "engage"
+        w.last_reply_at = now
         return Outbound(
             text="Can't check photos right now, I'll take it. First question: what's the first thing you're doing today?",
             kind="wake",
@@ -221,6 +242,7 @@ def wake_on_photo(
     if w.attempts >= 3:
         w.verified = False
         w.phase = "engage"
+        w.last_reply_at = now
         return Outbound(text="Not convinced, but moving on. What's the first thing you're doing today?", kind="wake")
 
     return Outbound(text=f"Doesn't look like the {profile.wake_photo_spot}: {reason}. Try again.", kind="wake")
