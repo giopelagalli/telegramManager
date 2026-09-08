@@ -17,6 +17,16 @@ def R(*calls):
     return ModelResponse(None, [ToolCall(n, a) for n, a in calls])
 
 
+class FakeMaps:
+    def __init__(self, mapping):
+        self.mapping = mapping
+        self.calls = []
+
+    async def geocode(self, address):
+        self.calls.append(address)
+        return self.mapping.get(address)
+
+
 @pytest.fixture
 def rig(tmp_path):
     clock = FakeClock(NOW)
@@ -87,3 +97,47 @@ async def test_defer_button(rig):
     store.commit("t")
     assert "tomorrow" in (await router.on_callback(f"defer:{a}"))[0].text.lower()
     assert store.get_todo(a).due == date(2026, 9, 4)
+
+
+async def test_set_home_address_geocodes(tmp_path):
+    clock = FakeClock(NOW)
+    store = KnowledgeStore(tmp_path / "k", clock=clock.now)
+    store.init()
+    maps = FakeMaps({"1 Main St": (40.7, -74.0)})
+    client = FakeModelClient(
+        [R(("set_profile", {"field": "home_address", "value": "1 Main St"}), ("reply", {"text": "Got it."}))]
+    )
+    agent = Agent(client, None, store, clock.now)
+    state = RuntimeState.load(tmp_path / "s.json")
+    router = Router(store, agent, state, clock, maps)
+
+    await router.on_text("i live at 1 Main St")
+    assert store.profile().home_latlng == (40.7, -74.0)
+    assert maps.calls == ["1 Main St"]
+
+
+async def test_location_verify_pending_todo(tmp_path):
+    clock = FakeClock(NOW)
+    store = KnowledgeStore(tmp_path / "k", clock=clock.now)
+    store.init()
+    maps = FakeMaps({"Equinox": (40.0, -74.0)})
+    agent = Agent(FakeModelClient([]), None, store, clock.now)
+    state = RuntimeState.load(tmp_path / "s.json")
+    router = Router(store, agent, state, clock, maps)
+
+    a = store.add(Todo(path="", title="Gym", verify="location", body="Location: Equinox"))
+    store.commit("t")
+    await router.on_callback(f"done:{a}")
+    assert state.pending_verify.todo_path == a
+
+    await router.on_location(40.0009, -74.0)  # ~100m away, within the 200m radius
+    assert store.get_todo(a).confirmed is True
+    assert state.pending_verify is None
+
+    b = store.add(Todo(path="", title="Gym2", verify="location", body="Location: Equinox"))
+    store.commit("t2")
+    await router.on_callback(f"done:{b}")
+
+    await router.on_location(40.05, -74.0)  # ~5.5km away, outside the radius
+    assert store.get_todo(b).confirmed is False
+    assert state.pending_verify is None

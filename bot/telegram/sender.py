@@ -51,10 +51,14 @@ class Sender:
 
     async def _send_voice(self, text: str) -> None:
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
-        path = await self.synthesizer.synthesize(plain_text(text), self.tmp_dir)
         try:
-            with open(path, "rb") as f:
-                await self._retry(lambda: self.bot.send_voice(chat_id=self.chat_id, voice=f))
+            path = await self.synthesizer.synthesize(plain_text(text), self.tmp_dir)
+        except Exception:
+            logger.exception("voice synthesis failed, skipping voice leg")
+            return
+        try:
+            data = path.read_bytes()
+            await self._retry(lambda: self.bot.send_voice(chat_id=self.chat_id, voice=data))
         except NetworkError as exc:
             logger.error("send_voice gave up after retries: %s", exc)
         finally:

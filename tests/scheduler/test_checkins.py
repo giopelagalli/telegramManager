@@ -48,3 +48,11 @@ async def test_skipped_checkin_is_consumed(store):
     s = RuntimeState.load(Path("/nonexistent")); s.pause_until = T(23)
     key, due = checkin_slots(store.profile(), D)[2]
     assert await due_checkin(due, store, s, FakeAgent()) is None and key in s.fired
+
+async def test_composed_prose_is_escaped(store):
+    class HtmlAgent:
+        async def compose(self, kind, context, fallback): return "Check in <b>now</b>."
+    s = RuntimeState.load(Path("/nonexistent"))
+    key, due = checkin_slots(store.profile(), D)[2]
+    out = await due_checkin(due, store, s, HtmlAgent())
+    assert "&lt;b&gt;" in out.text and "<b>now</b>" not in out.text

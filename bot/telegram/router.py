@@ -72,6 +72,7 @@ class Router:
         now = self._touch()
 
         if self._wake_active() and self.state.wake.phase == "challenge":
+            close_chain(self.state)
             spot = self.store.profile().wake_photo_spot
             ok, reason = await self.agent.check_photo(
                 image, f"a fresh photo of a {spot}, not a screenshot"
@@ -128,10 +129,11 @@ class Router:
         if self.maps is None:
             return
         addresses = [
-            a.arguments["value"]
+            a.arguments.get("value")
             for a in actions
             if a.name == "set_profile" and a.arguments.get("field") == "home_address"
         ]
+        addresses = [a for a in addresses if a is not None]
         if not addresses:
             return
         latlng = await self.maps.geocode(addresses[-1])
@@ -179,7 +181,11 @@ class Router:
         return None
 
     def _settle(self, pending, confirmed: bool) -> None:
-        todo = self.store.get_todo(pending.todo_path)
+        try:
+            todo = self.store.get_todo(pending.todo_path)
+        except KeyError:
+            self.state.pending_verify = None
+            return
         todo.confirmed = confirmed
         self.store.save(todo)
         self.store.commit(f"verify: {todo.title}")

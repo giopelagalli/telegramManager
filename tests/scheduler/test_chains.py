@@ -59,3 +59,10 @@ async def test_chain_closed_outside_waking_hours(store):
 def test_close_chain():
     s = RuntimeState.load(Path("/nonexistent")); s.chain = Chain("checkin", T(10), T(10), 0, "X", [])
     close_chain(s); assert s.chain is None
+
+async def test_composed_prose_is_escaped(store):
+    class HtmlAgent:
+        async def compose(self, kind, context, fallback): return "Do it <b>now</b>."
+    s = RuntimeState.load(Path("/nonexistent")); s.chain = Chain("checkin", T(10), T(10), 0, "X", [])
+    out = await due_followup(T(10, 15), store, s, HtmlAgent())
+    assert "&lt;b&gt;" in out.text and "<b>now</b>" not in out.text

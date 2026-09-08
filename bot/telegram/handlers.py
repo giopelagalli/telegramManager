@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bot.knowledge.views import esc
+
 LOW_CONFIDENCE = -0.8
 
 
@@ -40,7 +42,7 @@ class Handlers:
             path.unlink(missing_ok=True)
         outs = await self.router.on_text(text, via_voice=True)
         if outs and confidence < LOW_CONFIDENCE:
-            outs[0].text = f"Heard: “{text}”\n" + outs[0].text
+            outs[0].text = f"Heard: “{esc(text)}”\n" + outs[0].text
         await self._send(outs)
 
     async def on_photo(self, update, context) -> None:

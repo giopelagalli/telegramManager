@@ -123,7 +123,7 @@ async def _compose_prose(store: KnowledgeStore, now: datetime, agent) -> str:
 
 async def _morning_outbound(store: KnowledgeStore, now: datetime, agent, note: str | None = None) -> Outbound:
     prose = await _compose_prose(store, now, agent)
-    text = morning_text(store, now).replace("{prose}", prose)
+    text = morning_text(store, now).replace("{prose}", esc(prose))
     if note:
         text = f"{note}\n\n{text}"
     profile = store.profile()

@@ -9,10 +9,12 @@ from bot.telegram.sender import Sender, plain_text
 
 
 class FakeBot:
-    def __init__(self, fail_times=0, error=NetworkError("boom")):
+    def __init__(self, fail_times=0, error=NetworkError("boom"), voice_fail_times=0):
         self.calls = []
         self.fail_times = fail_times
         self.error = error
+        self.voice_fail_times = voice_fail_times
+        self._voice_calls = 0
 
     async def send_message(self, **kwargs):
         self.calls.append(("send_message", kwargs))
@@ -21,6 +23,9 @@ class FakeBot:
 
     async def send_voice(self, **kwargs):
         self.calls.append(("send_voice", kwargs))
+        self._voice_calls += 1
+        if self._voice_calls <= self.voice_fail_times:
+            raise NetworkError("boom")
 
 
 @pytest.fixture
@@ -77,3 +82,19 @@ async def test_voice_sent_as_plain_text(tmp_path):
 
 def test_plain_text_strips_markup():
     assert plain_text("<b>a</b>\n<i>b</i>") == "a\nb"
+
+
+async def test_voice_retry_resends_full_bytes(tmp_path, no_sleep):
+    bot = FakeBot(voice_fail_times=1)
+
+    class FakeSynth:
+        async def synthesize(self, text, out_dir):
+            path = tmp_path / "v.ogg"
+            path.write_bytes(b"full ogg bytes")
+            return path
+
+    await Sender(bot, 7, FakeSynth(), tmp_path).send(Outbound("hi", voice=True))
+    voice_calls = [kwargs for name, kwargs in bot.calls if name == "send_voice"]
+    assert len(voice_calls) == 2
+    assert voice_calls[0]["voice"] == b"full ogg bytes"
+    assert voice_calls[1]["voice"] == b"full ogg bytes"
