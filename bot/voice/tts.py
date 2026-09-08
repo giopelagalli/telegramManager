@@ -2,6 +2,7 @@
 import asyncio
 import importlib.util
 import sys
+import uuid
 from pathlib import Path
 
 MAX_CHARS = 1500
@@ -47,8 +48,9 @@ class Synthesizer:
     async def synthesize(self, text: str, out_dir: Path) -> Path:
         text = text[:MAX_CHARS]
         out_dir = Path(out_dir)
-        wav_path = out_dir / "voice.wav"
-        ogg_path = out_dir / "voice.ogg"
+        stem = uuid.uuid4().hex
+        wav_path = out_dir / f"{stem}.wav"
+        ogg_path = out_dir / f"{stem}.ogg"
 
         await asyncio.to_thread(self._synthesize_sync, text, wav_path)
 
@@ -61,4 +63,5 @@ class Synthesizer:
         if proc.returncode != 0:
             tail = stderr[-2000:].decode(errors="replace") if stderr else ""
             raise RuntimeError(f"ffmpeg failed: {tail}")
+        wav_path.unlink()
         return ogg_path

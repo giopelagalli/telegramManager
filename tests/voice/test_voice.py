@@ -32,3 +32,23 @@ async def test_synthesizer_writes_ogg(monkeypatch, tmp_path):
     s = tts.Synthesizer(tmp_path / "m.onnx", tmp_path / "v.bin")
     out = await s.synthesize("hi there", tmp_path)
     assert out.suffix == ".ogg" and out.read_bytes() == b"OggS" and calls[0][0] == "ffmpeg"
+    assert len(out.stem) == 32 and all(c in "0123456789abcdef" for c in out.stem)
+    assert not out.with_suffix(".wav").exists()
+
+async def test_synthesizer_unique_names(monkeypatch, tmp_path):
+    import numpy as np
+    class K:
+        def __init__(self, *a, **k): pass
+        def create(self, text, voice, speed=1.0, lang="en-us"): return np.zeros(2400, dtype="float32"), 24000
+    monkeypatch.setitem(sys.modules, "kokoro_onnx", types.SimpleNamespace(Kokoro=K))
+    async def fake_exec(*args, **k):
+        Path(args[-1]).write_bytes(b"OggS")
+        class P:
+            returncode = 0
+            async def communicate(self): return b"", b""
+        return P()
+    monkeypatch.setattr(tts.asyncio, "create_subprocess_exec", fake_exec)
+    s = tts.Synthesizer(tmp_path / "m.onnx", tmp_path / "v.bin")
+    out1 = await s.synthesize("hi there", tmp_path)
+    out2 = await s.synthesize("hi there", tmp_path)
+    assert out1 != out2
