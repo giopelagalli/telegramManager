@@ -13,7 +13,7 @@ services:
       resources:
         reservations:
           devices: [{driver: nvidia, count: all, capabilities: [gpu]}]
-    volumes: ["${HF_HOME:-~/.cache/huggingface}:/root/.cache/huggingface"]
+    volumes: ["${HF_HOME:-${HOME}/.cache/huggingface}:/root/.cache/huggingface"]
     restart: always
   bot:
     build: .

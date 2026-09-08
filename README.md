@@ -34,10 +34,11 @@ cp .env.example .env
 | `CHAT_MODEL` | Model name to request at `OPENAI_BASE_URL`. Must match what vLLM is serving (`VLLM_MODEL` below). |
 | `VISION_BASE_URL` / `VISION_MODEL` | Optional OpenAI-compatible vision endpoint, for wake-up photo and task-photo verification. Leave blank to run without photo verification (degraded, not broken — see §17 of the design spec). |
 | `GOOGLE_MAPS_API_KEY` | Optional. Without it, travel time falls back to the stored `travel_minutes` on each event. |
-| `KNOWLEDGE_DIR` | Directory holding the knowledge base Markdown files. In compose this is `/knowledge`, mounted from `./knowledge`. |
-| `DATA_DIR` | Directory for runtime state (`state.json`, temp voice files). In compose this is `/data`, mounted from `./data`. |
+| `KNOWLEDGE_DIR` | Directory holding the knowledge base Markdown files. In compose this is `/knowledge` (set automatically by `docker-compose.yml`, so you can leave it blank in `.env`), mounted from `./knowledge`. |
+| `DATA_DIR` | Directory for runtime state (`state.json`, temp voice files). In compose this is `/data` (set automatically by `docker-compose.yml`, so you can leave it blank in `.env`), mounted from `./data`. |
 | `VLLM_MODEL` | Compose-only: the model id passed to `vllm serve`. Should match `CHAT_MODEL`. |
 | `VLLM_TOOL_PARSER` | Compose-only: the `--tool-call-parser` value vLLM uses for that model. Defaults to `hermes` if unset. |
+| `HF_HOME` | Compose-only: absolute path to your Hugging Face cache, bind-mounted into the `vllm` container so the model persists across container recreation. Defaults to `$HOME/.cache/huggingface` if unset. |
 | `KOKORO_MODEL_DIR` | Directory containing the Kokoro voice model files (see §3). Defaults to `/models` if unset; in compose this is mounted read-only from `./models`. |
 
 ### 1.3 Model choice
@@ -52,6 +53,9 @@ and `VLLM_TOOL_PARSER` to match:
   before choosing.
 - **`Qwen/Qwen3.6-35B-A3B-NVFP4`** — smaller, faster, lower memory headroom
   needed. Tool parser: `hermes`.
+
+`VLLM_TOOL_PARSER` defaults to `hermes` when left unset, per the `vllm serve`
+command in `docker-compose.yml`.
 
 Either way, confirm the tool-call parser against the model card you deploy —
 picking the wrong one silently breaks tool calling (the model replies in
@@ -129,6 +133,13 @@ This builds and starts two services:
 
 `knowledge/` is initialized as a git repo on first run if it isn't one
 already (see `bot/knowledge/store.py`).
+
+On first boot, `vllm` can take several minutes to load a large model. Until
+it's ready, the bot is already up but replies to free text with "The model
+is offline; saved your message to the inbox" — commands, reminders, and
+briefings still work in the meantime, since they don't need the model.
+Check progress with `docker compose logs -f vllm` and look for the
+"Application startup complete" line.
 
 To check logs: `docker compose logs -f bot` / `docker compose logs -f vllm`.
 To stop: `docker compose down`.
