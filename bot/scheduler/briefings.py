@@ -163,7 +163,7 @@ async def due_briefings(now: datetime, store: KnowledgeStore, state: RuntimeStat
     if is_due(evening_key, evening_at, now, state):
         body, buttons = evening_text(store, now)
         prose = await _compose_prose(store, now, agent)
-        text = f"{body}\n\n{prose}"
+        text = f"{body}\n\n{esc(prose)}"
         out.append(Outbound(text, voice=profile.voice_on_proactive, buttons=buttons, kind="briefing"))
         state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[text])
 

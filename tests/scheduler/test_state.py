@@ -15,9 +15,20 @@ def test_round_trip(tmp_path):
     assert t.fired == {"morning:2026-09-03"} and t.pause_until == NOW and t.chain.item == "dentist"
     assert t.proactive_sends == [NOW]
 
-def test_prune():
+def test_prune_drops_old_day_keys_only():
     s = RuntimeState.load(__import__("pathlib").Path("/nonexistent/state.json"))
-    s.fired |= {"morning:2026-08-30", "morning:2026-09-03", "leave:schedule/2026-08-01-x.md"}
+    s.fired |= {
+        "morning:2026-08-30", "morning:2026-09-03", "checkin:2026-08-30:2", "wake:2026-08-30",
+        # event keys carry the file's creation date, not the day the job fires
+        "leave:schedule/2026-08-01-x.md", "get_ready:schedule/2026-08-01-x.md",
+        "missed:schedule/2026-08-01-x.md",
+    }
     s.proactive_sends = [NOW - timedelta(hours=2), NOW - timedelta(minutes=10)]
     s.prune(NOW)
-    assert s.fired == {"morning:2026-09-03"} and s.proactive_sends == [NOW - timedelta(minutes=10)]
+    assert s.fired == {
+        "morning:2026-09-03",
+        "leave:schedule/2026-08-01-x.md",
+        "get_ready:schedule/2026-08-01-x.md",
+        "missed:schedule/2026-08-01-x.md",
+    }
+    assert s.proactive_sends == [NOW - timedelta(minutes=10)]

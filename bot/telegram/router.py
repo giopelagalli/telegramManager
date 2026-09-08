@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import timedelta
+import logging
+from datetime import datetime, timedelta
 
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
@@ -11,6 +12,8 @@ from bot.scheduler.chains import close_chain
 from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_message, wake_on_photo
 from bot.scheduler.outbound import Outbound
 from bot.telegram import callbacks, commands
+
+logger = logging.getLogger(__name__)
 
 VERIFY_RADIUS_M = 200
 
@@ -50,6 +53,15 @@ class Router:
             return [await self._verify_answer(pending, text)]
 
         return await self._capture(text, awaiting, via_voice, now)
+
+    async def on_voice_unavailable(self) -> list[Outbound]:
+        return [Outbound("Voice input isn't set up here. Send it as text.", kind="reply")]
+
+    async def on_voice_failed(self, reason: str) -> list[Outbound]:
+        self._touch()
+        self.store.add_inbox(f"[voice note could not be transcribed: {reason}]")
+        self.store.commit("inbox: voice note")
+        return [Outbound("Couldn't transcribe that. Saved a note in your inbox.", kind="reply")]
 
     async def on_location(self, lat: float, lng: float) -> list[Outbound]:
         now = self._touch()
@@ -115,6 +127,7 @@ class Router:
             self.state.pause_until = now + timedelta(minutes=applied.snooze_minutes)
 
         await self._geocode_home(result.actions)
+        await self._geocode_events(result.actions, applied)
 
         profile = self.store.profile()
         if profile.voice_reply_mode == "on_voice":
@@ -143,6 +156,43 @@ class Router:
         profile.home_latlng = latlng
         self.store.save_profile(profile)
         self.store.commit("profile: geocoded home address")
+
+    async def _geocode_events(self, actions: list[ToolCall], applied) -> None:
+        """Events need coordinates for the traffic refresh and arrival detection."""
+        if self.maps is None or not applied.changed_schedule:
+            return
+        geocoded: list[str] = []
+        for action in actions:
+            location = action.arguments.get("location")
+            if not location:
+                continue
+            event = self._event_of(action)
+            if event is None:
+                continue
+            latlng = await self.maps.geocode(location)
+            if latlng is None:
+                logger.warning("could not geocode event location: %s", location)
+                continue
+            event.location_latlng = latlng
+            self.store.save(event)
+            geocoded.append(event.title)
+        if geocoded:
+            self.store.commit(f"geocode: {geocoded[0]}")
+
+    def _event_of(self, action: ToolCall):
+        args = action.arguments
+        try:
+            if action.name == "add_event":
+                start = datetime.fromisoformat(args["start"])
+                return next(
+                    (e for e in self.store.events() if e.title == args["title"] and e.start == start),
+                    None,
+                )
+            if action.name == "update_event":
+                return self.store.get_event(args["file"])
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.warning("could not resolve event for %s: %s", action.name, exc)
+        return None
 
     async def _verify_answer(self, pending, text: str) -> Outbound:
         specific = await self.agent.rate_answer(pending.question or "", text)

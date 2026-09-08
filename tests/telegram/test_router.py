@@ -141,3 +141,33 @@ async def test_location_verify_pending_todo(tmp_path):
     await router.on_location(40.05, -74.0)  # ~5.5km away, outside the radius
     assert store.get_todo(b).confirmed is False
     assert state.pending_verify is None
+
+
+async def test_add_event_geocodes_its_location(rig):
+    router, store, client, state, _ = rig
+    router.maps = FakeMaps({"Equinox": (40.75, -73.99)})
+    client.responses.append(R(
+        ("add_event", {"title": "Gym", "start": "2026-09-04T18:00:00-04:00", "location": "Equinox"}),
+        ("reply", {"text": "Ok."}),
+    ))
+    await router.on_text("gym tomorrow 6pm at Equinox")
+    event = store.events()[0]
+    assert event.location_latlng == (40.75, -73.99)
+    assert router.maps.calls == ["Equinox"]
+    subject = __import__("subprocess").run(["git", "log", "-1", "--format=%s"], cwd=store.root,
+                                           capture_output=True, text=True).stdout
+    assert subject.strip() == "geocode: Gym"
+
+
+async def test_voice_failure_saves_an_inbox_note(rig):
+    router, store, client, state, _ = rig
+    outs = await router.on_voice_failed("whisper exploded")
+    assert outs[0].text == "Couldn't transcribe that. Saved a note in your inbox."
+    notes = list((store.root / "inbox").glob("*.md"))
+    assert len(notes) == 1
+    assert "[voice note could not be transcribed: whisper exploded]" in notes[0].read_text()
+
+
+async def test_voice_unavailable_asks_for_text(rig):
+    router = rig[0]
+    assert (await router.on_voice_unavailable())[0].text == "Voice input isn't set up here. Send it as text."

@@ -1,16 +1,45 @@
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
-from bot.telegram.app import build_application
+from telegram import Chat, Location, Message, PhotoSize, Update, User, Voice
+from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
+
+from bot.telegram.app import ERROR_REPLY, build_application
 from bot.telegram.commands import COMMANDS
 from bot.telegram.handlers import Handlers  # noqa: F401  (import smoke test)
+
+MINE = 42
+FOREIGN = 99
 
 
 @dataclass
 class FakeSettings:
     telegram_bot_token: str = "123456:AAHfake-token-for-tests"
-    telegram_user_id: int = 42
+    telegram_user_id: int = MINE
     data_dir: Path = Path("/tmp")
+
+
+CONTENT = {
+    "text": dict(text="hi"),
+    "voice": dict(voice=Voice(file_id="f", file_unique_id="u", duration=1)),
+    "photo": dict(photo=(PhotoSize(file_id="f", file_unique_id="u", width=1, height=1),)),
+    "location": dict(location=Location(longitude=1.0, latitude=2.0)),
+}
+
+
+def _update(user_id: int, **content) -> Update:
+    user = User(id=user_id, first_name="U", is_bot=False)
+    chat = Chat(id=user_id, type=Chat.PRIVATE)
+    message = Message(
+        message_id=1,
+        date=datetime(2026, 9, 3, tzinfo=timezone.utc),
+        chat=chat,
+        from_user=user,
+        **content,
+    )
+    return Update(update_id=1, message=message)
 
 
 def test_build_application_registers_every_handler():
@@ -18,3 +47,62 @@ def test_build_application_registers_every_handler():
     registered = app.handlers[0]
     # one per command, plus text, voice, photo, location, callback
     assert len(registered) == len(COMMANDS) + 5
+    assert app.error_handlers
+
+
+def test_message_handlers_accept_only_the_owner():
+    app = build_application(FakeSettings(), router=None, sender=None)
+    message_handlers = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
+    assert len(message_handlers) == 4
+
+    for kind, content in CONTENT.items():
+        mine = _update(MINE, **content)
+        foreign = _update(FOREIGN, **content)
+        assert sum(1 for h in message_handlers if h.check_update(mine)) == 1, kind
+        assert not any(h.check_update(foreign) for h in message_handlers), kind
+
+
+def test_command_handlers_filter_out_foreign_users():
+    app = build_application(FakeSettings(), router=None, sender=None)
+    command_handlers = [h for h in app.handlers[0] if isinstance(h, CommandHandler)]
+    assert len(command_handlers) == len(COMMANDS)
+
+    mine = _update(MINE, text="/undo")
+    foreign = _update(FOREIGN, text="/undo")
+    for handler in command_handlers:
+        assert handler.filters is not None
+        assert handler.filters.check_update(mine)
+        assert not handler.filters.check_update(foreign)
+
+
+async def test_callback_handler_ignores_foreign_users():
+    calls = []
+
+    class FakeRouter:
+        async def on_callback(self, data):
+            calls.append(data)
+            return []
+
+    app = build_application(FakeSettings(), router=FakeRouter(), sender=None)
+    callback = next(h for h in app.handlers[0] if isinstance(h, CallbackQueryHandler))
+    update = SimpleNamespace(effective_user=SimpleNamespace(id=FOREIGN))
+    await callback.callback(update, None)
+    assert calls == []
+
+
+async def test_error_handler_replies_to_the_owner_only():
+    sent = []
+
+    class FakeBot:
+        async def send_message(self, chat_id, text):
+            sent.append((chat_id, text))
+
+    app = build_application(FakeSettings(), router=None, sender=None)
+    handler = next(iter(app.error_handlers))
+    context = SimpleNamespace(error=RuntimeError("boom"), bot=FakeBot())
+
+    await handler(SimpleNamespace(effective_chat=SimpleNamespace(id=FOREIGN)), context)
+    assert sent == []
+
+    await handler(SimpleNamespace(effective_chat=SimpleNamespace(id=MINE)), context)
+    assert sent == [(MINE, ERROR_REPLY)]

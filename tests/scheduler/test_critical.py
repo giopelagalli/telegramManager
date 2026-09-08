@@ -136,3 +136,24 @@ def test_wake_tick_after_done_is_noop(wstore):
     assert o.text == "You're up." and s.wake.phase == "done" and s.wake.verified is True
     assert C.wake_tick(T(7, 5), s, wstore) is None
     assert s.wake.verified is True
+
+
+def test_deleted_event_stands_down(store):
+    path = store.events()[0].path
+    (store.root / path).unlink()
+
+    def gone():
+        s = RuntimeState.load(Path("/nonexistent"))
+        s.critical = CriticalLeaveState(path, "lead", T(16, 55), None, 0)
+        return s
+
+    s = gone()
+    assert C.leave_tick(T(16, 55), s, store) is None and s.critical is None
+
+    s = gone()
+    o = C.leave_on_location(T(16, 57), s, store, 40.7001, -74.0001)
+    assert "That event is gone" in o.text and s.critical is None
+
+    s = gone()
+    o = C.leave_on_text(s, store)
+    assert "That event is gone" in o.text and s.critical is None

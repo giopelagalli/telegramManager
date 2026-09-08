@@ -82,3 +82,15 @@ def test_inbox_and_profile_save(store):
     prof = store.profile(); prof.home_address = "1 Main St"
     store.save_profile(prof)
     assert store.profile().home_address == "1 Main St"
+
+
+def test_init_sets_identity_on_a_pre_existing_repo(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(tmp_path / "absent-global"))
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(tmp_path / "absent-system"))
+    root = tmp_path / "knowledge"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+    s = KnowledgeStore(root, clock=lambda: T0)
+    s.init()
+    s.add(Todo(path="", title="Call dentist"))
+    assert s.commit("first commit") is not None

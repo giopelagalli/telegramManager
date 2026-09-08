@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import logging
+
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 from bot.telegram.commands import COMMANDS
 from bot.telegram.handlers import Handlers
+
+logger = logging.getLogger(__name__)
+
+ERROR_REPLY = "Something went wrong on my side. If that was a message, send it again."
 
 
 def build_application(settings, router, sender, transcriber=None) -> Application:
@@ -18,6 +24,12 @@ def build_application(settings, router, sender, transcriber=None) -> Application
         if user is not None and user.id == settings.telegram_user_id:
             await handlers.on_callback(update, context)
 
+    async def on_error(update, context) -> None:
+        logger.exception("update handling failed", exc_info=context.error)
+        chat = getattr(update, "effective_chat", None)
+        if chat is not None and chat.id == settings.telegram_user_id:
+            await context.bot.send_message(chat.id, ERROR_REPLY)
+
     app = (
         Application.builder().token(settings.telegram_bot_token).post_init(post_init).build()
     )
@@ -28,4 +40,5 @@ def build_application(settings, router, sender, transcriber=None) -> Application
     app.add_handler(MessageHandler(only_me & filters.PHOTO, handlers.on_photo))
     app.add_handler(MessageHandler(only_me & filters.LOCATION, handlers.on_location))
     app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_error_handler(on_error)
     return app

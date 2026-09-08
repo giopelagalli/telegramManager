@@ -54,10 +54,13 @@ class KnowledgeStore:
             log_path.write_text("# Log\n")
         (self.root / "index.md").write_text(_ROOT_INDEX)
         self.regenerate_indexes()
-        if not (self.root / ".git").exists():
+        fresh = not (self.root / ".git").exists()
+        if fresh:
             self._git("init", "-q")
-            self._git("config", "user.name", "assistant-bot")
-            self._git("config", "user.email", "bot@local")
+        # Set every time: the repo may predate us, or come from a bind mount.
+        self._git("config", "user.name", "assistant-bot")
+        self._git("config", "user.email", "bot@local")
+        if fresh:
             self._git("add", "-A")
             self._git("commit", "-q", "-m", "Initial knowledge bundle")
 

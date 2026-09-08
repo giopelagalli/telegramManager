@@ -27,6 +27,9 @@ def leave_tick(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Out
     crit = state.critical
     profile = store.profile()
     ev = _event(store, crit.event_path)
+    if ev is None:
+        state.critical = None
+        return None
     times = ev.times(profile)
     leave_by = times.leave_by
     cap_at = leave_by + timedelta(minutes=profile.critical_leave_cap_minutes)
@@ -82,6 +85,9 @@ def leave_on_location(
     crit = state.critical
     if crit is not None:
         ev = _event(store, crit.event_path)
+        if ev is None:
+            state.critical = None
+            return Outbound(text=f"That event is gone, {profile.name}. Standing down.", kind="critical")
     else:
         ev = next(
             (e for e in store.events() if e.status == "left" and e.start.date() == now.date()),
@@ -125,6 +131,9 @@ def leave_on_text(state: RuntimeState, store: KnowledgeStore) -> Outbound | None
     if state.critical is None:
         return None
     profile = store.profile()
+    if _event(store, state.critical.event_path) is None:
+        state.critical = None
+        return Outbound(text=f"That event is gone, {profile.name}. Standing down.", kind="critical")
     return Outbound(text=f"Words don't count, {profile.name}. Tap the button and share your location.", kind="critical")
 
 

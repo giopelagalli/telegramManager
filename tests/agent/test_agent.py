@@ -68,3 +68,37 @@ def test_apply_set_profile_coerces_and_snooze(store):
                                     ToolCall("snooze", {"minutes": 120})], NOW)
     assert store.profile().checkin_interval_minutes == 90
     assert applied.snooze_minutes == 120 and applied.changed_schedule
+
+
+def test_apply_actions_reports_bad_action_and_applies_the_rest(store):
+    applied = apply_actions(store, [
+        ToolCall("update_todo", {"file": "todos/nope.md", "status": "done"}),
+        ToolCall("add_todo", {"title": "Buy milk", "priority": 3}),
+    ], NOW)
+    assert applied.summary[0].startswith("Couldn't apply update_todo:")
+    assert applied.summary[1] == "Added todo: Buy milk (P3)"
+    assert [t.title for t in store.todos()] == ["Buy milk"]
+    subject = __import__("subprocess").run(["git", "log", "-1", "--format=%s"], cwd=store.root,
+                                           capture_output=True, text=True).stdout
+    assert subject.strip() == "capture: Added todo: Buy milk (P3)"
+
+
+def test_apply_actions_bad_profile_value_leaves_profile_alone(store):
+    before = store.profile().checkin_interval_minutes
+    applied = apply_actions(store, [
+        ToolCall("set_profile", {"field": "checkin_interval_minutes", "value": "soon"}),
+    ], NOW)
+    assert applied.summary == ["Couldn't apply set_profile: invalid literal for int() with base 10: 'soon'"]
+    assert store.profile().checkin_interval_minutes == before
+
+
+def test_move_todo_remaps_later_actions_in_the_same_batch(store):
+    path = store.add(Todo(path="", title="Later", priority=3))
+    store.commit("t")
+    applied = apply_actions(store, [
+        ToolCall("move_todo", {"file": path, "to": "backlog"}),
+        ToolCall("update_todo", {"file": path, "priority": 1}),
+    ], NOW)
+    assert applied.summary == ["Moved to backlog: Later", "Updated todo: Later"]
+    backlog = store.todos(include_backlog=True)
+    assert len(backlog) == 1 and backlog[0].priority == 1 and backlog[0].path.startswith("backlog/")

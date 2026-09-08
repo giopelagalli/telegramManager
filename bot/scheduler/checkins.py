@@ -45,6 +45,14 @@ def should_skip_checkin(
     return None
 
 
+def consume_checkin_slot(now: datetime, state: RuntimeState, profile: Profile) -> bool:
+    """Mark a due check-in slot as fired without composing anything."""
+    for key, due in checkin_slots(profile, now.date()):
+        if is_due(key, due, now, state):
+            return True
+    return False
+
+
 async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState, agent) -> Outbound | None:
     profile = store.profile()
     day = now.date()

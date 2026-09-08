@@ -213,133 +213,148 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
     summary: list[str] = []
     snooze_minutes: int | None = None
     changed_schedule = False
+    renamed: dict[str, str] = {}
+    first_success: str | None = None
 
     for action in actions:
-        args = action.arguments
+        args = dict(action.arguments)
+        if "file" in args:
+            args["file"] = renamed.get(args["file"], args["file"])
+        before = len(summary)
 
-        if action.name == "add_todo":
-            todo = Todo(
-                path="",
-                title=args["title"],
-                priority=args["priority"],
-                due=date.fromisoformat(args["due"]) if args.get("due") else None,
-                goal=args.get("goal"),
-                verify=args.get("verify", "none"),
-                body=args.get("notes", ""),
-            )
-            store.add(todo, folder="backlog" if args.get("backlog") else None)
-            due_part = f", due {_fmt_due(todo.due)}" if todo.due else ""
-            summary.append(f"Added todo: {todo.title} (P{todo.priority}{due_part})")
+        try:
+            if action.name == "add_todo":
+                todo = Todo(
+                    path="",
+                    title=args["title"],
+                    priority=args["priority"],
+                    due=date.fromisoformat(args["due"]) if args.get("due") else None,
+                    goal=args.get("goal"),
+                    verify=args.get("verify", "none"),
+                    body=args.get("notes", ""),
+                )
+                store.add(todo, folder="backlog" if args.get("backlog") else None)
+                due_part = f", due {_fmt_due(todo.due)}" if todo.due else ""
+                summary.append(f"Added todo: {todo.title} (P{todo.priority}{due_part})")
 
-        elif action.name == "update_todo":
-            todo = store.get_todo(args["file"])
-            if "priority" in args:
-                todo.priority = args["priority"]
-            if "due" in args:
-                todo.due = date.fromisoformat(args["due"]) if args["due"] else None
-            if "goal" in args:
-                todo.goal = args["goal"]
-            if "verify" in args:
-                todo.verify = args["verify"]
-            if "notes" in args:
-                todo.body = args["notes"]
-            if "status" in args:
-                todo.status = args["status"]
-                if todo.status == "done":
-                    todo.done_at = now
-                    todo.confirmed = todo.verify == "none"
-            store.save(todo)
-            if args.get("status") == "done":
-                summary.append(f"Marked done: {todo.title}")
-            elif args.get("status") == "dropped":
-                summary.append(f"Dropped todo: {todo.title}")
-            else:
-                summary.append(f"Updated todo: {todo.title}")
+            elif action.name == "update_todo":
+                todo = store.get_todo(args["file"])
+                if "priority" in args:
+                    todo.priority = args["priority"]
+                if "due" in args:
+                    todo.due = date.fromisoformat(args["due"]) if args["due"] else None
+                if "goal" in args:
+                    todo.goal = args["goal"]
+                if "verify" in args:
+                    todo.verify = args["verify"]
+                if "notes" in args:
+                    todo.body = args["notes"]
+                if "status" in args:
+                    todo.status = args["status"]
+                    if todo.status == "done":
+                        todo.done_at = now
+                        todo.confirmed = todo.verify == "none"
+                store.save(todo)
+                if args.get("status") == "done":
+                    summary.append(f"Marked done: {todo.title}")
+                elif args.get("status") == "dropped":
+                    summary.append(f"Dropped todo: {todo.title}")
+                else:
+                    summary.append(f"Updated todo: {todo.title}")
 
-        elif action.name == "move_todo":
-            todo = store.get_todo(args["file"])
-            store.move_todo(args["file"], args["to"])
-            summary.append(f"Moved to {args['to']}: {todo.title}")
+            elif action.name == "move_todo":
+                todo = store.get_todo(args["file"])
+                new_path = store.move_todo(args["file"], args["to"])
+                renamed[action.arguments["file"]] = new_path
+                renamed[args["file"]] = new_path
+                summary.append(f"Moved to {args['to']}: {todo.title}")
 
-        elif action.name == "add_event":
-            event = Event(
-                path="",
-                title=args["title"],
-                start=datetime.fromisoformat(args["start"]),
-                end=datetime.fromisoformat(args["end"]) if args.get("end") else None,
-                location=args.get("location"),
-                travel_minutes=args.get("travel_minutes", 0),
-                prep_minutes=args.get("prep_minutes"),
-                importance=args.get("importance", "normal"),
-            )
-            store.add(event)
-            profile = store.profile()
-            leave_by = event.times(profile).leave_by
-            summary.append(
-                f"Added event: {event.title} {_fmt_event_start(event.start)}, "
-                f"leave by {_fmt_clock(leave_by)}"
-            )
-            changed_schedule = True
+            elif action.name == "add_event":
+                event = Event(
+                    path="",
+                    title=args["title"],
+                    start=datetime.fromisoformat(args["start"]),
+                    end=datetime.fromisoformat(args["end"]) if args.get("end") else None,
+                    location=args.get("location"),
+                    travel_minutes=args.get("travel_minutes", 0),
+                    prep_minutes=args.get("prep_minutes"),
+                    importance=args.get("importance", "normal"),
+                )
+                store.add(event)
+                profile = store.profile()
+                leave_by = event.times(profile).leave_by
+                summary.append(
+                    f"Added event: {event.title} {_fmt_event_start(event.start)}, "
+                    f"leave by {_fmt_clock(leave_by)}"
+                )
+                changed_schedule = True
 
-        elif action.name == "update_event":
-            event = store.get_event(args["file"])
-            if "title" in args:
-                event.title = args["title"]
-            if "start" in args:
-                event.start = datetime.fromisoformat(args["start"])
-            if "end" in args:
-                event.end = datetime.fromisoformat(args["end"]) if args["end"] else None
-            if "location" in args:
-                event.location = args["location"]
-            if "travel_minutes" in args:
-                event.travel_minutes = args["travel_minutes"]
-            if "prep_minutes" in args:
-                event.prep_minutes = args["prep_minutes"]
-            if "importance" in args:
-                event.importance = args["importance"]
-            if "status" in args:
-                event.status = args["status"]
-            store.save(event)
-            summary.append(f"Updated event: {event.title}")
-            changed_schedule = True
+            elif action.name == "update_event":
+                event = store.get_event(args["file"])
+                if "title" in args:
+                    event.title = args["title"]
+                if "start" in args:
+                    event.start = datetime.fromisoformat(args["start"])
+                if "end" in args:
+                    event.end = datetime.fromisoformat(args["end"]) if args["end"] else None
+                if "location" in args:
+                    event.location = args["location"]
+                if "travel_minutes" in args:
+                    event.travel_minutes = args["travel_minutes"]
+                if "prep_minutes" in args:
+                    event.prep_minutes = args["prep_minutes"]
+                if "importance" in args:
+                    event.importance = args["importance"]
+                if "status" in args:
+                    event.status = args["status"]
+                store.save(event)
+                summary.append(f"Updated event: {event.title}")
+                changed_schedule = True
 
-        elif action.name == "delete_event":
-            event = store.get_event(args["file"])
-            store.delete(args["file"])
-            summary.append(f"Deleted event: {event.title}")
-            changed_schedule = True
+            elif action.name == "delete_event":
+                event = store.get_event(args["file"])
+                store.delete(args["file"])
+                summary.append(f"Deleted event: {event.title}")
+                changed_schedule = True
 
-        elif action.name == "add_goal":
-            goal = Goal(path="", title=args["title"], period=args["period"], body=args.get("notes", ""))
-            store.add(goal)
-            summary.append(f"Added goal: {goal.title}")
+            elif action.name == "add_goal":
+                goal = Goal(path="", title=args["title"], period=args["period"], body=args.get("notes", ""))
+                store.add(goal)
+                summary.append(f"Added goal: {goal.title}")
 
-        elif action.name == "update_goal":
-            goal = store.get_goal(args["file"])
-            if "status" in args:
-                goal.status = args["status"]
-            if "notes" in args:
-                goal.body = args["notes"]
-            store.save(goal)
-            summary.append(f"Updated goal: {goal.title}")
+            elif action.name == "update_goal":
+                goal = store.get_goal(args["file"])
+                if "status" in args:
+                    goal.status = args["status"]
+                if "notes" in args:
+                    goal.body = args["notes"]
+                store.save(goal)
+                summary.append(f"Updated goal: {goal.title}")
 
-        elif action.name == "set_profile":
-            profile = store.profile()
-            field_name = args["field"]
-            current = getattr(profile, field_name)
-            coerced = _coerce_profile_value(current, args["value"])
-            setattr(profile, field_name, coerced)
-            store.save_profile(profile)
-            summary.append(f"Set {field_name} = {coerced}")
-            changed_schedule = True
+            elif action.name == "set_profile":
+                profile = store.profile()
+                field_name = args["field"]
+                current = getattr(profile, field_name)
+                coerced = _coerce_profile_value(current, args["value"])
+                setattr(profile, field_name, coerced)
+                store.save_profile(profile)
+                summary.append(f"Set {field_name} = {coerced}")
+                changed_schedule = True
 
-        elif action.name == "snooze":
-            snooze_minutes = args["minutes"]
+            elif action.name == "snooze":
+                snooze_minutes = args["minutes"]
 
-        elif action.name == "reply":
-            pass
+            elif action.name == "reply":
+                pass
 
-    if summary:
-        store.commit(f"capture: {summary[0]}")
+        except (KeyError, ValueError, TypeError) as exc:
+            summary.append(f"Couldn't apply {action.name}: {exc}")
+            continue
+
+        if first_success is None and len(summary) > before:
+            first_success = summary[before]
+
+    if first_success is not None:
+        store.commit(f"capture: {first_success}")
 
     return Applied(summary=summary, snooze_minutes=snooze_minutes, changed_schedule=changed_schedule)

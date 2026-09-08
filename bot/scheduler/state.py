@@ -10,6 +10,9 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
+# Only these keys carry the day they belong to. Event keys embed the file's
+# creation date, which says nothing about when the job fires.
+_DAY_KEY_PREFIXES = ("checkin:", "morning:", "evening:", "wake:", "wake-missed:")
 
 
 @dataclass
@@ -218,9 +221,10 @@ class RuntimeState:
         cutoff_date = now.date() - timedelta(days=2)
         kept = set()
         for key in self.fired:
-            m = _DATE_RE.search(key)
-            if m and date.fromisoformat(m.group(1)) < cutoff_date:
-                continue
+            if key.startswith(_DAY_KEY_PREFIXES):
+                m = _DATE_RE.search(key)
+                if m and date.fromisoformat(m.group(1)) < cutoff_date:
+                    continue
             kept.add(key)
         self.fired = kept
         self.proactive_sends = [t for t in self.proactive_sends if now - t <= timedelta(hours=1)]

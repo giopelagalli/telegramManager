@@ -78,3 +78,12 @@ async def test_composed_prose_is_escaped(store):
     s = RuntimeState.load(Path("/nonexistent"))
     out = (await due_briefings(T(8), store, s, HtmlAgent()))[0]
     assert "&lt;b&gt;" in out.text and "<b>now</b>" not in out.text
+
+
+async def test_evening_escapes_composed_prose(store):
+    class Sharp:
+        async def compose(self, kind, context, fallback): return "<Dune> & rest"
+
+    s = RuntimeState.load(Path("/nonexistent"))
+    out = await due_briefings(T(21), store, s, Sharp())
+    assert out and out[-1].text.endswith("&lt;Dune&gt; &amp; rest")

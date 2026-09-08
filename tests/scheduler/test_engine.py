@@ -149,3 +149,24 @@ async def test_escalate_external_called_at_caps(rig):
     clock.set(T(12, 20))  # leave_by + critical_leave_cap_minutes (20)
     await eng.tick()
     assert "critical leave hit its cap" in eng.reasons
+
+
+async def test_old_event_file_fires_each_reminder_once(tmp_path):
+    """An event created days before it happens must not be re-fired by prune()."""
+    clock = FakeClock(datetime(2026, 9, 1, 9, 0, tzinfo=NY))
+    store = KnowledgeStore(tmp_path / "k", clock=clock.now); store.init()
+    path = store.add(Event(path="", title="Gym", start=datetime(2026, 9, 10, 18, 0, tzinfo=NY),
+                           travel_minutes=20, prep_minutes=15))
+    store.commit("e")
+    assert path.startswith("schedule/2026-09-01-")
+    state = RuntimeState.load(tmp_path / "s.json")
+    sink = Sink()
+    eng = Engine(store, Agent(FakeModelClient([]), None, store, clock.now), state,
+                 tmp_path / "s.json", clock, sink, None)
+    clock.set(datetime(2026, 9, 10, 17, 0, tzinfo=NY))
+    eng.startup(clock.now())
+    await run_until(eng, clock, datetime(2026, 9, 10, 17, 55, tzinfo=NY), step_s=10)
+    reminders = [o.text for o in sink.sent if o.kind == "reminder"]
+    assert sum("Get ready" in t for t in reminders) == 1
+    assert sum("Leave in" in t for t in reminders) == 1
+    assert len(reminders) == 2

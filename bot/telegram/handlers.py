@@ -31,6 +31,9 @@ class Handlers:
         await self._send(await self.router.on_text(update.effective_message.text))
 
     async def on_voice(self, update, context) -> None:
+        if self.transcriber is None:
+            await self._send(await self.router.on_voice_unavailable())
+            return
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         voice = update.effective_message.voice
         path = self.tmp_dir / f"{voice.file_id}.ogg"
@@ -38,6 +41,9 @@ class Handlers:
         await file.download_to_drive(path)
         try:
             text, confidence = await self.transcriber.transcribe(path)
+        except Exception as exc:
+            await self._send(await self.router.on_voice_failed(str(exc) or type(exc).__name__))
+            return
         finally:
             path.unlink(missing_ok=True)
         outs = await self.router.on_text(text, via_voice=True)

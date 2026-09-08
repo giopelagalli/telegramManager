@@ -13,6 +13,7 @@ from bot.scheduler.reminders import LATE_WINDOW, MISSED_AFTER, due_reminders
 logger = logging.getLogger(__name__)
 
 PENDING_VERIFY_TTL = timedelta(minutes=10)
+SENT_TIMES_CAP = 200
 
 
 class Engine:
@@ -157,14 +158,13 @@ class Engine:
             await self._send(out, now, sent)
 
     async def _checkin(self, now: datetime, sent: list[Outbound]) -> None:
-        allowed = budget_ok(now, self.state, self.store.profile())
-        chain_before = self.state.chain
+        profile = self.store.profile()
+        if not budget_ok(now, self.state, profile):
+            # The slot is spent either way, but don't pay the model for it.
+            checkins.consume_checkin_slot(now, self.state, profile)
+            return
         out = await checkins.due_checkin(now, self.store, self.state, self.agent)
         if out is None:
-            return
-        if not allowed:
-            # The slot is spent either way; roll back the chain nothing was sent for.
-            self.state.chain = chain_before
             return
         await self._send(out, now, sent)
         record_send(now, self.state)
@@ -190,4 +190,5 @@ class Engine:
     async def _send(self, out: Outbound, now: datetime, sent: list[Outbound]) -> None:
         await self.sender.send(out)
         self.sent_times.append(now)
+        del self.sent_times[:-SENT_TIMES_CAP]
         sent.append(out)
