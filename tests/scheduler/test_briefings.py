@@ -39,11 +39,29 @@ def test_evening_text_sections_and_buttons(store):
     assert "Slipped" in text and "unconfirmed" in text.lower() and "Doctor" in text and "9:00am" in text
     assert buttons and buttons[0][1].startswith("defer:")
 
+def test_evening_escapes_tomorrow_title(store):
+    store.add(Event(path="", title="Dinner & <Sam>", start=T(7, d=4), travel_minutes=10))
+    store.commit("tomorrow event")
+    text, _ = evening_text(store, T(21))
+    assert "Dinner &amp; &lt;Sam&gt;" in text
+    assert "Dinner & <Sam>" not in text
+
+def test_morning_warns_about_broken_files(store):
+    # "---\ntype: todo\n:::" without a closing delimiter isn't parsed as
+    # frontmatter at all (python-frontmatter just treats it as body with no
+    # metadata) so it doesn't reach the YAML parser and never raises. Use
+    # unterminated flow-mapping YAML inside a closed frontmatter block so
+    # PyYAML actually raises and the file lands in store.broken_files.
+    (store.root / "todos" / "2026-09-01-bad.md").write_text("---\n{not valid yaml\n---\n")
+    t = morning_text(store, T(8))
+    assert "⚠️ 1 file(s) in the bundle couldn't be read; see the log." in t
+
 async def test_due_briefings_fire_once_and_open_chain(store):
     s = RuntimeState.load(Path("/nonexistent"))
     assert await due_briefings(T(7, 59), store, s, FakeAgent()) == []
     out = await due_briefings(T(8), store, s, FakeAgent())
     assert len(out) == 1 and out[0].kind == "briefing" and out[0].voice and "Make it count." in out[0].text
+    assert len(out[0].buttons) == 1 and out[0].buttons[0][1].startswith("done:")
     assert s.chain and s.chain.kind == "briefing"
     assert await due_briefings(T(8, 1), store, s, FakeAgent()) == []
     out = await due_briefings(T(21), store, s, FakeAgent())

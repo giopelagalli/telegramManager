@@ -23,8 +23,12 @@ def briefing_time(profile: Profile, state: RuntimeState, day: date, which: str) 
 def morning_text(store: KnowledgeStore, now: datetime) -> str:
     profile = store.profile()
     events = store.events()
+    broken = list(store.broken_files)
     todos = store.todos()
+    broken += store.broken_files
     goals = store.goals()
+    broken += store.broken_files
+    broken_files = sorted(set(broken))
 
     iso = now.isocalendar()
     current_week = f"{iso[0]}-W{iso[1]:02d}"
@@ -44,6 +48,8 @@ def morning_text(store: KnowledgeStore, now: datetime) -> str:
         "\n".join(goal_lines),
         "{prose}",
     ]
+    if broken_files:
+        parts.append(f"⚠️ {len(broken_files)} file(s) in the bundle couldn't be read; see the log.")
     return "\n\n".join(parts)
 
 
@@ -96,7 +102,7 @@ def evening_text(store: KnowledgeStore, now: datetime) -> tuple[str, list[tuple[
         times = e.times(profile)
         lines.append("")
         lines.append(
-            f"Tomorrow: {e.title} at {fmt_time(e.start)} — "
+            f"Tomorrow: {esc(e.title)} at {fmt_time(e.start)} — "
             f"get ready {fmt_time(times.get_ready_at)}, leave by {fmt_time(times.leave_by)}."
         )
 
@@ -121,7 +127,9 @@ async def _morning_outbound(store: KnowledgeStore, now: datetime, agent, note: s
     if note:
         text = f"{note}\n\n{text}"
     profile = store.profile()
-    return Outbound(text, voice=profile.voice_on_proactive, kind="briefing")
+    top_todos = top(store.todos(), now.date(), n=5)
+    buttons = [("✅ " + t.title[:24], f"done:{t.path}") for t in top_todos]
+    return Outbound(text, voice=profile.voice_on_proactive, buttons=buttons, kind="briefing")
 
 
 async def send_morning(
