@@ -24,7 +24,7 @@ def chain_gaps(profile: Profile, kind: str) -> list[int]:
     gaps = profile.followup_gaps_minutes
     if kind == "checkin":
         return gaps[:2]
-    return gaps
+    return gaps[:4]
 
 
 async def due_followup(now: datetime, store: KnowledgeStore, state: RuntimeState, agent) -> Outbound | None:
@@ -47,8 +47,11 @@ async def due_followup(now: datetime, store: KnowledgeStore, state: RuntimeState
         return None
 
     goals = [g for g in store.goals() if g.status == "active"]
-    goal = goals[0].title if goals else ""
-    fallback = _FALLBACKS[chain.step].format(name=profile.name, item=chain.item, goal=goal)
+    if chain.step == 2 and not goals:
+        fallback = "{name}, still on: {item}. Small step now?".format(name=profile.name, item=chain.item)
+    else:
+        goal = goals[0].title if goals else ""
+        fallback = _FALLBACKS[chain.step].format(name=profile.name, item=chain.item, goal=goal)
 
     context = build_context(store, now)
     context += f"\nFollow-up step: {chain.step}\nItem: {chain.item}\nHistory: {chain.history}"

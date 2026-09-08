@@ -23,6 +23,16 @@ def test_gaps():
     from bot.knowledge.models import Profile
     assert chain_gaps(Profile(), "briefing") == [15, 30, 60, 120] and chain_gaps(Profile(), "checkin") == [15, 30]
 
+def test_chain_gaps_caps_per_kind():
+    from bot.knowledge.models import Profile
+    profile = Profile()
+    profile.followup_gaps_minutes = [5, 10, 15, 20, 25, 30]
+    assert chain_gaps(profile, "briefing") == [5, 10, 15, 20]
+    assert chain_gaps(profile, "checkin") == [5, 10]
+    profile.followup_gaps_minutes = [5]
+    assert chain_gaps(profile, "briefing") == [5]
+    assert chain_gaps(profile, "checkin") == [5]
+
 async def test_briefing_chain_four_steps_then_closes(store):
     s = RuntimeState.load(Path("/nonexistent")); a = FakeAgent()
     s.chain = Chain("briefing", T(8), T(8), 0, "Call dentist", ["brief"])
