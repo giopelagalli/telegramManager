@@ -1,11 +1,13 @@
 import io
 
 import pypdf
+from docx import Document
 from pptx import Presentation
 
 from bot.study.extract import (
     PAGE_MARKER,
     SLIDE_MARKER,
+    extract_docx,
     extract_pdf,
     extract_pptx,
     guess_kind,
@@ -58,6 +60,43 @@ def test_guess_kind():
     assert guess_kind("lecture7.pptx", "") == "slides"
     assert guess_kind("ch4.pdf", "application/pdf") == "chapter"
     assert guess_kind("", "application/pdf") == "chapter"
+    assert guess_kind("notes.docx", "") == "notes"
+    assert (
+        guess_kind(
+            "",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        == "notes"
+    )
     assert guess_kind("board.jpg", "") == "photo"
     assert guess_kind("board", "image/jpeg") == "photo"
     assert guess_kind("data.zip", "application/zip") == "other"
+
+
+def _doc(paragraphs: list[str]) -> bytes:
+    document = Document()
+    for text in paragraphs:
+        document.add_paragraph(text)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def test_extract_docx_chunks_paragraphs_and_includes_headings():
+    document = Document()
+    document.add_heading("Chapter 1", level=1)
+    for i in range(44):
+        document.add_paragraph(f"Paragraph {i}")
+    buffer = io.BytesIO()
+    document.save(buffer)
+
+    parts = extract_docx(buffer.getvalue())
+    assert [n for n, _ in parts] == [1, 2]
+    assert parts[0][1].startswith("Chapter 1\nParagraph 0")
+    assert parts[0][1].count("\n") == 39
+    assert "Paragraph 43" in parts[1][1]
+
+
+def test_extract_docx_skips_blank_paragraphs():
+    data = _doc(["First", "", "  ", "Second"])
+    assert extract_docx(data) == [(1, "First\nSecond")]

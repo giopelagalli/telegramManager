@@ -273,6 +273,32 @@ async def test_document_in_a_course_topic_is_ingested(rig, monkeypatch):
     assert _subject(store) == "ingest: Chapter 4"
 
 
+async def test_docx_document_in_a_course_topic_is_ingested(rig):
+    import io
+
+    from docx import Document
+
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    document = Document()
+    document.add_paragraph("Lecture notes on pointers")
+    buffer = io.BytesIO()
+    document.save(buffer)
+    client.responses.append(ModelResponse(DESCRIBED, []))
+
+    outs = await router.on_document(
+        buffer.getvalue(),
+        "notes.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        None,
+        channel=COURSE,
+    )
+    assert outs[0].channel == "course:cs101"
+
+    source = store.sources("cs101")[0]
+    assert source.body == "## part 1\nLecture notes on pointers"
+
+
 async def test_unreadable_document_is_kept_raw(rig):
     router, store, client, state, _ = rig
     store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
