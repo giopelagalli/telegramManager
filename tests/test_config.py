@@ -18,6 +18,12 @@ def test_from_env_reads_required_and_defaults():
     assert s.vision_model is None
     assert s.google_maps_api_key is None
     assert s.knowledge_dir == Path("/k")
+    assert s.chat_enable_thinking is False
+
+def test_chat_enable_thinking_true():
+    env = dict(BASE, CHAT_ENABLE_THINKING="true")
+    s = Settings.from_env(env)
+    assert s.chat_enable_thinking is True
 
 def test_missing_required_raises_with_name():
     env = dict(BASE); del env["TELEGRAM_BOT_TOKEN"]

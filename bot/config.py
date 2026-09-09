@@ -16,6 +16,7 @@ class Settings:
     google_maps_api_key: str | None
     knowledge_dir: Path
     data_dir: Path
+    chat_enable_thinking: bool
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -39,4 +40,5 @@ class Settings:
             google_maps_api_key=opt("GOOGLE_MAPS_API_KEY"),
             knowledge_dir=Path(req("KNOWLEDGE_DIR")),
             data_dir=Path(req("DATA_DIR")),
+            chat_enable_thinking=(e.get("CHAT_ENABLE_THINKING", "").strip().lower() in ("1", "true", "yes", "on")),
         )

@@ -29,9 +29,10 @@ class ModelClient(Protocol):
 
 
 class OpenAIModelClient:
-    def __init__(self, base_url: str, api_key: str, model: str):
+    def __init__(self, base_url: str, api_key: str, model: str, enable_thinking: bool | None = None):
         self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
         self._model = model
+        self._enable_thinking = enable_thinking
 
     async def chat(
         self,
@@ -39,12 +40,16 @@ class OpenAIModelClient:
         tools: list[dict] | None = None,
         temperature: float = 0.2,
     ) -> ModelResponse:
+        extra_kwargs = {}
+        if self._enable_thinking is not None:
+            extra_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": self._enable_thinking}}
         response = await self._client.chat.completions.create(
             model=self._model,
             messages=messages,
             tools=tools or NOT_GIVEN,
             tool_choice="auto" if tools else NOT_GIVEN,
             temperature=temperature,
+            **extra_kwargs,
         )
         message = response.choices[0].message
         tool_calls = []
