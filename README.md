@@ -89,6 +89,7 @@ chmod 600 .env
 | `FALLBACK_API_KEY` | Your Fireworks API key. |
 | `FALLBACK_MODEL` | A Fireworks model that supports tool calling — a Qwen3 variant keeps behavior closest to the local one. All three `FALLBACK_*` variables must be set together, or none of them. |
 | `VISION_BASE_URL` / `VISION_MODEL` | The Spark endpoint / `qwen3.8-flash-next`. Worth trying — if the endpoint rejects image input, photo checks (wake-up, task verification) degrade to "not verified" automatically rather than breaking. Vision does not fall back. |
+| `FALLBACK_VISION_MODEL` | Optional; a vision-capable Fireworks model. Requires `FALLBACK_BASE_URL` and `FALLBACK_API_KEY` to also be set. When set, photo checks and OCR fall back to Fireworks too when the Spark is down. |
 | `GOOGLE_MAPS_API_KEY` | Optional. Without it, travel time falls back to the stored `travel_minutes` on each event. |
 | `KNOWLEDGE_DIR` | `/home/<user>/telegramManager/knowledge` |
 | `KNOWLEDGE_REMOTES` | `<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git` — see §1.4. |
@@ -289,7 +290,8 @@ as the notes they already are, so answers can cite
 `[Lecture 7, p.12]`; photos go through the vision model's OCR — on the Spark,
 `VISION_BASE_URL`/`VISION_MODEL` can point at the same endpoint as chat,
 since `qwen3.8-flash-next` accepts images — or are stored with just their
-caption if no vision model is configured. The model then writes a title,
+caption if no vision model is configured. Photo OCR falls back to Fireworks
+too when `FALLBACK_VISION_MODEL` is set. The model then writes a title,
 kind, topics and a short summary, and the bot replies with what it stored. A
 file it can't read is kept as-is under `sources/<course>/raw/` and it says
 so. Everything is one commit, so `/undo` works. Telegram caps bot downloads

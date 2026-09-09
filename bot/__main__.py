@@ -79,7 +79,7 @@ def main() -> None:
                 enable_thinking=None,
             ),
         )
-    vision = (
+    vision: ModelClient | None = (
         OpenAIModelClient(
             settings.vision_base_url or settings.openai_base_url,
             settings.openai_api_key,
@@ -89,6 +89,16 @@ def main() -> None:
         if settings.vision_model
         else None
     )
+    if vision is not None and settings.fallback_vision_model:
+        vision = FallbackModelClient(
+            vision,
+            OpenAIModelClient(
+                settings.fallback_base_url,
+                settings.fallback_api_key,
+                settings.fallback_vision_model,
+                enable_thinking=None,
+            ),
+        )
     agent = Agent(client, vision, store, clock.now)
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 

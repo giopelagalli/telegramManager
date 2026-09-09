@@ -37,7 +37,8 @@ on (see README §1.3 for the full table).
    **function calling** support and pick a Qwen3 variant to stay closest to
    the local model. The id on the model's page looks like
    `accounts/fireworks/models/<name>` — copy it verbatim. →
-   `FALLBACK_MODEL`
+   `FALLBACK_MODEL`; optionally also pick a vision-capable model (filter:
+   vision) for `FALLBACK_VISION_MODEL`
 
 6. **Digital Ocean droplet details.** From the droplet's page in the DO
    console: its public IPv4 address and the SSH user you created (usually

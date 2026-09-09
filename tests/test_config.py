@@ -40,6 +40,22 @@ def test_fallback_all_three_set():
     s = Settings.from_env(env)
     assert (s.fallback_base_url, s.fallback_api_key, s.fallback_model) == ("http://f/v1", "k", "m")
 
+def test_fallback_vision_model_without_fallback_chat_raises():
+    env = dict(BASE, FALLBACK_VISION_MODEL="v")
+    with pytest.raises(ValueError, match="FALLBACK_VISION_MODEL requires FALLBACK_BASE_URL and FALLBACK_API_KEY"):
+        Settings.from_env(env)
+
+def test_fallback_vision_model_with_fallback_chat_set():
+    env = dict(
+        BASE,
+        FALLBACK_BASE_URL="http://f/v1",
+        FALLBACK_API_KEY="k",
+        FALLBACK_MODEL="m",
+        FALLBACK_VISION_MODEL="v",
+    )
+    s = Settings.from_env(env)
+    assert s.fallback_vision_model == "v"
+
 def test_whisper_model_default_and_override():
     assert Settings.from_env(BASE).whisper_model == "small"
     assert Settings.from_env(dict(BASE, WHISPER_MODEL="base")).whisper_model == "base"

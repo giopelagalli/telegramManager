@@ -16,6 +16,7 @@ class Settings:
     fallback_model: str | None
     vision_base_url: str | None
     vision_model: str | None
+    fallback_vision_model: str | None
     google_maps_api_key: str | None
     knowledge_dir: Path
     data_dir: Path
@@ -37,6 +38,9 @@ class Settings:
         fallback = {k: opt(k) for k in ("FALLBACK_BASE_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL")}
         if any(fallback.values()) and not all(fallback.values()):
             raise ValueError("FALLBACK_BASE_URL, FALLBACK_API_KEY and FALLBACK_MODEL must be set together")
+        fallback_vision_model = opt("FALLBACK_VISION_MODEL")
+        if fallback_vision_model and not all(fallback.values()):
+            raise ValueError("FALLBACK_VISION_MODEL requires FALLBACK_BASE_URL and FALLBACK_API_KEY")
         return cls(
             telegram_bot_token=req("TELEGRAM_BOT_TOKEN"),
             telegram_user_id=int(req("TELEGRAM_USER_ID")),
@@ -48,6 +52,7 @@ class Settings:
             fallback_model=fallback["FALLBACK_MODEL"],
             vision_base_url=opt("VISION_BASE_URL"),
             vision_model=opt("VISION_MODEL"),
+            fallback_vision_model=fallback_vision_model,
             google_maps_api_key=opt("GOOGLE_MAPS_API_KEY"),
             knowledge_dir=Path(req("KNOWLEDGE_DIR")),
             data_dir=Path(req("DATA_DIR")),
