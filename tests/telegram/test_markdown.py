@@ -87,3 +87,32 @@ def test_real_sample():
     assert result == expected
     assert "<b>TP-Link</b>" in result
     assert '• <b>It is an Unmanaged PoE Switch:</b>' in result
+
+
+def test_link_url_with_underscores_is_left_alone():
+    assert md_to_html("[the docs](https://x.com/a_b_c)") == (
+        '<a href="https://x.com/a_b_c">the docs</a>'
+    )
+
+
+def test_link_url_with_a_quote_is_escaped():
+    assert md_to_html('[x](a"b)') == '<a href="a&quot;b">x</a>'
+
+
+def test_link_label_still_gets_emphasis():
+    assert md_to_html("[**docs**](https://x.com)") == (
+        '<a href="https://x.com"><b>docs</b></a>'
+    )
+
+
+def test_snake_case_words_are_not_italicised():
+    assert md_to_html("set_by_default and snake_case") == "set_by_default and snake_case"
+
+
+def test_underscore_italic_still_works_at_word_boundaries():
+    assert md_to_html("a _word_ here") == "a <i>word</i> here"
+    assert md_to_html("(_word_)") == "(<i>word</i>)"
+
+
+def test_crossing_emphasis_does_not_produce_crossing_tags():
+    assert md_to_html("**bold _italic**_") == "<b>bold _italic</b>_"

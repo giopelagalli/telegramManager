@@ -14,7 +14,9 @@ _BULLET_RE = re.compile(r"^([ \t]*)[*\-+][ \t]+", re.MULTILINE)
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*|__(.+?)__", re.DOTALL)
 _STRIKE_RE = re.compile(r"~~(.+?)~~", re.DOTALL)
 _ITALIC_STAR_RE = re.compile(r"\*(?!\s)([^*\n]+?)(?<!\s)\*")
-_ITALIC_US_RE = re.compile(r"_(?!\s)([^_\n]+?)(?<!\s)_")
+# Word boundaries on both sides, so set_by_default and snake_case are left alone; no
+# "<" inside, so an italic run can't cross a tag an earlier pass opened.
+_ITALIC_US_RE = re.compile(r"(?<!\w)_(?!\s)([^_<\n]+?)(?<!\s)_(?!\w)")
 
 _LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 
@@ -45,6 +47,14 @@ def md_to_html(text: str) -> str:
     working = _FENCE_RE.sub(fence_sub, working)
     working = _INLINE_CODE_RE.sub(lambda m: stash(f"<code>{m.group(1)}</code>"), working)
 
+    def link_sub(m: re.Match) -> str:
+        # Only the opening tag is stashed: the label still goes through the emphasis
+        # passes, while the href is out of their reach.
+        href = m.group(2).replace('"', "&quot;")
+        return stash(f'<a href="{href}">') + m.group(1) + "</a>"
+
+    working = _LINK_RE.sub(link_sub, working)
+
     working = _HEADING_RE.sub(lambda m: f"<b>{m.group(2)}</b>", working)
     working = _BULLET_RE.sub(lambda m: f"{m.group(1)}• ", working)
 
@@ -52,8 +62,6 @@ def md_to_html(text: str) -> str:
     working = _STRIKE_RE.sub(lambda m: f"<s>{m.group(1)}</s>", working)
     working = _ITALIC_STAR_RE.sub(lambda m: f"<i>{m.group(1)}</i>", working)
     working = _ITALIC_US_RE.sub(lambda m: f"<i>{m.group(1)}</i>", working)
-
-    working = _LINK_RE.sub(lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>', working)
 
     working = _MULTI_NEWLINE_RE.sub("\n\n", working)
 
