@@ -2,70 +2,87 @@
 
 A single-user Telegram bot that keeps a plain-text/Markdown knowledge base
 (todos, events, goals, a profile) in a git repo, reminds you on schedule,
-and talks to a local model over an OpenAI-compatible endpoint. Designed to
-run on an NVIDIA DGX Spark (arm64) with vLLM serving the model.
+and talks to a local model over an OpenAI-compatible endpoint. Deployed as a
+second, independent systemd service on a DGX Spark that already runs vLLM
+for another bot.
 
 See `docs/superpowers/specs/2026-09-03-telegram-assistant-design.md` for the
 full design.
 
 ## 1. Setup
 
+### 1.0 Prerequisite: the model service
+
+This bot does not run or manage vLLM — it talks to the `sparkmodel.service`
+that's already running on the box, OpenAI-compatible at
+`http://localhost:8888/v1`, model id `qwen3.8-flash-next`. Before doing
+anything else, confirm it's up:
+
+```bash
+curl -s localhost:8888/v1/models
+```
+
+If that doesn't respond, check `systemctl status sparkmodel` first — nothing
+below will work without it. The GPU's unified memory is fully committed to
+that model; this bot never loads a model of its own and runs entirely on
+CPU.
+
 ### 1.1 Telegram bot
 
 1. Talk to [@BotFather](https://t.me/BotFather) on Telegram, run `/newbot`,
-   and copy the bot token it gives you.
+   and copy the bot token it gives you. **Create a new bot — do not reuse
+   the token from the `sparkbot` service already running on this box.**
 2. Talk to [@userinfobot](https://t.me/userinfobot) to get your own numeric
    Telegram user ID. The bot only responds to this one user.
 
 ### 1.2 `.env`
 
-Copy `.env.example` to `.env` and fill it in:
+Copy `.env.example` to `.env` and fill it in (`deploy/install.sh`, §1.4,
+does the copy and permissions for you):
 
 ```bash
 cp .env.example .env
+chmod 600 .env
 ```
 
 | Variable | Meaning |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | Token from BotFather. |
+| `TELEGRAM_BOT_TOKEN` | Token from BotFather (the new bot from §1.1). |
 | `TELEGRAM_USER_ID` | Your numeric user ID from `@userinfobot`. |
-| `OPENAI_BASE_URL` | OpenAI-compatible chat endpoint. In compose this is `http://vllm:8000/v1` (set automatically by `docker-compose.yml`, so you can leave it blank in `.env`). |
-| `OPENAI_API_KEY` | Anything (e.g. `unused`) — vLLM does not check it. |
-| `CHAT_MODEL` | Model name to request at `OPENAI_BASE_URL`. Must match what vLLM is serving (`VLLM_MODEL` below). |
-| `VISION_BASE_URL` / `VISION_MODEL` | Optional OpenAI-compatible vision endpoint, for wake-up photo and task-photo verification. Leave blank to run without photo verification (degraded, not broken — see §17 of the design spec). |
+| `OPENAI_BASE_URL` | `http://localhost:8888/v1` — the running `sparkmodel` service. |
+| `OPENAI_API_KEY` | `unused` — vLLM does not check it. |
+| `CHAT_MODEL` | `qwen3.8-flash-next` — must match what `sparkmodel` is serving. |
+| `CHAT_ENABLE_THINKING` | `false`. Qwen thinks by default; this box's tool-call parser (`qwen3_coder`) works fastest with thinking off. |
+| `VISION_BASE_URL` / `VISION_MODEL` | `http://localhost:8888/v1` / `qwen3.8-flash-next`. Worth trying — if the endpoint rejects image input, photo checks (wake-up, task verification) degrade to "not verified" automatically rather than breaking. |
 | `GOOGLE_MAPS_API_KEY` | Optional. Without it, travel time falls back to the stored `travel_minutes` on each event. |
-| `KNOWLEDGE_DIR` | Directory holding the knowledge base Markdown files. In compose this is `/knowledge` (set automatically by `docker-compose.yml`, so you can leave it blank in `.env`), mounted from `./knowledge`. |
-| `DATA_DIR` | Directory for runtime state (`state.json`, temp voice files). In compose this is `/data` (set automatically by `docker-compose.yml`, so you can leave it blank in `.env`), mounted from `./data`. |
-| `VLLM_MODEL` | Compose-only: the model id passed to `vllm serve`. Should match `CHAT_MODEL`. |
-| `VLLM_TOOL_PARSER` | Compose-only: the `--tool-call-parser` value vLLM uses for that model. Defaults to `hermes` if unset. |
-| `HF_HOME` | Compose-only: absolute path to your Hugging Face cache, bind-mounted into the `vllm` container so the model persists across container recreation. Defaults to `$HOME/.cache/huggingface` if unset. |
-| `KOKORO_MODEL_DIR` | Directory containing the Kokoro voice model files (see §3). Defaults to `/models` if unset; in compose this is mounted read-only from `./models`. |
+| `KNOWLEDGE_DIR` | `/home/giospark1/telegramManager/knowledge` |
+| `DATA_DIR` | `/home/giospark1/telegramManager/data` |
+| `KOKORO_MODEL_DIR` | `/home/giospark1/telegramManager/models` |
 
-### 1.3 Model choice
+The token in `.env` is a live credential — keep the file at mode `600`
+(owner read/write only). This box has had a token leaked in plaintext
+before; don't repeat that.
 
-Two checkpoints are known to work well on the Spark's 128 GB unified memory
-in NVFP4 quantization. Set `CHAT_MODEL` and `VLLM_MODEL` to the one you pick,
-and `VLLM_TOOL_PARSER` to match:
+### 1.3 Install
 
-- **`nvidia/Nemotron-3-Super-120B-A12B-NVFP4`** — larger, higher quality.
-  Tool parser: `nemotron` if the vLLM version you deploy ships one for it,
-  otherwise `hermes`. Check the model card and your vLLM release notes
-  before choosing.
-- **`Qwen/Qwen3.6-35B-A3B-NVFP4`** — smaller, faster, lower memory headroom
-  needed. Tool parser: `hermes`.
+On the Spark, as `giospark1`:
 
-`VLLM_TOOL_PARSER` defaults to `hermes` when left unset, per the `vllm serve`
-command in `docker-compose.yml`.
+```bash
+git clone <repo-url> ~/telegramManager
+cd ~/telegramManager
+bash deploy/install.sh
+```
 
-Either way, confirm the tool-call parser against the model card you deploy —
-picking the wrong one silently breaks tool calling (the model replies in
-plain text instead of calling `add_todo`, etc.) rather than erroring loudly.
+This creates a venv, installs the package with the `voice` extra, creates
+`knowledge/`, `data/`, `models/`, and copies `.env.example` to `.env` if it
+doesn't exist yet (setting it to mode `600`). Edit `.env` with the values
+from §1.2, then run the two `sudo` lines the script prints at the end to
+install and start the `spark-assistant` systemd unit
+(`deploy/spark-assistant.service`).
 
-The `vllm` service's image tag in `docker-compose.yml`
-(`nvcr.io/nvidia/vllm:26.04-py3`) is a **placeholder**. Confirm the current
-arm64/GB10-compatible vLLM container tag on
-[NVIDIA NGC](https://catalog.ngc.nvidia.com/) before deploying, and update
-the compose file if it has moved.
+For voice, also run `bash scripts/download_voice_models.sh` (see §3).
+Both Whisper (speech-to-text) and Kokoro (text-to-speech) run on CPU here —
+the GPU is fully committed to `sparkmodel`, and that's expected.
 
 ## 2. Knowledge base
 
@@ -120,29 +137,30 @@ only useful if the message actually reaches you. On the phone you carry:
 
 ## 5. Running it
 
+The bot runs as the `spark-assistant` systemd unit, installed in §1.3:
+
 ```bash
-docker compose up -d
+systemctl status spark-assistant
+journalctl -u spark-assistant -f
+sudo systemctl restart spark-assistant   # after editing .env or pulling changes
 ```
-
-This builds and starts two services:
-
-- `vllm` — serves `VLLM_MODEL` on `:8000` with tool calling enabled.
-- `bot` — the Telegram bot, connecting to `vllm` at
-  `http://vllm:8000/v1`, with `./knowledge`, `./data`, and `./models`
-  (read-only) mounted in.
 
 `knowledge/` is initialized as a git repo on first run if it isn't one
 already (see `bot/knowledge/store.py`).
 
-On first boot, `vllm` can take several minutes to load a large model. Until
+After a Spark reboot, `sparkmodel` takes about 10 minutes to load. Until
 it's ready, the bot is already up but replies to free text with "The model
 is offline; saved your message to the inbox" — commands, reminders, and
 briefings still work in the meantime, since they don't need the model.
-Check progress with `docker compose logs -f vllm` and look for the
-"Application startup complete" line.
 
-To check logs: `docker compose logs -f bot` / `docker compose logs -f vllm`.
-To stop: `docker compose down`.
+**Memory:** this bot plus CPU Whisper needs roughly 2 GiB, which lives
+inside the 26 GiB host reserve — it does not compete with `sparkmodel` for
+GPU memory. Never run a second model container or service on this box; the
+GPU has no headroom left.
+
+**Don't restart `sparkmodel`** while a critical-mode leave escalation or
+wake-up verification is in progress — that's the one time this bot actually
+depends on the model responding promptly.
 
 ## 6. Commands
 

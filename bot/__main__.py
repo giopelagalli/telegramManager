@@ -26,7 +26,7 @@ KOKORO_VOICES = "voices-v1.0.bin"
 
 
 def _synthesizer() -> tts.Synthesizer | None:
-    model_dir = Path(os.environ.get("KOKORO_MODEL_DIR", "/models"))
+    model_dir = Path(os.environ.get("KOKORO_MODEL_DIR", "models"))
     model_path = model_dir / KOKORO_MODEL
     voices_path = model_dir / KOKORO_VOICES
     if not tts.available(model_path, voices_path):
@@ -59,12 +59,18 @@ def main() -> None:
     state_path = settings.data_dir / "state.json"
     state = RuntimeState.load(state_path)
 
-    client = OpenAIModelClient(settings.openai_base_url, settings.openai_api_key, settings.chat_model)
+    client = OpenAIModelClient(
+        settings.openai_base_url,
+        settings.openai_api_key,
+        settings.chat_model,
+        enable_thinking=settings.chat_enable_thinking,
+    )
     vision = (
         OpenAIModelClient(
             settings.vision_base_url or settings.openai_base_url,
             settings.openai_api_key,
             settings.vision_model,
+            enable_thinking=settings.chat_enable_thinking,
         )
         if settings.vision_model
         else None
