@@ -94,3 +94,33 @@ def test_init_sets_identity_on_a_pre_existing_repo(tmp_path, monkeypatch):
     s.init()
     s.add(Todo(path="", title="Call dentist"))
     assert s.commit("first commit") is not None
+
+def _bare(tmp_path, name):
+    path = tmp_path / name
+    subprocess.run(["git", "init", "--bare", "-q", str(path)], check=True)
+    return path
+
+def _head(path, ref="HEAD"):
+    return subprocess.run(
+        ["git", "rev-parse", ref], cwd=path, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+def test_commit_pushes_to_every_remote(tmp_path):
+    remotes = [_bare(tmp_path, "a.git"), _bare(tmp_path, "b.git")]
+    s = KnowledgeStore(tmp_path / "knowledge", clock=lambda: T0, remotes=[str(r) for r in remotes])
+    s.init()
+    s.add(Todo(path="", title="Call dentist"))
+    s.commit("add todo")
+    s.wait_for_pushes()
+    for remote in remotes:
+        assert _head(remote, "main") == _head(s.root)
+
+def test_bad_remote_does_not_block_the_good_one(tmp_path):
+    good = _bare(tmp_path, "good.git")
+    bogus = tmp_path / "nope.git"
+    s = KnowledgeStore(tmp_path / "knowledge", clock=lambda: T0, remotes=[str(bogus), str(good)])
+    s.init()
+    s.add(Todo(path="", title="Call dentist"))
+    s.commit("add todo")
+    s.wait_for_pushes()
+    assert _head(good, "main") == _head(s.root)

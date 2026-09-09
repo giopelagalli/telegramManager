@@ -52,7 +52,11 @@ def main() -> None:
 
     # The clock needs the profile's timezone, which lives in the store; the store
     # only calls its clock after init(), so bind it lazily.
-    store = KnowledgeStore(settings.knowledge_dir, clock=lambda: clock.now())
+    store = KnowledgeStore(
+        settings.knowledge_dir,
+        clock=lambda: clock.now(),
+        remotes=settings.knowledge_remotes,
+    )
     store.init()
     clock = SystemClock(store.profile().tz)
 

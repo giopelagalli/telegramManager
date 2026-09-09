@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -24,10 +25,12 @@ See `profile.md` for personal settings and `log.md` for the action history.
 
 
 class KnowledgeStore:
-    def __init__(self, root: Path, clock: Callable[[], datetime]):
+    def __init__(self, root: Path, clock: Callable[[], datetime], remotes: list[str] | None = None):
         self.root = Path(root)
         self.clock = clock
+        self.remotes = list(remotes or [])
         self.broken_files: list[str] = []
+        self._push_threads: list[threading.Thread] = []
 
     # -- git -----------------------------------------------------------
 
@@ -40,6 +43,38 @@ class KnowledgeStore:
             text=True,
         )
         return result.stdout
+
+    # -- backup remotes ---------------------------------------------------
+
+    def _push_remotes(self) -> None:
+        """Push HEAD to every backup remote in a daemon thread; never raises."""
+        if not self.remotes:
+            return
+        thread = threading.Thread(target=self._push_sync, daemon=True)
+        self._push_threads.append(thread)
+        thread.start()
+
+    def _push_sync(self) -> None:
+        for remote in self.remotes:
+            try:
+                result = subprocess.run(
+                    ["git", "push", "-q", remote, "HEAD:refs/heads/main"],
+                    cwd=self.root,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    check=False,
+                )
+            except Exception as exc:
+                logger.warning("push to %s failed: %s", remote, exc)
+                continue
+            if result.returncode != 0:
+                logger.warning("push to %s failed: %s", remote, result.stderr.strip())
+
+    def wait_for_pushes(self, timeout: float = 30.0) -> None:
+        for thread in self._push_threads:
+            thread.join(timeout)
+        self._push_threads = [t for t in self._push_threads if t.is_alive()]
 
     # -- init -----------------------------------------------------------
 
@@ -222,6 +257,7 @@ class KnowledgeStore:
         if not status.strip():
             return None
         self._git("commit", "-q", "-m", message)
+        self._push_remotes()
         return self._git("rev-parse", "--short", "HEAD").strip()
 
     def undo(self) -> str | None:
@@ -230,4 +266,5 @@ class KnowledgeStore:
             return None
         subject = self._git("log", "-1", "--format=%s").strip()
         self._git("revert", "--no-edit", "HEAD")
+        self._push_remotes()
         return subject

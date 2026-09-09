@@ -21,6 +21,7 @@ class Settings:
     data_dir: Path
     chat_enable_thinking: bool
     whisper_model: str
+    knowledge_remotes: list[str]
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -52,4 +53,5 @@ class Settings:
             data_dir=Path(req("DATA_DIR")),
             chat_enable_thinking=(e.get("CHAT_ENABLE_THINKING", "").strip().lower() in ("1", "true", "yes", "on")),
             whisper_model=opt("WHISPER_MODEL") or "small",
+            knowledge_remotes=[r.strip() for r in e.get("KNOWLEDGE_REMOTES", "").split(",") if r.strip()],
         )

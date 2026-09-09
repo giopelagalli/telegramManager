@@ -43,3 +43,8 @@ def test_fallback_all_three_set():
 def test_whisper_model_default_and_override():
     assert Settings.from_env(BASE).whisper_model == "small"
     assert Settings.from_env(dict(BASE, WHISPER_MODEL="base")).whisper_model == "base"
+
+def test_knowledge_remotes_split_and_strip():
+    assert Settings.from_env(BASE).knowledge_remotes == []
+    env = dict(BASE, KNOWLEDGE_REMOTES=" git@a:x.git , u@b:y.git ")
+    assert Settings.from_env(env).knowledge_remotes == ["git@a:x.git", "u@b:y.git"]
