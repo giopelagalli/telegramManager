@@ -1,0 +1,80 @@
+# Setup checklist — what to gather
+
+Everything the bot needs before the first run, in the order it's easiest to
+collect. Each item says exactly where to get it and which `.env` line it goes
+on (see README §1.3 for the full table).
+
+1. **Telegram bot token.** Open [@BotFather](https://t.me/BotFather) in
+   Telegram, send `/newbot`, answer the name and username prompts, and copy
+   the token it prints (`123456789:AA...`). Create a new bot; don't reuse an
+   existing one's token. → `TELEGRAM_BOT_TOKEN`
+
+2. **Your Telegram user id.** Open [@userinfobot](https://t.me/userinfobot)
+   and send it anything; it replies with your numeric id. The bot answers
+   only this user. → `TELEGRAM_USER_ID`
+
+3. **The private group with topics.** In Telegram: New Group → name it → add
+   any placeholder member (you can remove them after) → open the group's
+   settings → Edit → turn on **Topics**. Then add your bot to the group and
+   promote it to admin (group settings → Administrators → Add Admin), so it
+   sees every message. Create one topic per course plus `assignments`,
+   `exams` and `review`, and run `/bind` inside each (README §7). Nothing to
+   put in `.env` — the bindings live in `knowledge/channels.md`.
+
+4. **Fireworks API key.** Sign in at
+   [app.fireworks.ai](https://app.fireworks.ai) → click your account (top
+   right) → **API Keys** → create a key and copy it once; it isn't shown
+   again. → `FALLBACK_API_KEY` (with
+   `FALLBACK_BASE_URL=https://api.fireworks.ai/inference/v1`)
+
+5. **Fireworks model id.** At
+   [app.fireworks.ai/models](https://app.fireworks.ai/models), filter for
+   **function calling** support and pick a Qwen3 variant to stay closest to
+   the local model. The id on the model's page looks like
+   `accounts/fireworks/models/<name>` — copy it verbatim. →
+   `FALLBACK_MODEL`
+
+6. **Digital Ocean droplet details.** From the droplet's page in the DO
+   console: its public IPv4 address and the SSH user you created (usually
+   `root` or your own user). SSH in and note `nproc` (cores — 4+ means you
+   can run the `small` Whisper model), `free -h` (RAM) and
+   `lsb_release -a` (Ubuntu version; 24.04 LTS is what `deploy/install.sh`
+   assumes). Install Tailscale there with the one-liner from
+   [tailscale.com/download/linux](https://tailscale.com/download/linux),
+   then `sudo tailscale up` and follow the printed login URL. →
+   `KNOWLEDGE_DIR`, `DATA_DIR`, `KOKORO_MODEL_DIR` all live under this
+   user's home directory.
+
+7. **The Spark's Tailscale hostname.** On the Spark, `tailscale status`
+   prints its MagicDNS name and `100.x.y.z` address — either works. vLLM
+   must listen on the Tailscale interface, not just localhost: publish the
+   port as `-p 8888:8888` (not `-p 127.0.0.1:8888:8888`) and confirm from
+   the droplet with `curl -s http://<spark-hostname>:8888/v1/models`. →
+   `OPENAI_BASE_URL=http://<spark-hostname>:8888/v1`, `VISION_BASE_URL` the
+   same, plus `CHAT_MODEL` / `VISION_MODEL` matching what the Spark serves.
+
+8. **GitHub backup repo.** github.com → **New repository** → private, and
+   leave it empty (no README, no .gitignore). Copy its SSH URL
+   (`git@github.com:<you>/assistant-knowledge.git`). On the droplet run
+   `ssh-keygen -t ed25519` with no passphrase, then paste
+   `~/.ssh/id_ed25519.pub` at
+   [github.com/settings/keys](https://github.com/settings/keys) (or as a
+   deploy key with write access on that repo). → first entry of
+   `KNOWLEDGE_REMOTES`
+
+9. **The Spark bare repo.** On the Spark:
+   `git init --bare ~/backups/knowledge.git`. Append the droplet's
+   `~/.ssh/id_ed25519.pub` to the Spark's `~/.ssh/authorized_keys` so the
+   unattended push works. → second entry of `KNOWLEDGE_REMOTES`, as
+   `<spark-user>@<spark-hostname>:backups/knowledge.git`
+
+10. **Google Maps key (optional).**
+    [console.cloud.google.com](https://console.cloud.google.com) → pick or
+    create a project → **APIs & Services** → **Library**: enable both the
+    **Geocoding API** and the **Directions API** → **Credentials** →
+    Create credentials → API key, and restrict it to those two APIs.
+    Without it, travel time falls back to each event's stored
+    `travel_minutes`. → `GOOGLE_MAPS_API_KEY`
+
+Then copy `.env.example` to `.env`, fill those lines in, `chmod 600 .env`,
+and follow README §1.5.

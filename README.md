@@ -10,6 +10,9 @@ full design.
 
 ## 1. Setup
 
+`docs/setup-checklist.md` is the shopping list: every token, id, key and
+machine detail this section needs, and exactly where to click to get it.
+
 ### 1.0 Topology
 
 Three machines, one bot:
@@ -215,7 +218,14 @@ briefings never need a model at all.
 | `/goals` | Active goals and progress. |
 | `/today` | Today's events and top todos. |
 | `/week` | The next 7 days. |
+| `/now` | One line: the next thing to do or get ready for. |
 | `/brief` | Morning briefing now (`/brief 9am` to shift today's). |
+| `/courses` | Courses and their topic counts. |
+| `/channels` | Which topic is bound to what. |
+| `/bind`, `/unbind` | Bind this topic (`/bind course CS101 Intro to CS`). |
+| `/sources` | Course material stored here (see §7). |
+| `/summary` | Summary of a source from the last `/sources` (`/summary 2`). |
+| `/move` | Move the last ingested source to another course (`/move phys1`). |
 | `/pause` | Quiet for a while (`/pause 2h`). |
 | `/quiet` | Quiet until the end of the day. |
 | `/resume` | Cancel the pause. |
@@ -226,7 +236,47 @@ Anything else you send — text or a voice note — is treated as free-form
 capture: the model turns it into todos/events/goals as needed and replies
 with what it stored.
 
-## 7. End-to-end checklist
+## 7. Study
+
+School runs in a **private Telegram group with Topics turned on**, with the
+bot added as an admin (setup checklist step 3). Your DM stays the life
+channel — briefings, check-ins, critical mode. Each topic in the group gets a
+job, assigned once with `/bind` run inside it:
+
+```
+/bind course CS101 Intro to CS   # one topic per course
+/bind assignments                # HW, projects, labs across courses
+/bind exams                      # quizzes, exams, study plans
+/bind review                     # daily quiz session and digest
+```
+
+`/bind course` creates the course file if it doesn't exist. A topic that
+isn't bound gets one reply explaining `/bind`, then is ignored.
+
+**Dropping sources.** In a course topic, send a PDF, a `.pptx`, or a photo of
+the board. PDFs are extracted per page and slides per slide (with speaker
+notes), so answers can cite `[Lecture 7, p.12]`; photos go through the vision
+model's OCR, or are stored with just their caption if no vision model is
+configured. The model then writes a title, kind, topics and a short summary,
+and the bot replies with what it stored. A file it can't read is kept as-is
+under `sources/<course>/raw/` and it says so. Everything is one commit, so
+`/undo` works.
+
+**Tutoring.** Plain text or a voice note in a course topic is answered from
+that course's sources, cited by page. If the message is study content rather
+than a question — notes, a definition you want kept — it's filed as a note
+source instead and the bot replies `Saved note: …`.
+
+**Looking at what's stored.** `/sources` lists the course's material in a
+course topic, or everything grouped by course anywhere else; `/summary 2`
+prints the summary of the second item in that listing. If something lands in
+the wrong course, `/move phys1` moves the most recent one across.
+
+**`/now`** works anywhere and needs no model: one line, either the event
+starting within 90 minutes (with the leave-by time), the top-ranked open
+todo, or "nothing urgent".
+
+## 8. End-to-end checklist
 
 Run this manually against the real bot on the droplet before calling a change
 done. Each step should behave as described; if it doesn't, something in the
@@ -254,7 +304,7 @@ before shipping.
    location** (or send a one-off location) and confirm the messages stop
    once you're far enough from home.
 
-## 8. Testing
+## 9. Testing
 
 ```bash
 python -m pip install -e '.[dev,voice]'
