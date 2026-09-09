@@ -26,9 +26,15 @@ def build_application(settings, router, sender, transcriber=None) -> Application
 
     async def on_error(update, context) -> None:
         logger.exception("update handling failed", exc_info=context.error)
+        user = getattr(update, "effective_user", None)
         chat = getattr(update, "effective_chat", None)
-        if chat is not None and chat.id == settings.telegram_user_id:
-            await context.bot.send_message(chat.id, ERROR_REPLY)
+        if user is None or chat is None or user.id != settings.telegram_user_id:
+            return
+        # Answer where it broke: a group topic, not the DM.
+        message = getattr(update, "effective_message", None)
+        thread_id = getattr(message, "message_thread_id", None) if message else None
+        thread = {} if thread_id is None else {"message_thread_id": thread_id}
+        await context.bot.send_message(chat.id, ERROR_REPLY, **thread)
 
     app = (
         Application.builder().token(settings.telegram_bot_token).post_init(post_init).build()

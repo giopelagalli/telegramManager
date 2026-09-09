@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 BACKOFF_SECONDS = (1, 2, 4)
 LOCATION_BUTTON_TEXT = "📍 Share my location"
+UNPARSABLE = "can't parse entities"
 
 _TAG_RE = re.compile(r"<[^>]+>")
 
@@ -72,17 +73,24 @@ class Sender:
             await self._edit(out, chat_id)
             return
 
-        try:
-            await self._retry(
-                lambda: self.bot.send_message(
-                    chat_id=chat_id,
-                    text=out.text,
-                    parse_mode="HTML",
-                    reply_markup=_markup(out),
-                    disable_notification=out.silent,
-                    **thread,
-                )
+        async def call(text: str, parse_mode: str | None):
+            return await self.bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                parse_mode=parse_mode,
+                reply_markup=_markup(out),
+                disable_notification=out.silent,
+                **thread,
             )
+
+        try:
+            try:
+                await self._retry(lambda: call(out.text, "HTML"))
+            except BadRequest as exc:
+                if not _unparsable(exc):
+                    raise
+                _log_unparsable(out.text)
+                await self._retry(lambda: call(plain_text(out.text), None))
         except NetworkError as exc:
             logger.error("send_message gave up after retries: %s", exc)
             return
@@ -92,13 +100,13 @@ class Sender:
 
     async def _edit(self, out: Outbound, chat_id: int) -> None:
         # No message_thread_id here: an edit is addressed by chat_id + message_id.
-        async def call():
+        async def call(text: str, parse_mode: str | None):
             try:
                 return await self.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=out.edit_message_id,
-                    text=out.text,
-                    parse_mode="HTML",
+                    text=text,
+                    parse_mode=parse_mode,
                     reply_markup=_markup(out),
                 )
             except BadRequest as exc:
@@ -107,7 +115,13 @@ class Sender:
                 logger.debug("edit was a no-op: %s", exc)
 
         try:
-            await self._retry(call)
+            try:
+                await self._retry(lambda: call(out.text, "HTML"))
+            except BadRequest as exc:
+                if not _unparsable(exc):
+                    raise
+                _log_unparsable(out.text)
+                await self._retry(lambda: call(plain_text(out.text), None))
         except NetworkError as exc:
             logger.error("edit_message_text gave up after retries: %s", exc)
 
@@ -134,13 +148,24 @@ class Sender:
         for delay in (*BACKOFF_SECONDS, None):
             try:
                 return await call()
-            except NetworkError:
-                if delay is None:
+            except NetworkError as exc:
+                # BadRequest is a NetworkError subclass: retrying HTML Telegram
+                # already refused only delays the plain-text resend.
+                if delay is None or (isinstance(exc, BadRequest) and _unparsable(exc)):
                     raise
                 await asyncio.sleep(delay)
             except Exception:
                 logger.exception("telegram call failed")
                 raise
+
+
+def _unparsable(exc: BadRequest) -> bool:
+    """Telegram refused our HTML: the text goes out plain rather than not at all."""
+    return UNPARSABLE in str(exc).lower()
+
+
+def _log_unparsable(text: str) -> None:
+    logger.warning("telegram could not parse this message, resending it plain: %s", text[:200])
 
 
 def _markup(out: Outbound):

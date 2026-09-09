@@ -90,22 +90,43 @@ async def test_callback_handler_ignores_foreign_users():
     assert calls == []
 
 
+class FakeErrorBot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.sent.append((chat_id, text, kwargs))
+
+
+def _error_update(user_id: int, chat_id: int, thread_id: int | None = None):
+    return SimpleNamespace(
+        effective_user=SimpleNamespace(id=user_id),
+        effective_chat=SimpleNamespace(id=chat_id),
+        effective_message=SimpleNamespace(message_thread_id=thread_id),
+    )
+
+
 async def test_error_handler_replies_to_the_owner_only():
-    sent = []
-
-    class FakeBot:
-        async def send_message(self, chat_id, text):
-            sent.append((chat_id, text))
-
+    bot = FakeErrorBot()
     app = build_application(FakeSettings(), router=None, sender=None)
     handler = next(iter(app.error_handlers))
-    context = SimpleNamespace(error=RuntimeError("boom"), bot=FakeBot())
+    context = SimpleNamespace(error=RuntimeError("boom"), bot=bot)
 
-    await handler(SimpleNamespace(effective_chat=SimpleNamespace(id=FOREIGN)), context)
-    assert sent == []
+    await handler(_error_update(FOREIGN, FOREIGN), context)
+    assert bot.sent == []
 
-    await handler(SimpleNamespace(effective_chat=SimpleNamespace(id=MINE)), context)
-    assert sent == [(MINE, ERROR_REPLY)]
+    await handler(_error_update(MINE, MINE), context)
+    assert bot.sent == [(MINE, ERROR_REPLY, {})]
+
+
+async def test_error_handler_replies_in_the_group_topic_that_errored():
+    bot = FakeErrorBot()
+    app = build_application(FakeSettings(), router=None, sender=None)
+    handler = next(iter(app.error_handlers))
+    context = SimpleNamespace(error=RuntimeError("boom"), bot=bot)
+
+    await handler(_error_update(MINE, -100, 45), context)
+    assert bot.sent == [(-100, ERROR_REPLY, {"message_thread_id": 45})]
 
 
 def _group_update(user_id: int, thread_id: int | None = None, **content) -> Update:

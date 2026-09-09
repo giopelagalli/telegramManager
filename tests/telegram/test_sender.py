@@ -205,3 +205,39 @@ async def test_life_channel_and_no_resolver_go_to_the_dm():
     await Sender(bot, 7).send(Outbound("hi", channel="review"))
     for _, kwargs in bot.calls:
         assert kwargs["chat_id"] == 7 and "message_thread_id" not in kwargs
+
+
+CANT_PARSE = BadRequest("Can't parse entities: unsupported start tag \"3\"")
+
+
+async def test_unparsable_html_is_resent_as_plain_text():
+    bot = FakeBot(fail_times=1, error=CANT_PARSE)
+    await Sender(bot, 7).send(Outbound("<b>a</b> &lt;3"))
+    assert [name for name, _ in bot.calls] == ["send_message", "send_message"]
+    _, kwargs = bot.calls[1]
+    assert kwargs["parse_mode"] is None and kwargs["text"] == "a <3"
+
+
+async def test_unparsable_html_is_resent_once_only():
+    bot = FakeBot(fail_times=2, error=CANT_PARSE)
+    await Sender(bot, 7).send(Outbound("<b>a</b>"))
+    assert len(bot.calls) == 2
+
+
+async def test_other_bad_requests_are_not_resent_plain(no_sleep):
+    bot = FakeBot(fail_times=1, error=BadRequest("chat not found"))
+    await Sender(bot, 7).send(Outbound("hi"))
+    assert [kwargs["parse_mode"] for _, kwargs in bot.calls] == ["HTML", "HTML"]
+
+
+async def test_unparsable_edit_is_resent_as_plain_text():
+    class EditFailsOnce(FakeBot):
+        async def edit_message_text(self, **kwargs):
+            self.calls.append(("edit_message_text", kwargs))
+            if len(self.calls) == 1:
+                raise CANT_PARSE
+
+    bot = EditFailsOnce()
+    await Sender(bot, 7).send(Outbound("<b>a</b>", edit_message_id=5))
+    assert [name for name, _ in bot.calls] == ["edit_message_text", "edit_message_text"]
+    assert bot.calls[1][1]["parse_mode"] is None and bot.calls[1][1]["text"] == "a"
