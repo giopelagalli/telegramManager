@@ -247,3 +247,18 @@ async def test_bind_and_unbind_answer_in_the_topic_that_asked(rig):
     assert (await r.command("bind", "lectures", channel=TOPIC))[0].target == (-100, 45)
     assert (await r.command("bind", "course", channel=TOPIC))[0].target == (-100, 45)
     assert (await r.command("unbind", "", channel=TOPIC))[0].target == (-100, 45)
+
+
+def test_command_menu_is_the_minimal_set():
+    from bot.telegram.commands import COMMANDS
+
+    menu_names = {name for name, _, menu in COMMANDS if menu}
+    assert menu_names == {"todo", "now", "today", "week", "brief", "pause", "help"}
+
+
+async def test_help_lists_the_rest_under_more(rig):
+    r, *_ = rig
+    text = (await r.command("help", ""))[0].text
+    assert "<b>Commands</b>" in text and "<b>More</b>" in text
+    assert "/todo" in text and "/backlog" in text
+    assert text.index("/todo") < text.index("<b>More</b>") < text.index("/backlog")

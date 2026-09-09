@@ -17,7 +17,7 @@ def build_application(settings, router, sender, transcriber=None) -> Application
     only_me = filters.User(settings.telegram_user_id)
 
     async def post_init(app: Application) -> None:
-        await app.bot.set_my_commands(COMMANDS)
+        await app.bot.set_my_commands([(name, desc) for name, desc, menu in COMMANDS if menu])
 
     async def on_callback(update, context) -> None:
         user = update.effective_user
@@ -39,7 +39,7 @@ def build_application(settings, router, sender, transcriber=None) -> Application
     app = (
         Application.builder().token(settings.telegram_bot_token).post_init(post_init).build()
     )
-    for name, _description in COMMANDS:
+    for name, _description, _menu in COMMANDS:
         app.add_handler(CommandHandler(name, handlers.command(name), filters=only_me))
     app.add_handler(MessageHandler(only_me & filters.TEXT & ~filters.COMMAND, handlers.on_text))
     app.add_handler(MessageHandler(only_me & filters.VOICE, handlers.on_voice))

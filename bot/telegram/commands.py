@@ -25,29 +25,36 @@ BIND_IN_DM = "Bind topics inside your group, not here."
 MOVE_USAGE = "Usage: /move <slug> — the course slug from /courses."
 NOW_LEAD_MINUTES = 90
 
-COMMANDS: list[tuple[str, str]] = [
-    ("todo", "Top 5 open todos (/todo all for everything)"),
-    ("backlog", "Everything parked in the backlog"),
-    ("goals", "Active goals and progress"),
-    ("today", "Today's events and top todos"),
-    ("week", "The next 7 days"),
-    ("now", "The one thing to do right now"),
-    ("brief", "Morning briefing now (/brief 9am to shift today's)"),
-    ("courses", "Courses and their topic counts"),
-    ("sources", "Course material stored here"),
-    ("summary", "Summary of a source from the last /sources (/summary 2)"),
-    ("move", "Move the last ingested source to another course (/move cs101)"),
-    ("channels", "Which topic is bound to what"),
-    ("bind", "Bind this topic (/bind course CS101 Intro to CS)"),
-    ("unbind", "Unbind this topic"),
-    ("pause", "Quiet for a while (/pause 2h)"),
-    ("quiet", "Quiet until the end of the day"),
-    ("resume", "Cancel the pause"),
-    ("undo", "Revert the last change"),
-    ("help", "List commands"),
+COMMANDS: list[tuple[str, str, bool]] = [
+    ("todo", "Top 5 open todos (/todo all for everything)", True),
+    ("backlog", "Everything parked in the backlog", False),
+    ("goals", "Active goals and progress", False),
+    ("today", "Today's events and top todos", True),
+    ("week", "The next 7 days", True),
+    ("now", "The one thing to do right now", True),
+    ("brief", "Morning briefing now (/brief 9am to shift today's)", True),
+    ("courses", "Courses and their topic counts", False),
+    ("sources", "Course material stored here", False),
+    ("summary", "Summary of a source from the last /sources (/summary 2)", False),
+    ("move", "Move the last ingested source to another course (/move cs101)", False),
+    ("channels", "Which topic is bound to what", False),
+    ("bind", "Bind this topic (/bind course CS101 Intro to CS)", False),
+    ("unbind", "Unbind this topic", False),
+    ("pause", "Quiet for a while (/pause 2h)", True),
+    ("quiet", "Quiet until the end of the day", False),
+    ("resume", "Cancel the pause", False),
+    ("undo", "Revert the last change", False),
+    ("help", "List commands", True),
 ]
 
-HELP_TEXT = "<b>Commands</b>\n" + "\n".join(f"/{name} — {esc(desc)}" for name, desc in COMMANDS)
+_MAIN_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if menu]
+_MORE_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if not menu]
+HELP_TEXT = (
+    "<b>Commands</b>\n"
+    + "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MAIN_COMMANDS)
+    + "\n\n<b>More</b>\n"
+    + "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MORE_COMMANDS)
+)
 
 _DURATION_RE = re.compile(r"^(\d+)\s*([hm]?)$", re.IGNORECASE)
 _TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", re.IGNORECASE)
