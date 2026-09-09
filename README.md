@@ -28,8 +28,17 @@ Three machines, one bot:
   unreachable — rebooting, loading, off the network — the bot's circuit
   breaker routes chat to Fireworks for ten minutes, then retries the Spark.
 
-Knowledge backups go to two places after every change: a private GitHub repo
-and a bare repo on the Spark.
+Knowledge backups go to two places after every change: bare git repos on the
+Spark and on the owner's Mac, both reachable over Tailscale and both machines
+the owner controls. A nightly, client-side-encrypted `restic` snapshot of
+`knowledge/` and `data/` also goes to Backblaze B2. See §1.4.
+
+**Data leaves the building only when the Spark is down.** Message content
+(and, for the classroom tutor, the sources it draws on) is otherwise
+processed entirely on the Spark, over the tailnet. When the Spark is
+unreachable, the circuit breaker falls back to Fireworks AI for ten minutes,
+which then sees that traffic on its own servers — a tradeoff the owner has
+accepted in exchange for the bot staying responsive.
 
 ### 1.1 Tailscale
 
@@ -82,7 +91,7 @@ chmod 600 .env
 | `VISION_BASE_URL` / `VISION_MODEL` | The Spark endpoint / `qwen3.8-flash-next`. Worth trying — if the endpoint rejects image input, photo checks (wake-up, task verification) degrade to "not verified" automatically rather than breaking. Vision does not fall back. |
 | `GOOGLE_MAPS_API_KEY` | Optional. Without it, travel time falls back to the stored `travel_minutes` on each event. |
 | `KNOWLEDGE_DIR` | `/home/<user>/telegramManager/knowledge` |
-| `KNOWLEDGE_REMOTES` | `git@github.com:<you>/assistant-knowledge.git,<spark-user>@<spark-hostname>:backups/knowledge.git` — see §1.4. |
+| `KNOWLEDGE_REMOTES` | `<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git` — see §1.4. |
 | `DATA_DIR` | `/home/<user>/telegramManager/data` |
 | `WHISPER_MODEL` | `base` on the droplet's CPU; `small` if it has 4+ cores. |
 | `KOKORO_MODEL_DIR` | `/home/<user>/telegramManager/models` |
@@ -95,23 +104,34 @@ same care.
 
 The knowledge repo is pushed to every URL in `KNOWLEDGE_REMOTES` after each
 commit, in a background thread — a remote that's down only logs a warning.
+Both remotes are bare repos on machines the owner controls, not GitHub:
+a private GitHub repo is still plaintext to GitHub, and this bundle holds
+home address, schedule, health and school data.
+
 Set the two up once:
 
-1. Create an empty **private** GitHub repo, e.g. `assistant-knowledge`. Don't
-   add a README; the first push writes `main`.
-2. On the Spark: `git init --bare ~/backups/knowledge.git`.
+1. On the Spark: `git init --bare ~/backups/knowledge.git`.
+2. On the Mac: the same command, e.g. `git init --bare ~/backups/knowledge.git`.
+   The Mac needs Tailscale running and Remote Login enabled (System
+   Settings → General → Sharing → turn on Remote Login) so it accepts SSH
+   over the tailnet.
 3. On the droplet, `ssh-keygen -t ed25519` (no passphrase — systemd runs the
-   push unattended), then add the public key to GitHub as a deploy key with
-   write access, and append it to the Spark's `~/.ssh/authorized_keys`.
+   push unattended), then append `~/.ssh/id_ed25519.pub` to
+   `~/.ssh/authorized_keys` on both the Spark and the Mac.
 4. Test both by hand from `knowledge/` before trusting them:
 
 ```bash
-git -C knowledge push git@github.com:<you>/assistant-knowledge.git HEAD:refs/heads/main
 git -C knowledge push <spark-user>@<spark-hostname>:backups/knowledge.git HEAD:refs/heads/main
+git -C knowledge push <mac-user>@<mac-hostname>:backups/knowledge.git HEAD:refs/heads/main
 ```
 
 **Restore.** On a fresh box, `git clone <remote> knowledge`, point
 `KNOWLEDGE_DIR` at it, and start the bot — it picks the repo up as is.
+
+`deploy/backup.sh` covers the other layer: a nightly `restic` snapshot of
+`knowledge/` and `data/` to Backblaze B2, client-side encrypted before it
+leaves the droplet. See the script's header and the setup checklist for the
+one-time B2 setup.
 
 ### 1.5 Install
 

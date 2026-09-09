@@ -55,22 +55,38 @@ on (see README §1.3 for the full table).
    `OPENAI_BASE_URL=http://<spark-hostname>:8888/v1`, `VISION_BASE_URL` the
    same, plus `CHAT_MODEL` / `VISION_MODEL` matching what the Spark serves.
 
-8. **GitHub backup repo.** github.com → **New repository** → private, and
-   leave it empty (no README, no .gitignore). Copy its SSH URL
-   (`git@github.com:<you>/assistant-knowledge.git`). On the droplet run
-   `ssh-keygen -t ed25519` with no passphrase, then paste
-   `~/.ssh/id_ed25519.pub` at
-   [github.com/settings/keys](https://github.com/settings/keys) (or as a
-   deploy key with write access on that repo). → first entry of
-   `KNOWLEDGE_REMOTES`
+8. **The Spark bare repo.** On the Spark:
+   `git init --bare ~/backups/knowledge.git`. → first entry of
+   `KNOWLEDGE_REMOTES`, as `<spark-user>@<spark-hostname>:backups/knowledge.git`
 
-9. **The Spark bare repo.** On the Spark:
-   `git init --bare ~/backups/knowledge.git`. Append the droplet's
-   `~/.ssh/id_ed25519.pub` to the Spark's `~/.ssh/authorized_keys` so the
-   unattended push works. → second entry of `KNOWLEDGE_REMOTES`, as
-   `<spark-user>@<spark-hostname>:backups/knowledge.git`
+9. **The Mac bare repo.** On the Mac, the same command:
+   `git init --bare ~/backups/knowledge.git`. The Mac needs Tailscale
+   running and Remote Login enabled (System Settings → General → Sharing →
+   turn on Remote Login) so it accepts SSH over the tailnet. → second entry
+   of `KNOWLEDGE_REMOTES`, as `<mac-user>@<mac-hostname>:backups/knowledge.git`
 
-10. **Google Maps key (optional).**
+10. **Droplet's SSH key on both remotes.** On the droplet, run
+    `ssh-keygen -t ed25519` with no passphrase (systemd runs the push
+    unattended), then append `~/.ssh/id_ed25519.pub` to
+    `~/.ssh/authorized_keys` on both the Spark and the Mac. →
+    `KNOWLEDGE_REMOTES=<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git`
+
+    Why not GitHub? A private GitHub repo is still plaintext to GitHub, and
+    this bundle holds home address, schedule, health and school data — so
+    backups go only to machines the owner controls.
+
+11. **Backblaze B2 for the nightly `restic` backup.**
+    [backblaze.com](https://www.backblaze.com) → **B2 Cloud Storage** →
+    create a bucket (private) → **Application Keys** → create a new key
+    scoped to that bucket. On the droplet, create
+    `~/telegramManager/.restic.env` (mode 600) with:
+    `RESTIC_REPOSITORY=b2:<bucket>:assistant`, `RESTIC_PASSWORD` (a new
+    passphrase for the repo, or `RESTIC_PASSWORD_FILE` pointing at one),
+    `B2_ACCOUNT_ID` and `B2_ACCOUNT_KEY` from the application key. Run
+    `restic init` once (see `deploy/backup.sh` header), then add its cron
+    line. Restore with `restic restore latest --target /path`.
+
+12. **Google Maps key (optional).**
     [console.cloud.google.com](https://console.cloud.google.com) → pick or
     create a project → **APIs & Services** → **Library**: enable both the
     **Geocoding API** and the **Directions API** → **Credentials** →

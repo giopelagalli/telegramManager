@@ -1,5 +1,6 @@
 data/
 .env
+.restic.env
 __pycache__/
 *.pyc
 .venv/
