@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
-from telegram.error import NetworkError
+from telegram.error import BadRequest, NetworkError
 
 from bot.scheduler.outbound import Outbound
 
@@ -33,6 +33,10 @@ class Sender:
         self.tmp_dir = Path(tmp_dir)
 
     async def send(self, out: Outbound) -> None:
+        if out.edit_message_id is not None:
+            await self._edit(out)
+            return
+
         try:
             await self._retry(
                 lambda: self.bot.send_message(
@@ -40,6 +44,7 @@ class Sender:
                     text=out.text,
                     parse_mode="HTML",
                     reply_markup=_markup(out),
+                    disable_notification=out.silent,
                 )
             )
         except NetworkError as exc:
@@ -47,9 +52,29 @@ class Sender:
             return
 
         if out.voice and self.synthesizer is not None:
-            await self._send_voice(out.text)
+            await self._send_voice(out.text, out.silent)
 
-    async def _send_voice(self, text: str) -> None:
+    async def _edit(self, out: Outbound) -> None:
+        async def call():
+            try:
+                return await self.bot.edit_message_text(
+                    chat_id=self.chat_id,
+                    message_id=out.edit_message_id,
+                    text=out.text,
+                    parse_mode="HTML",
+                    reply_markup=_markup(out),
+                )
+            except BadRequest as exc:
+                if "message is not modified" not in str(exc).lower():
+                    raise
+                logger.debug("edit was a no-op: %s", exc)
+
+        try:
+            await self._retry(call)
+        except NetworkError as exc:
+            logger.error("edit_message_text gave up after retries: %s", exc)
+
+    async def _send_voice(self, text: str, silent: bool = False) -> None:
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         try:
             path = await self.synthesizer.synthesize(plain_text(text), self.tmp_dir)
@@ -58,7 +83,11 @@ class Sender:
             return
         try:
             data = path.read_bytes()
-            await self._retry(lambda: self.bot.send_voice(chat_id=self.chat_id, voice=data))
+            await self._retry(
+                lambda: self.bot.send_voice(
+                    chat_id=self.chat_id, voice=data, disable_notification=silent
+                )
+            )
         except NetworkError as exc:
             logger.error("send_voice gave up after retries: %s", exc)
         finally:

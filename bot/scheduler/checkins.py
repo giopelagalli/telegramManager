@@ -82,6 +82,11 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
 
         item = (top1.title if top1 else None) or (next_event.title if next_event else None) or ""
         state.chain = Chain("checkin", now, now, 0, item=item, history=[text])
-        return Outbound(text, voice=profile.voice_on_proactive, kind="checkin")
+
+        buttons = [("✅ Done", f"done:{top1.path}")] if top1 else []
+        buttons += [("⏳ Still on it", "ack:still"), ("⏭ Skip today", "ack:skip")]
+        return Outbound(
+            text, voice=profile.voice_on_proactive, buttons=buttons, silent=True, kind="checkin"
+        )
 
     return None

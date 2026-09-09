@@ -171,3 +171,14 @@ async def test_voice_failure_saves_an_inbox_note(rig):
 async def test_voice_unavailable_asks_for_text(rig):
     router = rig[0]
     assert (await router.on_voice_unavailable())[0].text == "Voice input isn't set up here. Send it as text."
+
+
+async def test_last_outcome_tracks_capture_and_inbox(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("add_todo", {"title": "Buy milk", "priority": 3}), ("reply", {"text": "Sure."})))
+    await router.on_text("buy milk")
+    assert router.last_outcome == "captured"
+
+    client.responses.append(ModelResponse(None, []))
+    await router.on_text("something rambling")
+    assert router.last_outcome == "inbox"

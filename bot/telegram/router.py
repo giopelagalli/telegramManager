@@ -27,6 +27,7 @@ class Router:
         self.state = state
         self.clock = clock
         self.maps = maps
+        self.last_outcome = "handled"
 
     # -- entry points ----------------------------------------------------
 
@@ -99,10 +100,18 @@ class Router:
 
         return [Outbound("Got a photo, but nothing waiting for one.", kind="reply")]
 
-    async def on_callback(self, data: str) -> list[Outbound]:
+    async def on_callback(
+        self,
+        data: str,
+        message_id: int | None = None,
+        message_html: str | None = None,
+        buttons: list[tuple[str, str]] | None = None,
+    ) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
-        return await callbacks.handle(data, self.store, self.agent, self.state, now)
+        return await callbacks.handle(
+            data, self.store, self.agent, self.state, now, message_id, message_html, buttons
+        )
 
     async def command(self, name: str, arg: str) -> list[Outbound]:
         now = self._touch()
@@ -114,6 +123,7 @@ class Router:
     def _touch(self):
         now = self.clock.now()
         self.state.last_user_message_at = now
+        self.last_outcome = "handled"
         return now
 
     def _wake_active(self) -> bool:
@@ -121,6 +131,7 @@ class Router:
 
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now) -> list[Outbound]:
         result = await self.agent.capture(text, awaiting=awaiting)
+        self.last_outcome = "captured" if result.parsed else "inbox"
         applied = apply_actions(self.store, result.actions, now)
 
         if applied.snooze_minutes is not None:

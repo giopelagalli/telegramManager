@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup
-from telegram.error import NetworkError, TimedOut
+from telegram.error import BadRequest, NetworkError, TimedOut
 
 from bot.scheduler.outbound import Outbound
 from bot.telegram.sender import Sender, plain_text
@@ -15,11 +15,17 @@ class FakeBot:
         self.error = error
         self.voice_fail_times = voice_fail_times
         self._voice_calls = 0
+        self.edit_error = None
 
     async def send_message(self, **kwargs):
         self.calls.append(("send_message", kwargs))
         if len(self.calls) <= self.fail_times:
             raise self.error
+
+    async def edit_message_text(self, **kwargs):
+        self.calls.append(("edit_message_text", kwargs))
+        if self.edit_error is not None:
+            raise self.edit_error
 
     async def send_voice(self, **kwargs):
         self.calls.append(("send_voice", kwargs))
@@ -98,3 +104,55 @@ async def test_voice_retry_resends_full_bytes(tmp_path, no_sleep):
     assert len(voice_calls) == 2
     assert voice_calls[0]["voice"] == b"full ogg bytes"
     assert voice_calls[1]["voice"] == b"full ogg bytes"
+
+
+async def test_edit_replaces_text_and_keyboard():
+    bot = FakeBot()
+    out = Outbound("<s>1. x</s>", buttons=[("✅ y", "done:b")], edit_message_id=12, kind="edit")
+    await Sender(bot, 7).send(out)
+    name, kwargs = bot.calls[0]
+    assert name == "edit_message_text"
+    assert kwargs["chat_id"] == 7 and kwargs["message_id"] == 12
+    assert kwargs["text"] == "<s>1. x</s>" and kwargs["parse_mode"] == "HTML"
+    assert isinstance(kwargs["reply_markup"], InlineKeyboardMarkup)
+
+
+async def test_edit_without_buttons_clears_the_keyboard():
+    bot = FakeBot()
+    await Sender(bot, 7).send(Outbound("done", edit_message_id=12, kind="edit"))
+    assert bot.calls[0][1]["reply_markup"] is None
+
+
+async def test_edit_swallows_unmodified_message():
+    bot = FakeBot()
+    bot.edit_error = BadRequest("Message is not modified: nothing changed")
+    await Sender(bot, 7).send(Outbound("same", edit_message_id=12, kind="edit"))
+    assert len(bot.calls) == 1
+
+
+async def test_edit_does_not_send_voice(tmp_path):
+    bot = FakeBot()
+
+    class FakeSynth:
+        async def synthesize(self, text, out_dir):  # pragma: no cover - must not run
+            raise AssertionError("no voice leg for edits")
+
+    await Sender(bot, 7, FakeSynth(), tmp_path).send(
+        Outbound("x", voice=True, edit_message_id=12, kind="edit")
+    )
+    assert [name for name, _ in bot.calls] == ["edit_message_text"]
+
+
+async def test_silent_flag_reaches_both_legs(tmp_path):
+    bot = FakeBot()
+
+    class FakeSynth:
+        async def synthesize(self, text, out_dir):
+            path = tmp_path / "v.ogg"
+            path.write_bytes(b"ogg")
+            return path
+
+    await Sender(bot, 7, FakeSynth(), tmp_path).send(Outbound("hi", voice=True, silent=True))
+    assert all(kwargs["disable_notification"] for _, kwargs in bot.calls)
+    await Sender(bot, 7).send(Outbound("loud"))
+    assert bot.calls[-1][1]["disable_notification"] is False

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# kind is one of: reminder, checkin, briefing, followup, critical, wake, reply
-KINDS = {"reminder", "checkin", "briefing", "followup", "critical", "wake", "reply"}
+# kind is one of: reminder, checkin, briefing, followup, critical, wake, reply, edit
+KINDS = {"reminder", "checkin", "briefing", "followup", "critical", "wake", "reply", "edit"}
 
 
 @dataclass
@@ -14,3 +14,6 @@ class Outbound:
     location_button: bool = False
     critical: bool = False
     kind: str = ""
+    silent: bool = False
+    edit_message_id: int | None = None
+    toast: str | None = None

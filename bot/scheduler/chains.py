@@ -66,4 +66,4 @@ async def due_followup(now: datetime, store: KnowledgeStore, state: RuntimeState
     if chain.step >= len(gaps):
         close_chain(state)
 
-    return Outbound(text, kind="followup")
+    return Outbound(text, silent=True, kind="followup")
