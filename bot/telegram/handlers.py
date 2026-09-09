@@ -104,7 +104,26 @@ class Handlers:
         await self._react(message, SEEN)
         file = await message.photo[-1].get_file()
         image = await file.download_as_bytearray()
-        outs = await self.router.on_photo(bytes(image), channel=self._channel(update))
+        outs = await self.router.on_photo(
+            bytes(image), message.caption, channel=self._channel(update)
+        )
+        await self._outcome(message)
+        await self._send(outs)
+
+    async def on_document(self, update, context) -> None:
+        message = update.effective_message
+        document = message.document
+        await self._react(message, SEEN)
+        await self._typing(message)
+        file = await document.get_file()
+        data = await file.download_as_bytearray()
+        outs = await self.router.on_document(
+            bytes(data),
+            document.file_name or "",
+            document.mime_type or "",
+            message.caption,
+            channel=self._channel(update),
+        )
         await self._outcome(message)
         await self._send(outs)
 

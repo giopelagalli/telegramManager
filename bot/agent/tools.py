@@ -203,6 +203,27 @@ TOOL_SCHEMAS: list[dict] = [
     },
 ]
 
+# The tutor sees these instead of TOOL_SCHEMAS: in a course topic it either answers or files a note.
+TUTOR_TOOLS: list[dict] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "save_note",
+            "description": "Save the message as a note source. Use it when the message is study "
+            "content to keep, not a question to answer.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "the note, cleaned up"},
+                    "topics": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["text"],
+                "additionalProperties": False,
+            },
+        },
+    },
+]
+
 _TOOLS_BY_NAME: dict[str, dict] = {t["function"]["name"]: t["function"] for t in TOOL_SCHEMAS}
 
 _JSON_TYPES: dict[str, type | tuple[type, ...]] = {

@@ -4,7 +4,7 @@ import pytest
 from bot.agent.client import FakeModelClient, ModelResponse, ToolCall
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.models import Todo, Event, Channel, UNBOUND
+from bot.knowledge.models import Todo, Event, Channel, Course, Source, UNBOUND
 from bot.knowledge.views import esc
 from bot.scheduler.state import RuntimeState, Chain, CriticalLeaveState
 from bot.scheduler.clock import FakeClock
@@ -201,9 +201,10 @@ async def test_unbound_topic_is_warned_once_then_ignored(rig):
 
 async def test_bound_topic_reply_carries_the_channel(rig):
     router, store, client, state, _ = rig
-    client.responses.append(R(("reply", {"text": "Noted."})))
-    outs = await router.on_text("chapter 4 is dense", channel=Channel(-100, 45, "course", "cs101"))
-    assert outs[0].text == "Noted." and outs[0].channel == "course:cs101"
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    client.responses.append(ModelResponse("Chapter 4 covers pointers.", []))
+    outs = await router.on_text("what is in chapter 4?", channel=Channel(-100, 45, "course", "cs101"))
+    assert outs[0].text == "Chapter 4 covers pointers." and outs[0].channel == "course:cs101"
 
     outs = await router.command("todo", "", channel=Channel(-100, 46, "assignments"))
     assert outs[0].channel == "assignments"
@@ -215,3 +216,148 @@ async def test_dm_channel_behaves_like_today(rig):
     outs = await router.on_text("hi", channel=Channel(42, None, "life"))
     assert outs[0].text == "Sure." and outs[0].channel == "life"
     assert state.last_user_message_at == NOW
+
+
+COURSE = Channel(-100, 45, "course", "cs101")
+DESCRIBED = '{"title": "Chapter 4", "kind": "chapter", "topics": ["pointers", "stack"], "summary": "All about pointers."}'
+
+
+class FakePage:
+    def __init__(self, text):
+        self._text = text
+
+    def extract_text(self):
+        return self._text
+
+
+class FakeVision:
+    def __init__(self, text):
+        self.text = text
+
+    async def chat(self, messages, tools=None, temperature=0.2):
+        return ModelResponse(text=self.text, tool_calls=[])
+
+
+def _pdf(monkeypatch, *texts):
+    import pypdf
+
+    class FakeReader:
+        def __init__(self, stream):
+            self.pages = [FakePage(x) for x in texts]
+
+    monkeypatch.setattr(pypdf, "PdfReader", FakeReader)
+
+
+def _subject(store):
+    import subprocess
+    return subprocess.run(["git", "log", "-1", "--format=%s"], cwd=store.root,
+                          capture_output=True, text=True).stdout.strip()
+
+
+async def test_document_in_a_course_topic_is_ingested(rig, monkeypatch):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    _pdf(monkeypatch, "Pointers hold addresses", "", "More pointers")
+    client.responses.append(ModelResponse(DESCRIBED, []))
+
+    outs = await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None, channel=COURSE)
+    assert outs[0].text == (
+        "Stored: Chapter 4 (chapter, 3 pages, topics: pointers, stack). "
+        "Wrong course? /move &lt;slug&gt;."
+    )
+    assert outs[0].channel == "course:cs101"
+
+    source = store.sources("cs101")[0]
+    assert source.kind == "chapter" and source.pages == 3 and source.topics == ["pointers", "stack"]
+    assert source.body == "## p.1\nPointers hold addresses\n\n## p.3\nMore pointers"
+    assert _subject(store) == "ingest: Chapter 4"
+
+
+async def test_unreadable_document_is_kept_raw(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    outs = await router.on_document(b"zipped", "data.zip", "application/zip", None, channel=COURSE)
+    assert outs[0].text == "Stored the file but couldn't read it."
+    assert (store.root / "sources/cs101/raw/data.zip").read_bytes() == b"zipped"
+    assert store.sources("cs101") == [] and client.calls == []
+    assert _subject(store) == "ingest: data.zip"
+
+
+async def test_documents_outside_a_course_topic_are_ignored(rig):
+    router, store, client, state, _ = rig
+    assert await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None) == []
+    assert await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None,
+                                    channel=Channel(-100, 46, "assignments")) == []
+
+
+async def test_photo_in_a_course_topic_without_vision_keeps_the_caption(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    client.responses.append(ModelResponse(
+        '{"title": "Whiteboard", "kind": "notes", "topics": ["stack"], "summary": "A stack diagram."}', []))
+
+    outs = await router.on_photo(b"img", "stack diagram from class", channel=COURSE)
+    assert "Stored: Whiteboard (photo, topics: stack). OCR unavailable." in outs[0].text
+    source = store.sources("cs101")[0]
+    assert source.kind == "photo" and source.ocr == "unavailable"
+    assert source.body == "stack diagram from class"
+
+
+async def test_photo_with_no_vision_and_no_caption_needs_no_model(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    outs = await router.on_photo(b"img", None, channel=COURSE)
+    assert "Stored: Photo (photo). OCR unavailable." in outs[0].text
+    assert client.calls == [] and store.sources("cs101")[0].body == ""
+
+
+async def test_photo_in_a_course_topic_is_ocred(tmp_path):
+    clock = FakeClock(NOW)
+    store = KnowledgeStore(tmp_path / "k", clock=clock.now)
+    store.init()
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    client = FakeModelClient([ModelResponse(
+        '{"title": "Board", "kind": "photo", "topics": [], "summary": "Notes."}', [])])
+    agent = Agent(client, FakeVision("f(n) = O(n log n)"), store, clock.now)
+    router = Router(store, agent, RuntimeState.load(tmp_path / "s.json"), clock, None)
+
+    outs = await router.on_photo(b"img", None, channel=COURSE)
+    assert "OCR unavailable" not in outs[0].text
+    source = store.sources("cs101")[0]
+    assert source.ocr is None and source.body == "f(n) = O(n log n)"
+
+
+async def test_text_in_a_course_topic_is_tutored(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    store.add_source(Source(path="", title="Chapter 4", course="cs101", topics=["pointers"],
+                            body="## p.3\nPointers hold addresses"))
+    store.commit("ingest: Chapter 4")
+    client.responses.append(ModelResponse("A pointer holds an address [Chapter 4, p.3].", []))
+
+    outs = await router.on_text("what is a pointer?", channel=COURSE)
+    assert outs[0].text == "A pointer holds an address [Chapter 4, p.3]."
+    assert "### Chapter 4" in client.calls[0]["messages"][1]["content"]
+    assert state.last_user_message_at == NOW
+
+
+async def test_a_tutor_note_becomes_a_source(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    note = "Quicksort is n log n on average\nand n squared in the worst case"
+    client.responses.append(R(("save_note", {"text": note, "topics": ["sorting"]})))
+
+    outs = await router.on_text(note, channel=COURSE)
+    assert outs[0].text == "Saved note: Quicksort is n log n on average"
+    source = store.sources("cs101")[0]
+    assert source.kind == "notes" and source.topics == ["sorting"] and source.body == note
+    assert source.summary == note
+    assert _subject(store) == "note: Quicksort is n log n on average"
+
+
+async def test_tutor_says_so_when_the_model_is_down(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    outs = await router.on_text("what is a pointer?", channel=COURSE)  # no queued response -> IndexError
+    assert outs[0].text == "The model is offline; ask again in a bit."
+    assert store.sources("cs101") == []

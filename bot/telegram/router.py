@@ -6,21 +6,59 @@ from datetime import datetime, timedelta
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
 from bot.agent.prompts import build_context
-from bot.knowledge.models import UNBOUND, Channel
+from bot.knowledge.models import UNBOUND, Channel, Source
 from bot.knowledge.views import esc
 from bot.maps.client import distance_m
 from bot.scheduler.chains import close_chain
 from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_message, wake_on_photo
 from bot.scheduler.outbound import Outbound
+from bot.study.extract import (
+    PAGE_MARKER,
+    SLIDE_MARKER,
+    extract_pdf,
+    extract_pptx,
+    guess_kind,
+    render_pages,
+)
+from bot.study.select import select_sources
 from bot.telegram import callbacks, commands
 
 logger = logging.getLogger(__name__)
 
 VERIFY_RADIUS_M = 200
+NOTE_TITLE_CHARS = 60
+NOTE_SUMMARY_CHARS = 300
+UNREADABLE_REPLY = "Stored the file but couldn't read it."
+TUTOR_OFFLINE_REPLY = "The model is offline; ask again in a bit."
 UNBOUND_REPLY = (
     "This topic isn't bound yet. Run /bind course <CODE> <title>, /bind assignments, "
     "/bind exams, or /bind review here."
 )
+
+
+def _is_course(channel: Channel | None) -> bool:
+    return channel is not None and channel.kind == "course"
+
+
+def _extract(data: bytes, kind: str, filename: str) -> list[tuple[int, str]] | None:
+    try:
+        if kind == "slides":
+            return extract_pptx(data)
+        if kind == "chapter":
+            return extract_pdf(data)
+    except Exception as exc:
+        logger.warning("could not extract %s: %s", filename, exc)
+    return None
+
+
+def _stored_reply(source: Source) -> str:
+    parts = [source.kind]
+    if source.pages:
+        parts.append(f"{source.pages} pages")
+    if source.topics:
+        parts.append("topics: " + ", ".join(source.topics))
+    note = " OCR unavailable." if source.ocr == "unavailable" else ""
+    return f"Stored: {source.title} ({', '.join(parts)}).{note} Wrong course? /move <slug>."
 
 
 class Router:
@@ -43,6 +81,8 @@ class Router:
         ignored = self._ignore_unbound(channel)
         if ignored is not None:
             return ignored
+        if _is_course(channel):
+            return self._tag(await self._tutor(text, channel, via_voice), channel)
         return self._tag(await self._text(text, via_voice), channel)
 
     async def _text(self, text: str, via_voice: bool) -> list[Outbound]:
@@ -111,11 +151,31 @@ class Router:
             return [out]
         return [Outbound("Got your location, nothing waiting for it.", kind="reply")]
 
-    async def on_photo(self, image: bytes, *, channel: Channel | None = None) -> list[Outbound]:
+    async def on_photo(
+        self, image: bytes, caption: str | None = None, *, channel: Channel | None = None
+    ) -> list[Outbound]:
         ignored = self._ignore_unbound(channel)
         if ignored is not None:
             return ignored
+        if _is_course(channel):
+            return self._tag(await self._ingest_photo(image, caption, channel), channel)
         return self._tag(await self._photo(image), channel)
+
+    async def on_document(
+        self,
+        data: bytes,
+        filename: str,
+        mime: str,
+        caption: str | None = None,
+        *,
+        channel: Channel | None = None,
+    ) -> list[Outbound]:
+        ignored = self._ignore_unbound(channel)
+        if ignored is not None:
+            return ignored
+        if not _is_course(channel):
+            return []
+        return self._tag(await self._ingest_document(data, filename, mime, caption, channel), channel)
 
     async def _photo(self, image: bytes) -> list[Outbound]:
         now = self._touch()
@@ -135,6 +195,94 @@ class Router:
             return [await self._verify_photo(pending, image)]
 
         return [Outbound("Got a photo, but nothing waiting for one.", kind="reply")]
+
+    # -- study ingest and tutoring ---------------------------------------
+
+    async def _ingest_document(
+        self, data: bytes, filename: str, mime: str, caption: str | None, channel: Channel
+    ) -> list[Outbound]:
+        self._touch()
+        kind = guess_kind(filename, mime)
+        if kind == "photo":
+            return await self._ingest_photo(data, caption, channel)
+
+        pages = _extract(data, kind, filename)
+        body = render_pages(pages, SLIDE_MARKER if kind == "slides" else PAGE_MARKER) if pages else ""
+        if not body.strip():
+            self.store.keep_raw(channel.course, filename, data)
+            self.store.commit(f"ingest: {filename}")
+            return [Outbound(esc(UNREADABLE_REPLY), kind="reply")]
+
+        course = self.store.get_course(channel.course)
+        described = await self.agent.describe_source(body, filename, course.title)
+        source = Source(
+            path="",
+            title=described["title"],
+            course=channel.course,
+            kind=described["kind"],
+            topics=described["topics"],
+            summary=described["summary"],
+            pages=len(pages),
+            body=body,
+        )
+        return [self._store_source(source)]
+
+    async def _ingest_photo(
+        self, image: bytes, caption: str | None, channel: Channel
+    ) -> list[Outbound]:
+        self._touch()
+        text = await self.agent.ocr(image)
+        body = text if text else (caption or "")
+        if body.strip():
+            course = self.store.get_course(channel.course)
+            described = await self.agent.describe_source(body, "photo.jpg", course.title)
+        else:
+            described = {"title": "Photo", "topics": [], "summary": ""}
+        source = Source(
+            path="",
+            title=described["title"],
+            course=channel.course,
+            kind="photo",
+            topics=described["topics"],
+            summary=described["summary"],
+            ocr=None if text else "unavailable",
+            body=body,
+        )
+        return [self._store_source(source)]
+
+    def _store_source(self, source: Source) -> Outbound:
+        self.store.add_source(source)
+        self.store.commit(f"ingest: {source.title}")
+        return Outbound(esc(_stored_reply(source)), kind="reply")
+
+    async def _tutor(self, text: str, channel: Channel, via_voice: bool) -> list[Outbound]:
+        self._touch()
+        course = self.store.get_course(channel.course)
+        budget = self.store.profile().tutor_context_chars
+        sources = select_sources(text, self.store.sources(channel.course), budget)
+        answer, note = await self.agent.tutor(text, course, sources)
+
+        if note is not None:
+            return [self._save_note(note, channel)]
+        if answer is None:
+            return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
+        return [Outbound(esc(answer), voice=self._voice_reply(via_voice), kind="reply")]
+
+    def _save_note(self, note: dict, channel: Channel) -> Outbound:
+        text = note["text"].strip()
+        title = text.splitlines()[0][:NOTE_TITLE_CHARS]
+        source = Source(
+            path="",
+            title=title,
+            course=channel.course,
+            kind="notes",
+            topics=note["topics"],
+            summary=text[:NOTE_SUMMARY_CHARS],
+            body=text,
+        )
+        self.store.add_source(source)
+        self.store.commit(f"note: {title}")
+        return Outbound(f"Saved note: {esc(title)}", kind="reply")
 
     async def on_callback(
         self,
@@ -189,6 +337,10 @@ class Router:
     def _wake_active(self) -> bool:
         return self.state.wake is not None and self.state.wake.phase != "done"
 
+    def _voice_reply(self, via_voice: bool) -> bool:
+        mode = self.store.profile().voice_reply_mode
+        return via_voice if mode == "on_voice" else mode == "always"
+
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now) -> list[Outbound]:
         result = await self.agent.capture(text, awaiting=awaiting)
         self.last_outcome = "captured" if result.parsed else "inbox"
@@ -200,14 +352,14 @@ class Router:
         await self._geocode_home(result.actions)
         await self._geocode_events(result.actions, applied)
 
-        profile = self.store.profile()
-        if profile.voice_reply_mode == "on_voice":
-            voice = via_voice
-        else:
-            voice = profile.voice_reply_mode == "always"
-
         lines = [esc(result.reply)] + [esc(s) for s in applied.summary]
-        return [Outbound("\n".join(line for line in lines if line), voice=voice, kind="reply")]
+        return [
+            Outbound(
+                "\n".join(line for line in lines if line),
+                voice=self._voice_reply(via_voice),
+                kind="reply",
+            )
+        ]
 
     async def _geocode_home(self, actions: list[ToolCall]) -> None:
         if self.maps is None:

@@ -15,6 +15,20 @@ COMPOSE_SYSTEM = """Write for Telegram: plain text, no markdown, at most 3 sente
 Kind is "briefing". Address the user by name only when Kind is "followup", "wake", or
 "critical". Never invent items that are not in the context."""
 
+DESCRIBE_SOURCE_SYSTEM = """You catalogue course material for {course}.
+Read the start of a document and answer with strict JSON, nothing else:
+{{"title": "...", "kind": "...", "topics": ["...", "..."], "summary": "..."}}
+`kind` is one of: {kinds}. `topics` is at most 10 short topic names.
+`summary` is 3 to 6 sentences describing what the document covers."""
+
+OCR_PROMPT = "Transcribe all text in this image verbatim, preserving line breaks."
+
+TUTOR_SYSTEM = """You are {name}'s tutor for {course}. Ground every answer in the sources
+below and cite them as [<source title>, p.N]. If the sources don't cover it, say so instead
+of inventing an answer. Keep it short enough for a Telegram message.
+When the message is study content rather than a question — notes, a definition, something
+{name} wants kept — call `save_note` with the text and its topics instead of answering."""
+
 
 def build_context(store, now: datetime, awaiting: str | None = None) -> str:
     profile = store.profile()

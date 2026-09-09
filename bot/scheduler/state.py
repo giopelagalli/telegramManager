@@ -178,6 +178,8 @@ class RuntimeState:
     wake: WakeState | None = None
     briefing_override: dict[str, str] = field(default_factory=dict)
     pending_verify: PendingVerify | None = None
+    # source paths in the order the last /sources listing numbered them, for /summary <n>
+    last_sources_listing: list[str] = field(default_factory=list)
 
     def save(self, path: Path) -> None:
         path = Path(path)
@@ -192,6 +194,7 @@ class RuntimeState:
             "wake": _wake_to_json(self.wake),
             "briefing_override": self.briefing_override,
             "pending_verify": _pv_to_json(self.pending_verify),
+            "last_sources_listing": list(self.last_sources_listing),
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -212,6 +215,7 @@ class RuntimeState:
                 wake=_wake_from_json(data.get("wake")),
                 briefing_override=data.get("briefing_override", {}),
                 pending_verify=_pv_from_json(data.get("pending_verify")),
+                last_sources_listing=list(data.get("last_sources_listing", [])),
             )
         except Exception as exc:
             logger.warning("failed to load state from %s: %s", path, exc)

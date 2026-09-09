@@ -1,18 +1,30 @@
 from __future__ import annotations
 
+import json
 import re
 from base64 import b64encode
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 from typing import Callable
 
 from bot.agent.client import ModelClient, ToolCall
-from bot.agent.prompts import CAPTURE_SYSTEM, COMPOSE_SYSTEM, build_context
-from bot.agent.tools import TOOL_SCHEMAS, validate_call
-from bot.knowledge.models import Event, Goal, Todo
+from bot.agent.prompts import (
+    CAPTURE_SYSTEM,
+    COMPOSE_SYSTEM,
+    DESCRIBE_SOURCE_SYSTEM,
+    OCR_PROMPT,
+    TUTOR_SYSTEM,
+    build_context,
+)
+from bot.agent.tools import TOOL_SCHEMAS, TUTOR_TOOLS, validate_call
+from bot.knowledge.models import SOURCE_KINDS, Course, Event, Goal, Source, Todo
 from bot.knowledge.store import KnowledgeStore
+from bot.study.extract import guess_kind
 
 _RATE_SYSTEM = 'Rate whether the answer is specific or vague. Respond with exactly one word: SPECIFIC or VAGUE.'
+DESCRIBE_HEAD_CHARS = 12_000
+MAX_TOPICS = 10
 
 
 @dataclass
@@ -157,6 +169,72 @@ class Agent:
             return None, "could not parse vision response"
         return match.group(1).lower() == "true", text.strip()
 
+    async def describe_source(self, text_head: str, filename: str, course_title: str) -> dict:
+        """{title, kind, topics, summary} for an ingested file; falls back to the filename."""
+        messages = [
+            {
+                "role": "system",
+                "content": DESCRIBE_SOURCE_SYSTEM.format(
+                    course=course_title, kinds=", ".join(SOURCE_KINDS)
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Filename: {filename}\n\n{text_head[:DESCRIBE_HEAD_CHARS]}",
+            },
+        ]
+        for _attempt in range(2):
+            response = await self._chat_or_none(messages, None, 0.1)
+            if response is None:
+                break
+            described = _parse_description(response.text or "")
+            if described is not None:
+                return described
+        return {
+            "title": Path(filename).stem or filename,
+            "kind": guess_kind(filename, ""),
+            "topics": [],
+            "summary": "",
+        }
+
+    async def ocr(self, image: bytes) -> str | None:
+        if self.vision is None:
+            return None
+        data_url = f"data:image/jpeg;base64,{b64encode(image).decode()}"
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": OCR_PROMPT},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ]
+        try:
+            response = await self.vision.chat(messages, tools=None, temperature=0.0)
+        except Exception:
+            return None
+        return (response.text or "").strip() or None
+
+    async def tutor(
+        self, question: str, course: Course, sources: list[Source], notes_tool: bool = True
+    ) -> tuple[str | None, dict | None]:
+        """(answer, save_note arguments). Both None when the model is unreachable."""
+        profile = self.store.profile()
+        messages = [
+            {
+                "role": "system",
+                "content": TUTOR_SYSTEM.format(name=profile.name, course=course.title),
+            },
+            {"role": "system", "content": _render_sources(sources)},
+            {"role": "user", "content": question},
+        ]
+        response = await self._chat_or_none(messages, TUTOR_TOOLS if notes_tool else None, 0.3)
+        if response is None:
+            return None, None
+        note = next((_note_args(c) for c in response.tool_calls if c.name == "save_note"), None)
+        return (response.text or "").strip() or None, note
+
     async def rate_answer(self, question: str, answer: str) -> bool:
         try:
             response = await self.client.chat(
@@ -171,6 +249,48 @@ class Agent:
         except Exception:
             return True
         return "VAGUE" not in text
+
+
+def _parse_description(text: str) -> dict | None:
+    """The first {...} block, if it carries a known kind and a list of short topics."""
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match is None:
+        return None
+    try:
+        data = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or data.get("kind") not in SOURCE_KINDS:
+        return None
+    topics = data.get("topics", [])
+    if not isinstance(topics, list) or any(not isinstance(t, str) for t in topics):
+        return None
+    return {
+        "title": str(data.get("title", "")).strip(),
+        "kind": data["kind"],
+        "topics": [t.strip() for t in topics if t.strip()][:MAX_TOPICS],
+        "summary": str(data.get("summary", "")).strip(),
+    }
+
+
+def _note_args(call: ToolCall) -> dict | None:
+    text = call.arguments.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return None
+    topics = call.arguments.get("topics") or []
+    if not isinstance(topics, list):
+        topics = []
+    return {
+        "text": text.strip(),
+        "topics": [t.strip() for t in topics if isinstance(t, str) and t.strip()][:MAX_TOPICS],
+    }
+
+
+def _render_sources(sources: list[Source]) -> str:
+    if not sources:
+        return "Sources: none for this course yet."
+    blocks = [f"### {s.title} ({s.kind})\n{s.body}" for s in sources]
+    return "Sources:\n\n" + "\n\n".join(blocks)
 
 
 def _truncate(text: str, limit: int) -> str:

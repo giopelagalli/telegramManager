@@ -4,7 +4,7 @@ import pytest
 from bot.agent.client import FakeModelClient
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.models import Todo, Event, Channel, UNBOUND
+from bot.knowledge.models import Todo, Event, Channel, Course, Source, UNBOUND
 from bot.scheduler.state import RuntimeState
 from bot.scheduler.clock import FakeClock
 from bot.telegram.router import Router
@@ -121,3 +121,101 @@ async def test_channels_and_courses_listings(rig):
     text = (await r.command("channels", ""))[0].text
     assert "course:cs101 — Intro to CS" in text and "- review" in text
     assert "Intro to CS (cs101) — 0 topics" in (await r.command("courses", ""))[0].text
+
+
+CS101 = Channel(-100, 45, "course", "cs101")
+
+
+async def test_now_prefers_an_event_starting_within_90_minutes(rig):
+    r, store, _ = rig
+    store.add(Event(path="", title="Lab", start=NOW.replace(hour=15), travel_minutes=20))
+    store.commit("e")
+    assert (await r.command("now", ""))[0].text == "Get ready: Lab at 3:00pm, leave by 2:40pm."
+
+
+async def test_now_falls_back_to_the_top_todo(rig):
+    r, store, _ = rig
+    assert (await r.command("now", ""))[0].text == "Do this: T0"
+    store.add(Todo(path="", title="Paper", priority=1, due=NOW.date()))
+    store.commit("t")
+    assert (await r.command("now", ""))[0].text == "Do this: Paper (due Thu Sep 3)"
+
+
+async def test_now_when_nothing_is_pending(tmp_path):
+    from bot.agent.agent import Agent
+    from bot.agent.client import FakeModelClient
+    from bot.knowledge.store import KnowledgeStore
+    from bot.scheduler.clock import FakeClock
+    from bot.scheduler.state import RuntimeState
+    from bot.telegram.router import Router
+
+    clock = FakeClock(NOW)
+    store = KnowledgeStore(tmp_path / "k", clock=clock.now)
+    store.init()
+    r = Router(store, Agent(FakeModelClient([]), None, store, clock.now),
+               RuntimeState.load(tmp_path / "s.json"), clock, None)
+    assert (await r.command("now", ""))[0].text == "Nothing urgent. Pick something from /backlog or rest."
+
+
+async def test_sources_in_a_course_topic_then_summary(rig):
+    r, store, state = rig
+    await r.command("bind", "course CS101 Intro to CS", channel=TOPIC)
+    store.add_source(Source(path="", title="Chapter 4", course="cs101", kind="chapter", pages=12,
+                            summary="Pointers and the stack."))
+    store.add_source(Source(path="", title="Lecture 7", course="cs101", kind="slides", pages=30))
+    store.commit("ingest")
+
+    text = (await r.command("sources", "", channel=CS101))[0].text
+    assert text.splitlines() == [
+        "<b>Sources — Intro to CS</b>",
+        "1. Chapter 4 (chapter, 12 pages)",
+        "2. Lecture 7 (slides, 30 pages)",
+    ]
+    assert len(state.last_sources_listing) == 2
+    assert (await r.command("summary", "1"))[0].text == "<b>Chapter 4</b>\nPointers and the stack."
+    assert "No summary" in (await r.command("summary", "2"))[0].text
+    assert "no 3 in the last" in (await r.command("summary", "3"))[0].text
+
+
+async def test_sources_everywhere_are_grouped_by_course(rig):
+    r, store, state = rig
+    assert "No sources yet" in (await r.command("sources", ""))[0].text
+    assert "Run /sources first" in (await r.command("summary", "1"))[0].text
+
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    store.add_course(Course(path="courses/phys1.md", title="Physics"))
+    store.add_source(Source(path="", title="Chapter 4", course="cs101", kind="chapter"))
+    store.add_source(Source(path="", title="Waves", course="phys1", kind="notes"))
+    store.commit("ingest")
+
+    text = (await r.command("sources", ""))[0].text
+    assert text.splitlines() == [
+        "<b>Intro to CS</b>",
+        "1. Chapter 4 (chapter)",
+        "<b>Physics</b>",
+        "2. Waves (notes)",
+    ]
+    assert "Which one?" in (await r.command("summary", "later"))[0].text
+
+
+async def test_move_sends_the_last_source_to_another_course(rig):
+    r, store, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    store.add_course(Course(path="courses/phys1.md", title="Physics"))
+    store.add_source(Source(path="", title="Waves", course="cs101"))
+    store.commit("ingest: Waves")
+
+    out = (await r.command("move", "phys1", channel=CS101))[0]
+    assert out.text == "Moved Waves to Physics."
+    assert store.sources("cs101") == []
+    assert store.sources("phys1")[0].course == "phys1"
+    assert _subject(store) == "move: Waves -> phys1"
+
+
+async def test_move_refuses_outside_a_course_or_without_a_target(rig):
+    r, store, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    assert (await r.command("move", "phys1", channel=DM))[0].text == "Run /move inside a course topic."
+    assert "&lt;slug&gt;" in (await r.command("move", "", channel=CS101))[0].text
+    assert "No course phys9" in (await r.command("move", "phys9", channel=CS101))[0].text
+    assert (await r.command("move", "cs101", channel=CS101))[0].text == "Nothing to move here."

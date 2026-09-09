@@ -43,6 +43,7 @@ class FakeRouter:
         self.outs = outs or []
         self.callbacks = []
         self.channels = []
+        self.documents = []
         self.store = store or FakeStore()
 
     async def on_text(self, text, via_voice=False, *, channel=None):
@@ -52,6 +53,10 @@ class FakeRouter:
     async def on_callback(self, data, message_id=None, message_html=None, buttons=None, *, channel=None):
         self.callbacks.append((data, message_id, message_html, buttons))
         return self.outs
+
+    async def on_document(self, data, filename, mime, caption=None, *, channel=None):
+        self.documents.append((data, filename, mime, caption, channel))
+        return [Outbound("stored", kind="reply")]
 
 
 def _rig(outcome="captured", outs=None, store=None):
@@ -146,3 +151,42 @@ async def _noop():
 def _record(sink, kwargs):
     sink.append(kwargs)
     return _noop()
+
+
+class FakeFile:
+    def __init__(self, data):
+        self.data = data
+
+    async def download_as_bytearray(self):
+        return bytearray(self.data)
+
+
+def _document_update(chat_id=-100, thread_id=45):
+    document = SimpleNamespace(
+        file_name="ch4.pdf",
+        mime_type="application/pdf",
+        get_file=lambda: _wrap(FakeFile(b"%PDF")),
+    )
+    message = SimpleNamespace(
+        chat_id=chat_id, message_id=7, message_thread_id=thread_id,
+        document=document, caption="chapter 4",
+    )
+    chat = SimpleNamespace(id=chat_id, type="supergroup")
+    return SimpleNamespace(effective_message=message, effective_chat=chat)
+
+
+async def test_document_is_downloaded_and_routed_with_its_channel():
+    channels = Channels()
+    channels.bind(Channel(-100, 45, "course", "cs101"))
+    handlers, bot, sender, router = _rig(store=FakeStore(channels))
+    await handlers.on_document(_document_update(), None)
+    assert router.documents == [
+        (b"%PDF", "ch4.pdf", "application/pdf", "chapter 4", Channel(-100, 45, "course", "cs101"))
+    ]
+    assert [emoji for _, _, emoji in bot.reactions] == ["👀", "✅"]
+    assert bot.actions == [(-100, "typing")]
+    assert len(sender.sent) == 1
+
+
+async def _wrap(value):
+    return value

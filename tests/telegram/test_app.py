@@ -45,15 +45,15 @@ def _update(user_id: int, **content) -> Update:
 def test_build_application_registers_every_handler():
     app = build_application(FakeSettings(), router=None, sender=None)
     registered = app.handlers[0]
-    # one per command, plus text, voice, photo, location, callback
-    assert len(registered) == len(COMMANDS) + 5
+    # one per command, plus text, voice, photo, document, location, callback
+    assert len(registered) == len(COMMANDS) + 6
     assert app.error_handlers
 
 
 def test_message_handlers_accept_only_the_owner():
     app = build_application(FakeSettings(), router=None, sender=None)
     message_handlers = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
-    assert len(message_handlers) == 4
+    assert len(message_handlers) == 5
 
     for kind, content in CONTENT.items():
         mine = _update(MINE, **content)

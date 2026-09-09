@@ -5,7 +5,16 @@ from datetime import datetime, time, timedelta
 
 from bot.knowledge.models import Channel, Course, slugify
 from bot.knowledge.ranking import top
-from bot.knowledge.views import esc, fmt_time, render_backlog, render_goals, render_today, render_todo, render_week
+from bot.knowledge.views import (
+    esc,
+    fmt_day,
+    fmt_time,
+    render_backlog,
+    render_goals,
+    render_today,
+    render_todo,
+    render_week,
+)
 from bot.scheduler.briefings import send_morning
 from bot.scheduler.outbound import Outbound
 
@@ -13,6 +22,8 @@ DEFAULT_PAUSE_MINUTES = 120
 BIND_KINDS = ("assignments", "exams", "review")
 BIND_USAGE = "Usage: /bind course <CODE> <title>, /bind assignments, /bind exams or /bind review."
 BIND_IN_DM = "Bind topics inside your group, not here."
+MOVE_USAGE = "Usage: /move <slug> — the course slug from /courses."
+NOW_LEAD_MINUTES = 90
 
 COMMANDS: list[tuple[str, str]] = [
     ("todo", "Top 5 open todos (/todo all for everything)"),
@@ -20,8 +31,12 @@ COMMANDS: list[tuple[str, str]] = [
     ("goals", "Active goals and progress"),
     ("today", "Today's events and top todos"),
     ("week", "The next 7 days"),
+    ("now", "The one thing to do right now"),
     ("brief", "Morning briefing now (/brief 9am to shift today's)"),
     ("courses", "Courses and their topic counts"),
+    ("sources", "Course material stored here"),
+    ("summary", "Summary of a source from the last /sources (/summary 2)"),
+    ("move", "Move the last ingested source to another course (/move cs101)"),
     ("channels", "Which topic is bound to what"),
     ("bind", "Bind this topic (/bind course CS101 Intro to CS)"),
     ("unbind", "Unbind this topic"),
@@ -62,8 +77,20 @@ async def handle(
     if name == "week":
         return [Outbound(render_week(store.events(), store.profile(), now), kind="reply")]
 
+    if name == "now":
+        return [Outbound(_render_now(store, now), kind="reply")]
+
     if name == "brief":
         return await _brief(arg, store, agent, state, now)
+
+    if name == "sources":
+        return [Outbound(_render_sources(store, state, channel), kind="reply")]
+
+    if name == "summary":
+        return [Outbound(_render_summary(arg, store, state), kind="reply")]
+
+    if name == "move":
+        return _move(arg, store, channel)
 
     if name == "courses":
         return [Outbound(_render_courses(store.courses()), kind="reply")]
@@ -115,6 +142,85 @@ async def _brief(arg: str, store, agent, state, now: datetime) -> list[Outbound]
     state.briefing_override[f"morning:{day}"] = f"{at.hour:02d}:{at.minute:02d}"
     when = datetime.combine(day, at, tzinfo=store.profile().tz)
     return [Outbound(f"Morning briefing moved to {fmt_time(when)} today.", kind="reply")]
+
+
+def _render_now(store, now: datetime) -> str:
+    """One deterministic line: the next thing, no model involved."""
+    profile = store.profile()
+    soon = [
+        e
+        for e in store.events()
+        if e.status == "upcoming" and timedelta() <= e.start - now <= timedelta(minutes=NOW_LEAD_MINUTES)
+    ]
+    if soon:
+        event = min(soon, key=lambda e: e.start)
+        leave_by = event.times(profile).leave_by
+        return f"Get ready: {esc(event.title)} at {fmt_time(event.start)}, leave by {fmt_time(leave_by)}."
+
+    ranked = top(store.todos(), now.date(), 1)
+    if ranked:
+        todo = ranked[0]
+        due = f" (due {fmt_day(todo.due)})" if todo.due else ""
+        return f"Do this: {esc(todo.title)}{due}"
+    return "Nothing urgent. Pick something from /backlog or rest."
+
+
+def _render_sources(store, state, channel: Channel | None) -> str:
+    slug = channel.course if channel is not None and channel.kind == "course" else None
+    sources = store.sources(slug)
+    if not sources:
+        return "No sources yet. Drop a PDF, slides or a photo in a course topic."
+
+    state.last_sources_listing = [s.path for s in sources]
+    titles = {c.slug: c.title for c in store.courses()}
+    lines: list[str] = []
+    if slug is not None:
+        lines.append(f"<b>Sources — {esc(titles.get(slug, slug))}</b>")
+    current = None
+    for i, source in enumerate(sources, 1):
+        if slug is None and source.course != current:
+            current = source.course
+            lines.append(f"<b>{esc(titles.get(current, current))}</b>")
+        pages = f", {source.pages} pages" if source.pages else ""
+        lines.append(f"{i}. {esc(source.title)} ({esc(source.kind)}{pages})")
+    return "\n".join(lines)
+
+
+def _render_summary(arg: str, store, state) -> str:
+    if not state.last_sources_listing:
+        return "Run /sources first, then /summary 2."
+    try:
+        index = int(arg)
+    except ValueError:
+        return "Which one? Try /summary 2."
+    if not 1 <= index <= len(state.last_sources_listing):
+        return f"There's no {index} in the last /sources list."
+    try:
+        source = store.get_source(state.last_sources_listing[index - 1])
+    except KeyError:
+        return "That source is gone. Run /sources again."
+    summary = source.summary.strip() or "No summary was written for this one."
+    return f"<b>{esc(source.title)}</b>\n{esc(summary)}"
+
+
+def _move(arg: str, store, channel: Channel | None) -> list[Outbound]:
+    if channel is None or channel.kind != "course":
+        return [Outbound("Run /move inside a course topic.", kind="reply")]
+    slug = slugify(arg)
+    if not slug:
+        return [Outbound(esc(MOVE_USAGE), kind="reply")]
+    try:
+        course = store.get_course(slug)
+    except KeyError:
+        return [Outbound(f"No course {esc(slug)}. Run /courses to see them.", kind="reply")]
+
+    sources = store.sources(channel.course)
+    if not sources:
+        return [Outbound("Nothing to move here.", kind="reply")]
+    latest = max(sources, key=lambda s: (s.timestamp.timestamp() if s.timestamp else 0.0, s.path))
+    store.move_source(latest.path, slug)
+    store.commit(f"move: {latest.title} -> {slug}")
+    return [Outbound(f"Moved {esc(latest.title)} to {esc(course.title)}.", kind="reply")]
 
 
 def _render_courses(courses) -> str:

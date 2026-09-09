@@ -38,6 +38,7 @@ def build_application(settings, router, sender, transcriber=None) -> Application
     app.add_handler(MessageHandler(only_me & filters.TEXT & ~filters.COMMAND, handlers.on_text))
     app.add_handler(MessageHandler(only_me & filters.VOICE, handlers.on_voice))
     app.add_handler(MessageHandler(only_me & filters.PHOTO, handlers.on_photo))
+    app.add_handler(MessageHandler(only_me & filters.Document.ALL, handlers.on_document))
     app.add_handler(MessageHandler(only_me & filters.LOCATION, handlers.on_location))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_error_handler(on_error)
