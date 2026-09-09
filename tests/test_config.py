@@ -29,3 +29,17 @@ def test_missing_required_raises_with_name():
     env = dict(BASE); del env["TELEGRAM_BOT_TOKEN"]
     with pytest.raises(ValueError, match="TELEGRAM_BOT_TOKEN"):
         Settings.from_env(env)
+
+def test_fallback_partial_raises():
+    env = dict(BASE, FALLBACK_BASE_URL="http://f/v1")
+    with pytest.raises(ValueError, match="must be set together"):
+        Settings.from_env(env)
+
+def test_fallback_all_three_set():
+    env = dict(BASE, FALLBACK_BASE_URL="http://f/v1", FALLBACK_API_KEY="k", FALLBACK_MODEL="m")
+    s = Settings.from_env(env)
+    assert (s.fallback_base_url, s.fallback_api_key, s.fallback_model) == ("http://f/v1", "k", "m")
+
+def test_whisper_model_default_and_override():
+    assert Settings.from_env(BASE).whisper_model == "small"
+    assert Settings.from_env(dict(BASE, WHISPER_MODEL="base")).whisper_model == "base"

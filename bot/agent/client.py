@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
+import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
+import openai
 from openai import NOT_GIVEN, AsyncOpenAI
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,8 +35,15 @@ class ModelClient(Protocol):
 
 
 class OpenAIModelClient:
-    def __init__(self, base_url: str, api_key: str, model: str, enable_thinking: bool | None = None):
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        enable_thinking: bool | None = None,
+        timeout: float = 120.0,
+    ):
+        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
         self._model = model
         self._enable_thinking = enable_thinking
 
@@ -60,6 +73,53 @@ class OpenAIModelClient:
                 arguments = {"__invalid_json__": tc.function.arguments}
             tool_calls.append(ToolCall(name=tc.function.name, arguments=arguments))
         return ModelResponse(text=message.content, tool_calls=tool_calls)
+
+
+_FALLBACK_ERRORS = (
+    openai.APIConnectionError,
+    openai.APITimeoutError,
+    openai.InternalServerError,
+    asyncio.TimeoutError,
+)
+
+
+class FallbackModelClient:
+    """Routes to a secondary client while the primary looks unreachable."""
+
+    def __init__(
+        self,
+        primary: ModelClient,
+        fallback: ModelClient,
+        cooldown_seconds: float = 600.0,
+        clock: Callable[[], float] = time.monotonic,
+    ):
+        self._primary = primary
+        self._fallback = fallback
+        self._cooldown_seconds = cooldown_seconds
+        self._clock = clock
+        self._open_until = 0.0
+
+    @property
+    def breaker_open(self) -> bool:
+        return self._clock() < self._open_until
+
+    async def chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        temperature: float = 0.2,
+    ) -> ModelResponse:
+        if not self.breaker_open:
+            try:
+                return await self._primary.chat(messages, tools, temperature)
+            except _FALLBACK_ERRORS as exc:
+                self._open_until = self._clock() + self._cooldown_seconds
+                logger.warning(
+                    "primary model unreachable (%s); falling back for %.0fs",
+                    type(exc).__name__,
+                    self._cooldown_seconds,
+                )
+        return await self._fallback.chat(messages, tools, temperature)
 
 
 class FakeModelClient:

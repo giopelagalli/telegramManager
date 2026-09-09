@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from bot.agent.agent import Agent
-from bot.agent.client import OpenAIModelClient
+from bot.agent.client import FallbackModelClient, ModelClient, OpenAIModelClient
 from bot.config import Settings
 from bot.knowledge.store import KnowledgeStore
 from bot.maps.client import MapsClient
@@ -35,11 +35,11 @@ def _synthesizer() -> tts.Synthesizer | None:
     return tts.Synthesizer(model_path, voices_path)
 
 
-def _transcriber() -> stt.Transcriber | None:
+def _transcriber(model_size: str) -> stt.Transcriber | None:
     if not stt.available():
         logger.warning("voice input off: faster-whisper not installed")
         return None
-    return stt.Transcriber()
+    return stt.Transcriber(model_size=model_size)
 
 
 def main() -> None:
@@ -59,12 +59,22 @@ def main() -> None:
     state_path = settings.data_dir / "state.json"
     state = RuntimeState.load(state_path)
 
-    client = OpenAIModelClient(
+    client: ModelClient = OpenAIModelClient(
         settings.openai_base_url,
         settings.openai_api_key,
         settings.chat_model,
         enable_thinking=settings.chat_enable_thinking,
     )
+    if settings.fallback_base_url:
+        client = FallbackModelClient(
+            client,
+            OpenAIModelClient(
+                settings.fallback_base_url,
+                settings.fallback_api_key,
+                settings.fallback_model,
+                enable_thinking=None,
+            ),
+        )
     vision = (
         OpenAIModelClient(
             settings.vision_base_url or settings.openai_base_url,
@@ -82,7 +92,7 @@ def main() -> None:
     router = Router(store, agent, state, clock, maps)
     engine = Engine(store, agent, state, state_path, clock, sender, maps)
 
-    application = build_application(settings, router, sender, _transcriber())
+    application = build_application(settings, router, sender, _transcriber(settings.whisper_model))
     sender.bot = application.bot
 
     set_my_commands = application.post_init
