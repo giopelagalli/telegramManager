@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Idempotent install for the Telegram assistant on the Spark. Run from the
-# repo root as giospark1: bash deploy/install.sh
+# Idempotent install for the Telegram assistant. Run from the repo root:
+# bash deploy/install.sh
 set -euo pipefail
 
 if [[ ! -d .venv ]]; then
@@ -16,8 +16,11 @@ if [[ ! -f .env ]]; then
 fi
 chmod 600 .env
 
-cat <<EOF
+sed -e "s|__USER__|$USER|g" -e "s|__ROOT__|$(pwd)|g" \
+  deploy/assistant.service > deploy/assistant.service.generated
+
+cat <<MSG
 
 To install and start the systemd unit, run:
-  sudo cp deploy/spark-assistant.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now spark-assistant
-EOF
+  sudo cp $(pwd)/deploy/assistant.service.generated /etc/systemd/system/assistant.service && sudo systemctl daemon-reload && sudo systemctl enable --now assistant
+MSG

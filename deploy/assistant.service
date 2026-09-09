@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram personal assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=__USER__
+WorkingDirectory=__ROOT__
+EnvironmentFile=__ROOT__/.env
+ExecStart=__ROOT__/.venv/bin/python3 -m bot
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
