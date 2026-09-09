@@ -44,6 +44,7 @@ class FakeRouter:
         self.callbacks = []
         self.channels = []
         self.documents = []
+        self.too_large = []
         self.store = store or FakeStore()
 
     async def on_text(self, text, via_voice=False, *, channel=None):
@@ -57,6 +58,10 @@ class FakeRouter:
     async def on_document(self, data, filename, mime, caption=None, *, channel=None):
         self.documents.append((data, filename, mime, caption, channel))
         return [Outbound("stored", kind="reply")]
+
+    async def on_file_too_large(self, *, channel=None):
+        self.too_large.append(channel)
+        return [Outbound("too big", kind="reply")]
 
 
 def _rig(outcome="captured", outs=None, store=None):
@@ -190,3 +195,29 @@ async def test_document_is_downloaded_and_routed_with_its_channel():
 
 async def _wrap(value):
     return value
+
+
+async def test_a_document_over_the_cap_is_not_downloaded():
+    channels = Channels()
+    channels.bind(Channel(-100, 45, "course", "cs101"))
+    handlers, bot, sender, router = _rig(store=FakeStore(channels))
+    update = _document_update()
+    update.effective_message.document.file_size = 21 * 1024 * 1024
+    update.effective_message.document.get_file = _boom
+
+    await handlers.on_document(update, None)
+    assert router.documents == [] and router.too_large == [Channel(-100, 45, "course", "cs101")]
+    assert len(sender.sent) == 1
+
+
+async def test_a_document_in_an_unbound_topic_is_not_downloaded():
+    handlers, bot, sender, router = _rig()
+    update = _document_update()
+    update.effective_message.document.get_file = _boom
+
+    await handlers.on_document(update, None)
+    assert router.documents == [(b"", "", "", None, Channel(-100, 45, UNBOUND))]
+
+
+def _boom():
+    raise AssertionError("the file must not be downloaded")

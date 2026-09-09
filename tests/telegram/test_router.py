@@ -387,3 +387,19 @@ async def test_tutor_says_so_when_the_model_is_down(rig):
     outs = await router.on_text("what is a pointer?", channel=COURSE)  # no queued response -> IndexError
     assert outs[0].text == "The model is offline; ask again in a bit."
     assert store.sources("cs101") == []
+
+
+async def test_a_file_over_the_download_cap_is_refused(rig):
+    router, store, client, state, _ = rig
+    outs = await router.on_file_too_large(channel=COURSE)
+    assert outs[0].text == (
+        "That file is over Telegram's 20 MB bot limit. Split it or send a smaller export."
+    )
+    assert outs[0].channel == "course:cs101" and client.calls == []
+
+
+async def test_a_file_over_the_cap_in_an_unbound_topic_only_warns_once(rig):
+    router, store, client, state, _ = rig
+    unbound = Channel(-100, 46, UNBOUND)
+    assert (await router.on_file_too_large(channel=unbound))[0].text == esc(UNBOUND_REPLY)
+    assert await router.on_file_too_large(channel=unbound) == []

@@ -19,7 +19,9 @@ on (see README §1.3 for the full table).
    promote it to admin (group settings → Administrators → Add Admin), so it
    sees every message. Create one topic per course plus `assignments`,
    `exams` and `review`, and run `/bind` inside each (README §7). Nothing to
-   put in `.env` — the bindings live in `knowledge/channels.md`.
+   put in `.env` — the bindings live in `knowledge/channels.md`. Telegram
+   only lets a bot download files up to 20 MB, so split anything bigger
+   before sending it; the bot says so instead of ingesting it.
 
 4. **Fireworks API key.** Sign in at
    [app.fireworks.ai](https://app.fireworks.ai) → click your account (top

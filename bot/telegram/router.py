@@ -33,6 +33,9 @@ NOTE_TITLE_CHARS = 60
 NOTE_SUMMARY_CHARS = 300
 UNREADABLE_REPLY = "Stored the file but couldn't read it."
 TUTOR_OFFLINE_REPLY = "The model is offline; ask again in a bit."
+TOO_LARGE_REPLY = (
+    "That file is over Telegram's 20 MB bot limit. Split it or send a smaller export."
+)
 UNBOUND_REPLY = (
     "This topic isn't bound yet. Run /bind course <CODE> <title>, /bind assignments, "
     "/bind exams, or /bind review here."
@@ -181,6 +184,14 @@ class Router:
         if not _is_course(channel):
             return []
         return self._tag(await self._ingest_document(data, filename, mime, caption, channel), channel)
+
+    async def on_file_too_large(self, *, channel: Channel | None = None) -> list[Outbound]:
+        """The handler saw the size before downloading; nothing was fetched."""
+        ignored = self._ignore_unbound(channel)
+        if ignored is not None:
+            return ignored
+        self._touch()
+        return self._tag([Outbound(esc(TOO_LARGE_REPLY), kind="reply")], channel)
 
     async def _photo(self, image: bytes) -> list[Outbound]:
         now = self._touch()

@@ -262,7 +262,8 @@ since `qwen3.8-flash-next` accepts images — or are stored with just their
 caption if no vision model is configured. The model then writes a title,
 kind, topics and a short summary, and the bot replies with what it stored. A
 file it can't read is kept as-is under `sources/<course>/raw/` and it says
-so. Everything is one commit, so `/undo` works.
+so. Everything is one commit, so `/undo` works. Telegram caps bot downloads
+at **20 MB**: a bigger file is refused with a note asking you to split it.
 
 **Tutoring.** Plain text or a voice note in a course topic is answered from
 that course's sources, cited by page. If the message is study content rather

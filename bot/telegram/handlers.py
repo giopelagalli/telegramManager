@@ -11,6 +11,8 @@ from bot.knowledge.views import esc
 logger = logging.getLogger(__name__)
 
 LOW_CONFIDENCE = -0.8
+# What a bot may download through the Telegram API.
+FILE_LIMIT_BYTES = 20 * 1024 * 1024
 SEEN = "👀"
 OUTCOME_EMOJI = {"captured": "✅", "handled": "✅", "inbox": "❌"}
 
@@ -102,7 +104,11 @@ class Handlers:
     async def on_photo(self, update, context) -> None:
         message = update.effective_message
         await self._react(message, SEEN)
-        file = await message.photo[-1].get_file()
+        photo = message.photo[-1]
+        if _too_large(getattr(photo, "file_size", None)):
+            await self._send(await self.router.on_file_too_large(channel=self._channel(update)))
+            return
+        file = await photo.get_file()
         image = await file.download_as_bytearray()
         outs = await self.router.on_photo(
             bytes(image), message.caption, channel=self._channel(update)
@@ -113,7 +119,15 @@ class Handlers:
     async def on_document(self, update, context) -> None:
         message = update.effective_message
         document = message.document
+        channel = self._channel(update)
         await self._react(message, SEEN)
+        if channel is None or channel.kind != "course":
+            # Only a course topic ingests files; nothing else reads the bytes.
+            await self._send(await self.router.on_document(b"", "", "", None, channel=channel))
+            return
+        if _too_large(getattr(document, "file_size", None)):
+            await self._send(await self.router.on_file_too_large(channel=channel))
+            return
         await self._typing(message)
         file = await document.get_file()
         data = await file.download_as_bytearray()
@@ -122,7 +136,7 @@ class Handlers:
             document.file_name or "",
             document.mime_type or "",
             message.caption,
-            channel=self._channel(update),
+            channel=channel,
         )
         await self._outcome(message)
         await self._send(outs)
@@ -149,6 +163,10 @@ class Handlers:
         toast = next((out.toast for out in outs if out.toast), None)
         await query.answer(text=toast) if toast else await query.answer()
         await self._send(outs)
+
+
+def _too_large(size: int | None) -> bool:
+    return size is not None and size > FILE_LIMIT_BYTES
 
 
 def _buttons(message) -> list[tuple[str, str]] | None:
