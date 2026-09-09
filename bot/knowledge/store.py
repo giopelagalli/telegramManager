@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import threading
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
@@ -13,6 +14,7 @@ from bot.knowledge.models import (
     Event,
     Goal,
     Profile,
+    Source,
     Todo,
     dump_frontmatter,
     slugify,
@@ -20,7 +22,10 @@ from bot.knowledge.models import (
 
 logger = logging.getLogger(__name__)
 
-_FOLDERS = ["todos", "backlog", "goals", "schedule", "inbox", "courses"]
+# A source longer than this is split across `-part-N.md` files sharing a group.
+SOURCE_SPLIT_CHARS = 200_000
+
+_FOLDERS = ["todos", "backlog", "goals", "schedule", "inbox", "courses", "sources"]
 _DEFAULT_FOLDER = {Todo: "todos", Event: "schedule", Goal: "goals"}
 _ROOT_INDEX = """# Knowledge Bundle
 
@@ -29,10 +34,27 @@ _ROOT_INDEX = """# Knowledge Bundle
 - [goals](goals/index.md) — ongoing goals
 - [schedule](schedule/index.md) — calendar events
 - [courses](courses/index.md) — courses and their topics
+- [sources](sources/index.md) — course material, by course
 
 See `profile.md` for personal settings, `channels.md` for topic bindings and
 `log.md` for the action history.
 """
+
+
+def _split_body(body: str, limit: int) -> list[str]:
+    """Whole lines, each chunk at most `limit` characters (a longer single line stays whole)."""
+    if len(body) <= limit:
+        return [body]
+    chunks: list[str] = []
+    current = ""
+    for line in body.splitlines(keepends=True):
+        if current and len(current) + len(line) > limit:
+            chunks.append(current)
+            current = ""
+        current += line
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 class KnowledgeStore:
@@ -181,6 +203,81 @@ class KnowledgeStore:
         self.log("add", course.path)
         return course.path
 
+    def _course_folders(self) -> list[str]:
+        root = self.root / "sources"
+        if not root.exists():
+            return []
+        return sorted(p.name for p in root.iterdir() if p.is_dir())
+
+    def sources(self, course: str | None = None) -> list[Source]:
+        broken: list[str] = []
+        items: list[Source] = []
+        for name in [course] if course is not None else self._course_folders():
+            if not (self.root / "sources" / name).is_dir():
+                continue
+            items += self._load_folder(f"sources/{name}", Source, broken)
+        self.broken_files = broken
+        return sorted(items, key=lambda s: s.path)
+
+    def get_source(self, path: str) -> Source:
+        return Source.from_markdown(path, self._read(path))
+
+    def add_source(self, source: Source) -> str:
+        """Write a source under its course, splitting very long bodies into parts."""
+        source.timestamp = self.clock()
+        folder = f"sources/{source.course}"
+        (self.root / folder).mkdir(parents=True, exist_ok=True)
+        stem = f"{source.timestamp.date():%Y-%m-%d}-{slugify(source.title)}"
+        chunks = _split_body(source.body, SOURCE_SPLIT_CHARS)
+
+        if len(chunks) == 1:
+            path = self._avoid_collision(folder, stem)
+            source.path = path
+            (self.root / path).write_text(source.to_markdown())
+            self.log("add", path)
+            return path
+
+        source.group = self._free_group(folder, stem)
+        for i, chunk in enumerate(chunks, 1):
+            part = replace(source, path=f"{folder}/{source.group}-part-{i}.md", body=chunk)
+            (self.root / part.path).write_text(part.to_markdown())
+            self.log("add", part.path)
+            if i == 1:
+                source.path = part.path
+        return source.path
+
+    def _free_group(self, folder: str, stem: str) -> str:
+        suffix = 1
+        while True:
+            group = stem if suffix == 1 else f"{stem}-{suffix}"
+            if not (self.root / folder / f"{group}-part-1.md").exists():
+                return group
+            suffix += 1
+
+    def keep_raw(self, course: str, filename: str, data: bytes) -> str:
+        """Park a file we couldn't extract next to the course's sources."""
+        folder = f"sources/{course}/raw"
+        (self.root / folder).mkdir(parents=True, exist_ok=True)
+        name = Path(filename).name
+        stem = Path(name).stem or "file"
+        path = self._avoid_collision(folder, stem, Path(name).suffix)
+        (self.root / path).write_bytes(data)
+        self.log("add", path)
+        return path
+
+    def move_source(self, path: str, course: str) -> str:
+        new_folder = f"sources/{course}"
+        (self.root / new_folder).mkdir(parents=True, exist_ok=True)
+        name = path.rsplit("/", 1)[-1]
+        new_path = self._avoid_collision(new_folder, name[:-3] if name.endswith(".md") else name)
+        self._git("mv", path, new_path)
+        source = self.get_source(new_path)
+        source.path = new_path
+        source.course = course
+        (self.root / new_path).write_text(source.to_markdown())
+        self.log("move", f"{path} -> {new_path}")
+        return new_path
+
     def get_todo(self, path: str) -> Todo:
         return Todo.from_markdown(path, self._read(path))
 
@@ -263,6 +360,7 @@ class KnowledgeStore:
         self._write_schedule_index()
         self._write_goal_index()
         self._write_course_index()
+        self._write_source_index()
 
     def _write_todo_index(self, folder: str) -> None:
         lines = [f"# {folder.capitalize()}\n"]
@@ -295,6 +393,19 @@ class KnowledgeStore:
             term = item.term or "no term"
             lines.append(f"- [{item.title}]({name}) — {term}, {len(item.topics)} topics")
         (self.root / "courses" / "index.md").write_text("\n".join(lines) + "\n")
+
+    def _write_source_index(self) -> None:
+        folder = self.root / "sources"
+        if not folder.exists():
+            return
+        lines = ["# Sources\n"]
+        for course in self._course_folders():
+            lines.append(f"\n## {course}\n")
+            for item in self._load_folder(f"sources/{course}", Source, []):
+                name = item.path.rsplit("/", 1)[-1]
+                pages = f"{item.pages} pages" if item.pages else "no page count"
+                lines.append(f"- [{item.title}]({course}/{name}) — {item.kind}, {pages}")
+        (folder / "index.md").write_text("\n".join(lines) + "\n")
 
     # -- commit / undo -----------------------------------------------------
 

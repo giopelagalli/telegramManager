@@ -177,6 +177,56 @@ class Course:
         )
 
 
+SOURCE_KINDS = ("slides", "chapter", "paper", "notes", "photo", "hw-spec", "other")
+
+
+@dataclass
+class Source:
+    path: str
+    title: str
+    course: str
+    kind: str = "other"
+    topics: list[str] = field(default_factory=list)
+    summary: str = ""
+    pages: int | None = None
+    group: str | None = None
+    ocr: str | None = None
+    timestamp: datetime | None = None
+    body: str = ""
+
+    def to_markdown(self) -> str:
+        meta: dict = {"type": "source", "title": self.title, "course": self.course, "kind": self.kind}
+        meta["topics"] = self.topics
+        meta["summary"] = self.summary
+        if self.pages is not None:
+            meta["pages"] = self.pages
+        if self.group is not None:
+            meta["group"] = self.group
+        if self.ocr is not None:
+            meta["ocr"] = self.ocr
+        if self.timestamp is not None:
+            meta["timestamp"] = self.timestamp
+        return dump_frontmatter(meta, self.body)
+
+    @classmethod
+    def from_markdown(cls, path: str, text: str) -> "Source":
+        meta, body = parse_frontmatter(text)
+        timestamp = meta.get("timestamp")
+        return cls(
+            path=path,
+            title=meta.get("title", ""),
+            course=meta.get("course", ""),
+            kind=meta.get("kind", "other"),
+            topics=list(meta.get("topics", [])),
+            summary=meta.get("summary", ""),
+            pages=meta.get("pages"),
+            group=meta.get("group"),
+            ocr=meta.get("ocr"),
+            timestamp=_parse_datetime(timestamp, "timestamp") if timestamp is not None else None,
+            body=body,
+        )
+
+
 @dataclass
 class Todo:
     path: str

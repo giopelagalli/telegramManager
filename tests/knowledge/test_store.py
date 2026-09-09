@@ -2,7 +2,7 @@ import subprocess
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import pytest
-from bot.knowledge.models import Todo, Event, Goal, Profile, Channel, Channels, Course
+from bot.knowledge.models import Todo, Event, Goal, Profile, Channel, Channels, Course, Source
 from bot.knowledge.store import KnowledgeStore
 
 NY = ZoneInfo("America/New_York")
@@ -156,3 +156,50 @@ def test_course_index_is_regenerated(store):
     idx = (store.root / "courses" / "index.md").read_text()
     assert "Intro to CS" in idx and "2 topics" in idx
     assert "courses/index.md" in (store.root / "index.md").read_text()
+
+def test_add_and_list_sources_by_course(store):
+    path = store.add_source(Source(path="", title="Lecture 7", course="cs101", kind="slides", pages=30))
+    assert path == "sources/cs101/2026-09-03-lecture-7.md"
+    assert store.get_source(path).pages == 30 and store.get_source(path).timestamp == T0
+    store.add_source(Source(path="", title="Lecture 7", course="cs101"))
+    store.add_source(Source(path="", title="Waves", course="phys1"))
+    assert [s.title for s in store.sources("cs101")] == ["Lecture 7", "Lecture 7"]
+    assert {s.path for s in store.sources("cs101")} == {
+        "sources/cs101/2026-09-03-lecture-7.md", "sources/cs101/2026-09-03-lecture-7-2.md"}
+    assert [s.course for s in store.sources()] == ["cs101", "cs101", "phys1"]
+    assert store.sources("nope") == []
+
+def test_long_sources_are_split_into_parts_sharing_a_group(store):
+    body = "\n".join("line " + str(i) for i in range(25000))
+    assert 200_000 < len(body) < 400_000
+    path = store.add_source(Source(path="", title="Big", course="cs101", body=body))
+    assert path == "sources/cs101/2026-09-03-big-part-1.md"
+    parts = store.sources("cs101")
+    assert [p.path.rsplit("/", 1)[-1] for p in parts] == ["2026-09-03-big-part-1.md", "2026-09-03-big-part-2.md"]
+    assert {p.group for p in parts} == {"2026-09-03-big"}
+    assert all(len(p.body) <= 200_000 for p in parts)
+    assert "".join(p.body for p in parts).replace("\n", "") == body.replace("\n", "")
+
+def test_keep_raw_parks_the_original_file(store):
+    path = store.keep_raw("cs101", "notes.epub", b"binary")
+    assert path == "sources/cs101/raw/notes.epub"
+    assert (store.root / path).read_bytes() == b"binary"
+    assert store.keep_raw("cs101", "notes.epub", b"again") == "sources/cs101/raw/notes-2.epub"
+    assert store.sources("cs101") == []
+
+def test_source_index_is_regenerated(store):
+    store.add_source(Source(path="", title="Lecture 7", course="cs101", kind="slides", pages=30))
+    store.commit("ingest: Lecture 7")
+    idx = (store.root / "sources" / "index.md").read_text()
+    assert "## cs101" in idx and "Lecture 7" in idx and "slides, 30 pages" in idx
+    assert "sources/index.md" in (store.root / "index.md").read_text()
+
+def test_move_source_to_another_course(store):
+    path = store.add_source(Source(path="", title="Waves", course="cs101"))
+    store.commit("ingest: Waves")
+    new_path = store.move_source(path, "phys1")
+    assert new_path == "sources/phys1/2026-09-03-waves.md"
+    assert store.get_source(new_path).course == "phys1"
+    assert store.sources("cs101") == []
+    store.commit("move: Waves -> phys1")
+    assert git(store, "status", "--porcelain") == ""

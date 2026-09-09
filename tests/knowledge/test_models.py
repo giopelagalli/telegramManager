@@ -2,7 +2,7 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 import pytest
 from bot.knowledge.models import (Todo, Event, Goal, Profile, EventTimes, Channel, Channels, Course,
-                                  slugify, parse_frontmatter, dump_frontmatter)
+                                  Source, slugify, parse_frontmatter, dump_frontmatter)
 
 NY = ZoneInfo("America/New_York")
 
@@ -131,3 +131,16 @@ def test_course_round_trip_and_slug():
 def test_course_defaults_when_keys_missing():
     c = Course.from_markdown("courses/x.md", "---\ntype: course\ntitle: X\n---\n")
     assert c.term is None and c.topics == []
+
+def test_source_round_trip():
+    s = Source(path="sources/cs101/2026-09-03-lecture-7.md", title="Lecture 7", course="cs101",
+               kind="slides", topics=["pointers"], summary="Pointers and the stack.", pages=30,
+               body="## slide 1\nPointers")
+    again = Source.from_markdown(s.path, s.to_markdown())
+    assert again == s
+    assert s.to_markdown().startswith("---\ntype: source\n")
+
+def test_source_defaults_when_keys_missing():
+    s = Source.from_markdown("sources/cs101/x.md", "---\ntype: source\ntitle: X\ncourse: cs101\n---\nbody\n")
+    assert s.kind == "other" and s.topics == [] and s.summary == ""
+    assert s.pages is None and s.group is None and s.ocr is None and s.timestamp is None
