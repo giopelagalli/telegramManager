@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import threading
 from dataclasses import replace
@@ -39,6 +40,11 @@ _ROOT_INDEX = """# Knowledge Bundle
 See `profile.md` for personal settings, `channels.md` for topic bindings and
 `log.md` for the action history.
 """
+
+
+def _part_index(name: str) -> int:
+    match = re.search(r"-part-(\d+)\.md$", name)
+    return int(match.group(1)) if match else 0
 
 
 def _split_body(body: str, limit: int) -> list[str]:
@@ -266,17 +272,31 @@ class KnowledgeStore:
         return path
 
     def move_source(self, path: str, course: str) -> str:
+        """Move a source to another course — every part of it when it was split."""
         new_folder = f"sources/{course}"
         (self.root / new_folder).mkdir(parents=True, exist_ok=True)
-        name = path.rsplit("/", 1)[-1]
-        new_path = self._avoid_collision(new_folder, name[:-3] if name.endswith(".md") else name)
-        self._git("mv", path, new_path)
-        source = self.get_source(new_path)
-        source.path = new_path
-        source.course = course
-        (self.root / new_path).write_text(source.to_markdown())
-        self.log("move", f"{path} -> {new_path}")
-        return new_path
+        first = ""
+        for old_path in self._group_of(path):
+            name = old_path.rsplit("/", 1)[-1]
+            stem = name[:-3] if name.endswith(".md") else name
+            new_path = self._avoid_collision(new_folder, stem)
+            self._git("mv", old_path, new_path)
+            source = self.get_source(new_path)
+            source.path = new_path
+            source.course = course
+            (self.root / new_path).write_text(source.to_markdown(), encoding="utf-8")
+            self.log("move", f"{old_path} -> {new_path}")
+            first = first or new_path
+        return first
+
+    def _group_of(self, path: str) -> list[str]:
+        """Every file sharing this source's group, in part order; just it when unsplit."""
+        group = self.get_source(path).group
+        if group is None:
+            return [path]
+        folder = path.rsplit("/", 1)[0]
+        files = (self.root / folder).glob(f"{group}-part-*.md")
+        return [f"{folder}/{p.name}" for p in sorted(files, key=lambda p: _part_index(p.name))]
 
     def get_todo(self, path: str) -> Todo:
         return Todo.from_markdown(path, self._read(path))

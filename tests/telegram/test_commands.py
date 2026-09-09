@@ -219,3 +219,24 @@ async def test_move_refuses_outside_a_course_or_without_a_target(rig):
     assert "&lt;slug&gt;" in (await r.command("move", "", channel=CS101))[0].text
     assert "No course phys9" in (await r.command("move", "phys9", channel=CS101))[0].text
     assert (await r.command("move", "cs101", channel=CS101))[0].text == "Nothing to move here."
+
+
+async def test_move_takes_every_part_of_a_split_source(rig):
+    r, store, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    store.add_course(Course(path="courses/phys1.md", title="Physics"))
+    body = "\n".join(f"line {i}" for i in range(30000))
+    assert len(body) > 300_000
+    store.add_source(Source(path="", title="Big", course="cs101", body=body))
+    store.commit("ingest: Big")
+    assert len(store.sources("cs101")) == 2
+
+    out = (await r.command("move", "phys1", channel=CS101))[0]
+    assert out.text == "Moved Big to Physics."
+    assert store.sources("cs101") == []
+    moved = store.sources("phys1")
+    assert [s.path.rsplit("/", 1)[-1] for s in moved] == [
+        "2026-09-03-big-part-1.md",
+        "2026-09-03-big-part-2.md",
+    ]
+    assert {s.course for s in moved} == {"phys1"}
