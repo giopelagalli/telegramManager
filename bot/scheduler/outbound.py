@@ -19,3 +19,5 @@ class Outbound:
     toast: str | None = None
     # life, review, assignments, exams or course:<slug>; the sender resolves it
     channel: str = "life"
+    # (chat_id, thread_id) to answer verbatim, for a topic no channel maps to
+    target: tuple[int, int | None] | None = None

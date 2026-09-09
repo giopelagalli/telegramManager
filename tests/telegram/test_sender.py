@@ -241,3 +241,13 @@ async def test_unparsable_edit_is_resent_as_plain_text():
     await Sender(bot, 7).send(Outbound("<b>a</b>", edit_message_id=5))
     assert [name for name, _ in bot.calls] == ["edit_message_text", "edit_message_text"]
     assert bot.calls[1][1]["parse_mode"] is None and bot.calls[1][1]["text"] == "a"
+
+
+async def test_target_overrides_the_channel():
+    bot = FakeBot()
+    channels = Channels()
+    channels.bind(Channel(-100, 45, "review"))
+    resolve = channel_resolver(FakeStore(channels), 7)
+    await Sender(bot, 7, resolve=resolve).send(Outbound("hi", channel="review", target=(-100, 46)))
+    _, kwargs = bot.calls[0]
+    assert kwargs["chat_id"] == -100 and kwargs["message_thread_id"] == 46

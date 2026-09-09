@@ -240,3 +240,10 @@ async def test_move_takes_every_part_of_a_split_source(rig):
         "2026-09-03-big-part-2.md",
     ]
     assert {s.course for s in moved} == {"phys1"}
+
+
+async def test_bind_and_unbind_answer_in_the_topic_that_asked(rig):
+    r, store, _ = rig
+    assert (await r.command("bind", "lectures", channel=TOPIC))[0].target == (-100, 45)
+    assert (await r.command("bind", "course", channel=TOPIC))[0].target == (-100, 45)
+    assert (await r.command("unbind", "", channel=TOPIC))[0].target == (-100, 45)

@@ -340,7 +340,13 @@ class Router:
         if channel.key in self._warned_threads:
             return []
         self._warned_threads.add(channel.key)
-        return [Outbound(esc(UNBOUND_REPLY), kind="reply")]
+        return [
+            Outbound(
+                esc(UNBOUND_REPLY),
+                kind="reply",
+                target=(channel.chat_id, channel.thread_id),
+            )
+        ]
 
     def _tag(self, outs: list[Outbound], channel: Channel | None) -> list[Outbound]:
         """Send replies back to the topic they were asked in."""

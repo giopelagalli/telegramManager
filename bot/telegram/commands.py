@@ -257,14 +257,14 @@ def _bind(arg: str, store, channel: Channel | None) -> list[Outbound]:
         return [Outbound(f"Bound this topic to {kind}.", kind="reply", channel=bound.name)]
     if kind == "course":
         return _bind_course(rest.strip(), store, channel)
-    return [Outbound(esc(BIND_USAGE), kind="reply")]
+    return [Outbound(esc(BIND_USAGE), kind="reply", target=_here(channel))]
 
 
 def _bind_course(rest: str, store, channel: Channel) -> list[Outbound]:
     code, _, title = rest.partition(" ")
     slug = slugify(code)
     if not slug:
-        return [Outbound(esc(BIND_USAGE), kind="reply")]
+        return [Outbound(esc(BIND_USAGE), kind="reply", target=_here(channel))]
     try:
         course = store.get_course(slug)
     except KeyError:
@@ -281,11 +281,16 @@ def _unbind(store, channel: Channel | None) -> list[Outbound]:
     channels = store.channels()
     existing = channels.by_key(channel.key) if channel is not None else None
     if existing is None:
-        return [Outbound("Nothing is bound here.", kind="reply")]
+        return [Outbound("Nothing is bound here.", kind="reply", target=_here(channel))]
     channels.unbind(channel.key)
     store.save_channels(channels)
     store.commit(f"bind: removed {existing.name}")
     return [Outbound(f"Unbound this topic from {esc(existing.name)}.", kind="reply")]
+
+
+def _here(channel: Channel | None) -> tuple[int, int | None] | None:
+    """Answer in the topic that asked, which no channel name maps to yet."""
+    return None if channel is None else (channel.chat_id, channel.thread_id)
 
 
 def _save_binding(store, bound: Channel, message: str) -> None:

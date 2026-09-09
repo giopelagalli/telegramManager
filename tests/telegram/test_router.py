@@ -435,3 +435,9 @@ async def test_tutor_context_shrinks_while_the_fallback_model_is_in_use(tmp_path
     sent = fallback.calls[-1]["messages"][1]["content"]
     # 90k of sources: all of it fits the 150k default, one chapter fits the 40k fallback.
     assert sent.count("### Chapter") == 1 and len(sent) < 45_000
+
+
+async def test_the_unbound_warning_goes_to_the_topic_that_asked(rig):
+    router, store, client, state, _ = rig
+    outs = await router.on_text("hi", channel=Channel(-100, 46, UNBOUND))
+    assert outs[0].target == (-100, 46)

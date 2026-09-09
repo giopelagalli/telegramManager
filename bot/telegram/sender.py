@@ -62,9 +62,12 @@ class Sender:
         self.resolve = resolve
 
     def _target(self, out: Outbound) -> tuple[int, dict]:
-        if self.resolve is None:
+        if out.target is not None:
+            chat_id, thread_id = out.target
+        elif self.resolve is not None:
+            chat_id, thread_id = self.resolve(out.channel)
+        else:
             return self.chat_id, {}
-        chat_id, thread_id = self.resolve(out.channel)
         return chat_id, {} if thread_id is None else {"message_thread_id": thread_id}
 
     async def send(self, out: Outbound) -> None:
