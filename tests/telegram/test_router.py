@@ -403,3 +403,35 @@ async def test_a_file_over_the_cap_in_an_unbound_topic_only_warns_once(rig):
     unbound = Channel(-100, 46, UNBOUND)
     assert (await router.on_file_too_large(channel=unbound))[0].text == esc(UNBOUND_REPLY)
     assert await router.on_file_too_large(channel=unbound) == []
+
+
+async def test_tutor_context_shrinks_while_the_fallback_model_is_in_use(tmp_path):
+    import httpx
+    import openai
+
+    from bot.agent.client import FallbackModelClient
+
+    class Down:
+        async def chat(self, messages, tools=None, temperature=0.2):
+            raise openai.APIConnectionError(request=httpx.Request("POST", "http://x"))
+
+    clock = FakeClock(NOW)
+    store = KnowledgeStore(tmp_path / "k", clock=clock.now)
+    store.init()
+    fallback = FakeModelClient([ModelResponse("ok", []), ModelResponse("an answer", [])])
+    client = FallbackModelClient(Down(), fallback)
+    await client.chat([])  # opens the breaker
+    assert client.breaker_open
+
+    state = RuntimeState.load(tmp_path / "s.json")
+    router = Router(store, Agent(client, None, store, clock.now), state, clock, None)
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    for i in range(3):
+        store.add_source(Source(path="", title=f"Chapter {i}", course="cs101",
+                                topics=["pointers"], body="x" * 30_000))
+    store.commit("ingest")
+
+    await router.on_text("what is a pointer?", channel=COURSE)
+    sent = fallback.calls[-1]["messages"][1]["content"]
+    # 90k of sources: all of it fits the 150k default, one chapter fits the 40k fallback.
+    assert sent.count("### Chapter") == 1 and len(sent) < 45_000

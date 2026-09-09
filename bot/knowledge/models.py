@@ -438,6 +438,7 @@ class Profile:
     voice_on_proactive: bool = True
     voice_reply_mode: str = "on_voice"
     tutor_context_chars: int = 150000
+    tutor_context_chars_fallback: int = 40000
     assignment_lead_days: int = 3
     exam_review_offsets_days: list[int] = field(default_factory=lambda: [7, 3, 1])
     cards_per_topic: int = 8
@@ -485,6 +486,7 @@ class Profile:
             "voice_on_proactive": self.voice_on_proactive,
             "voice_reply_mode": self.voice_reply_mode,
             "tutor_context_chars": self.tutor_context_chars,
+            "tutor_context_chars_fallback": self.tutor_context_chars_fallback,
             "assignment_lead_days": self.assignment_lead_days,
             "exam_review_offsets_days": self.exam_review_offsets_days,
             "cards_per_topic": self.cards_per_topic,

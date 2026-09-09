@@ -275,8 +275,7 @@ class Router:
     async def _tutor(self, text: str, channel: Channel, via_voice: bool) -> list[Outbound]:
         self._touch()
         course = self.store.get_course(channel.course)
-        budget = self.store.profile().tutor_context_chars
-        sources = select_sources(text, self.store.sources(channel.course), budget)
+        sources = select_sources(text, self.store.sources(channel.course), self._tutor_budget())
         answer, note = await self.agent.tutor(text, course, sources)
 
         if note is not None:
@@ -284,6 +283,13 @@ class Router:
         if answer is None:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
         return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
+
+    def _tutor_budget(self) -> int:
+        """The fallback model is a rented context; don't ship it the local budget."""
+        profile = self.store.profile()
+        if getattr(self.agent.client, "breaker_open", False):
+            return profile.tutor_context_chars_fallback
+        return profile.tutor_context_chars
 
     def _save_note(self, note: dict, channel: Channel) -> Outbound:
         text = note["text"].strip()
