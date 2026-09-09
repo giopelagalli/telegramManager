@@ -209,6 +209,11 @@ class KnowledgeStore:
         self.log("add", course.path)
         return course.path
 
+    def save_course(self, course: Course) -> None:
+        course.timestamp = self.clock()
+        (self.root / course.path).write_text(course.to_markdown(), encoding="utf-8")
+        self.log("save", course.path)
+
     def _course_folders(self) -> list[str]:
         root = self.root / "sources"
         if not root.exists():

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
 from bot.agent.prompts import build_context
-from bot.knowledge.models import UNBOUND, Channel, Source
+from bot.knowledge.models import UNBOUND, Channel, Course, Source
 from bot.knowledge.views import esc
 from bot.maps.client import distance_m
 from bot.scheduler.chains import close_chain
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 VERIFY_RADIUS_M = 200
 NOTE_TITLE_CHARS = 60
+MAX_COURSE_TOPICS = 50
 NOTE_SUMMARY_CHARS = 300
 UNREADABLE_REPLY = "Stored the file but couldn't read it."
 TUTOR_OFFLINE_REPLY = "The model is offline; ask again in a bit."
@@ -242,16 +243,16 @@ class Router:
             pages=len(pages),
             body=body,
         )
-        return [self._store_source(source)]
+        return [self._store_source(source, course)]
 
     async def _ingest_photo(
         self, image: bytes, caption: str | None, channel: Channel
     ) -> list[Outbound]:
         self._touch()
+        course = self.store.get_course(channel.course)
         text = await self.agent.ocr(image)
         body = text if text else (caption or "")
         if body.strip():
-            course = self.store.get_course(channel.course)
             described = await self.agent.describe_source(body, "photo.jpg", course.title)
         else:
             described = {"title": "Photo", "topics": [], "summary": ""}
@@ -265,12 +266,20 @@ class Router:
             ocr=None if text else "unavailable",
             body=body,
         )
-        return [self._store_source(source)]
+        return [self._store_source(source, course)]
 
-    def _store_source(self, source: Source) -> Outbound:
+    def _store_source(self, source: Source, course: Course) -> Outbound:
         self.store.add_source(source)
+        self._merge_topics(course, source.topics)
         self.store.commit(f"ingest: {source.title}")
         return Outbound(esc(_stored_reply(source)), kind="reply")
+
+    def _merge_topics(self, course: Course, topics: list[str]) -> None:
+        """The course keeps what its sources are about, in first-seen order."""
+        merged = list(dict.fromkeys([*course.topics, *topics]))[:MAX_COURSE_TOPICS]
+        if merged != course.topics:
+            course.topics = merged
+            self.store.save_course(course)
 
     async def _tutor(self, text: str, channel: Channel, via_voice: bool) -> list[Outbound]:
         self._touch()

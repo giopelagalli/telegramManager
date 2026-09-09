@@ -441,3 +441,26 @@ async def test_the_unbound_warning_goes_to_the_topic_that_asked(rig):
     router, store, client, state, _ = rig
     outs = await router.on_text("hi", channel=Channel(-100, 46, UNBOUND))
     assert outs[0].target == (-100, 46)
+
+
+async def test_ingest_merges_its_topics_into_the_course(rig, monkeypatch):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS", topics=["pointers"]))
+    _pdf(monkeypatch, "Pointers hold addresses")
+    client.responses.append(ModelResponse(DESCRIBED, []))
+
+    await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None, channel=COURSE)
+    assert store.get_course("cs101").topics == ["pointers", "stack"]
+    assert "2 topics" in (await router.command("courses", ""))[0].text
+    assert _subject(store) == "ingest: Chapter 4"
+
+
+async def test_ingest_caps_the_course_topics(rig, monkeypatch):
+    router, store, client, state, _ = rig
+    existing = [f"t{i}" for i in range(50)]
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS", topics=existing))
+    _pdf(monkeypatch, "Pointers hold addresses")
+    client.responses.append(ModelResponse(DESCRIBED, []))
+
+    await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None, channel=COURSE)
+    assert store.get_course("cs101").topics == existing
