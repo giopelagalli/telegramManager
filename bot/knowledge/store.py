@@ -122,11 +122,11 @@ class KnowledgeStore:
             (self.root / d).mkdir(parents=True, exist_ok=True)
         profile_path = self.root / "profile.md"
         if not profile_path.exists():
-            profile_path.write_text(Profile().to_markdown())
+            profile_path.write_text(Profile().to_markdown(), encoding="utf-8")
         log_path = self.root / "log.md"
         if not log_path.exists():
-            log_path.write_text("# Log\n")
-        (self.root / "index.md").write_text(_ROOT_INDEX)
+            log_path.write_text("# Log\n", encoding="utf-8")
+        (self.root / "index.md").write_text(_ROOT_INDEX, encoding="utf-8")
         self.regenerate_indexes()
         fresh = not (self.root / ".git").exists()
         if fresh:
@@ -141,10 +141,10 @@ class KnowledgeStore:
     # -- profile ---------------------------------------------------------
 
     def profile(self) -> Profile:
-        return Profile.from_markdown((self.root / "profile.md").read_text())
+        return Profile.from_markdown((self.root / "profile.md").read_text(encoding="utf-8"))
 
     def save_profile(self, p: Profile) -> None:
-        (self.root / "profile.md").write_text(p.to_markdown())
+        (self.root / "profile.md").write_text(p.to_markdown(), encoding="utf-8")
 
     # -- channels ---------------------------------------------------------
 
@@ -152,10 +152,10 @@ class KnowledgeStore:
         path = self.root / "channels.md"
         if not path.exists():
             return Channels()
-        return Channels.from_markdown(path.read_text())
+        return Channels.from_markdown(path.read_text(encoding="utf-8"))
 
     def save_channels(self, channels: Channels) -> None:
-        (self.root / "channels.md").write_text(channels.to_markdown())
+        (self.root / "channels.md").write_text(channels.to_markdown(), encoding="utf-8")
 
     # -- listing (skip-and-log broken files) ------------------------------
 
@@ -166,7 +166,7 @@ class KnowledgeStore:
                 continue
             rel = f"{folder}/{file.name}"
             try:
-                items.append(model.from_markdown(rel, file.read_text()))
+                items.append(model.from_markdown(rel, file.read_text(encoding="utf-8")))
             except Exception as exc:
                 logger.warning("failed to parse %s: %s", rel, exc)
                 broken.append(rel)
@@ -205,7 +205,7 @@ class KnowledgeStore:
     def add_course(self, course: Course) -> str:
         course.timestamp = self.clock()
         course.path = course.path or f"courses/{slugify(course.title)}.md"
-        (self.root / course.path).write_text(course.to_markdown())
+        (self.root / course.path).write_text(course.to_markdown(), encoding="utf-8")
         self.log("add", course.path)
         return course.path
 
@@ -239,14 +239,14 @@ class KnowledgeStore:
         if len(chunks) == 1:
             path = self._avoid_collision(folder, stem)
             source.path = path
-            (self.root / path).write_text(source.to_markdown())
+            (self.root / path).write_text(source.to_markdown(), encoding="utf-8")
             self.log("add", path)
             return path
 
         source.group = self._free_group(folder, stem)
         for i, chunk in enumerate(chunks, 1):
             part = replace(source, path=f"{folder}/{source.group}-part-{i}.md", body=chunk)
-            (self.root / part.path).write_text(part.to_markdown())
+            (self.root / part.path).write_text(part.to_markdown(), encoding="utf-8")
             self.log("add", part.path)
             if i == 1:
                 source.path = part.path
@@ -311,7 +311,7 @@ class KnowledgeStore:
         full = self.root / path
         if not full.exists():
             raise KeyError(path)
-        return full.read_text()
+        return full.read_text(encoding="utf-8")
 
     # -- write ------------------------------------------------------------
 
@@ -334,13 +334,13 @@ class KnowledgeStore:
         stem = f"{created:%Y-%m-%d}-{slug}"
         path = self._avoid_collision(folder, stem)
         item.path = path
-        (self.root / path).write_text(item.to_markdown())
+        (self.root / path).write_text(item.to_markdown(), encoding="utf-8")
         self.log("add", path)
         return path
 
     def save(self, item: Todo | Event | Goal) -> None:
         item.timestamp = self.clock()
-        (self.root / item.path).write_text(item.to_markdown())
+        (self.root / item.path).write_text(item.to_markdown(), encoding="utf-8")
         self.log("save", item.path)
 
     def move_todo(self, path: str, to: str) -> str:
@@ -361,7 +361,7 @@ class KnowledgeStore:
         now = self.clock()
         path = f"inbox/{now:%Y-%m-%d-%H%M%S}.md"
         content = dump_frontmatter({"type": "note", "timestamp": now}, text)
-        (self.root / path).write_text(content)
+        (self.root / path).write_text(content, encoding="utf-8")
         self.log("add", path)
         return path
 
@@ -369,7 +369,7 @@ class KnowledgeStore:
 
     def log(self, action: str, path: str) -> None:
         line = f"- {self.clock().isoformat()} {action} {path}\n"
-        with (self.root / "log.md").open("a") as f:
+        with (self.root / "log.md").open("a", encoding="utf-8") as f:
             f.write(line)
 
     # -- indexes -------------------------------------------------------------
@@ -388,7 +388,7 @@ class KnowledgeStore:
             due = item.due.isoformat() if item.due else "—"
             name = item.path.rsplit("/", 1)[-1]
             lines.append(f"- [{item.title}]({name}) — P{item.priority}, due {due}, {item.status}")
-        (self.root / folder / "index.md").write_text("\n".join(lines) + "\n")
+        (self.root / folder / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _write_schedule_index(self) -> None:
         lines = ["# Schedule\n"]
@@ -397,14 +397,14 @@ class KnowledgeStore:
             location = item.location or "no location"
             name = item.path.rsplit("/", 1)[-1]
             lines.append(f"- [{item.title}]({name}) — {item.start:%a %b %d %H:%M}, {location}, {item.status}")
-        (self.root / "schedule" / "index.md").write_text("\n".join(lines) + "\n")
+        (self.root / "schedule" / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _write_goal_index(self) -> None:
         lines = ["# Goals\n"]
         for item in self._load_folder("goals", Goal, []):
             name = item.path.rsplit("/", 1)[-1]
             lines.append(f"- [{item.title}]({name}) — {item.period}, {item.status}")
-        (self.root / "goals" / "index.md").write_text("\n".join(lines) + "\n")
+        (self.root / "goals" / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _write_course_index(self) -> None:
         lines = ["# Courses\n"]
@@ -412,7 +412,7 @@ class KnowledgeStore:
             name = item.path.rsplit("/", 1)[-1]
             term = item.term or "no term"
             lines.append(f"- [{item.title}]({name}) — {term}, {len(item.topics)} topics")
-        (self.root / "courses" / "index.md").write_text("\n".join(lines) + "\n")
+        (self.root / "courses" / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _write_source_index(self) -> None:
         folder = self.root / "sources"
@@ -425,7 +425,7 @@ class KnowledgeStore:
                 name = item.path.rsplit("/", 1)[-1]
                 pages = f"{item.pages} pages" if item.pages else "no page count"
                 lines.append(f"- [{item.title}]({course}/{name}) — {item.kind}, {pages}")
-        (folder / "index.md").write_text("\n".join(lines) + "\n")
+        (folder / "index.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # -- commit / undo -----------------------------------------------------
 

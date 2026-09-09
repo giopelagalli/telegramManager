@@ -7,6 +7,7 @@ Wants=network-online.target
 User=__USER__
 WorkingDirectory=__ROOT__
 EnvironmentFile=__ROOT__/.env
+Environment=PYTHONUTF8=1
 ExecStart=__ROOT__/.venv/bin/python3 -m bot
 Restart=always
 RestartSec=5

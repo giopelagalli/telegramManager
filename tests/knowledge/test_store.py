@@ -203,3 +203,12 @@ def test_move_source_to_another_course(store):
     assert store.sources("cs101") == []
     store.commit("move: Waves -> phys1")
     assert git(store, "status", "--porcelain") == ""
+
+def test_non_ascii_survives_a_write_and_read_round_trip(store, monkeypatch):
+    monkeypatch.setenv("LC_ALL", "C")
+    text = "Fourier — transformée, café ½ π"
+    path = store.add_source(Source(path="", title=text, course="cs101", summary=text, body=text))
+    back = store.get_source(path)
+    assert back.title == text and back.summary == text and back.body == text
+    assert store.sources("cs101")[0].title == text
+    assert (store.root / path).read_bytes().decode("utf-8").count(text) == 3
