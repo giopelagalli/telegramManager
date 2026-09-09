@@ -10,6 +10,7 @@ from bot.study.extract import (
     extract_docx,
     extract_pdf,
     extract_pptx,
+    extract_text,
     guess_kind,
     render_pages,
 )
@@ -100,3 +101,10 @@ def test_extract_docx_chunks_paragraphs_and_includes_headings():
 def test_extract_docx_skips_blank_paragraphs():
     data = _doc(["First", "", "  ", "Second"])
     assert extract_docx(data) == [(1, "First\nSecond")]
+
+
+def test_plain_text_uploads_are_notes():
+    assert guess_kind("lecture4.md", "text/markdown") == "notes"
+    assert guess_kind("notes.txt", "") == "notes"
+    assert guess_kind("export.txt", "text/plain") == "notes"
+    assert extract_text(b"  hello \xe2\x80\x94 there  ") == "hello — there"

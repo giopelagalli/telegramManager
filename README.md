@@ -253,9 +253,10 @@ job, assigned once with `/bind` run inside it:
 `/bind course` creates the course file if it doesn't exist. A topic that
 isn't bound gets one reply explaining `/bind`, then is ignored.
 
-**Dropping sources.** In a course topic, send a PDF, a `.pptx`, a `.docx`, or
-a photo of the board. PDFs are extracted per page, slides per slide (with
-speaker notes), and `.docx` files in ~40-paragraph parts, so answers can cite
+**Dropping sources.** In a course topic, send a PDF, a `.pptx`, a `.docx`, a
+`.txt`/`.md` file, or a photo of the board. PDFs are extracted per page, slides per slide (with
+speaker notes), `.docx` files in ~40-paragraph parts, and `.txt`/`.md` files
+as the notes they already are, so answers can cite
 `[Lecture 7, p.12]`; photos go through the vision model's OCR — on the Spark,
 `VISION_BASE_URL`/`VISION_MODEL` can point at the same endpoint as chat,
 since `qwen3.8-flash-next` accepts images — or are stored with just their

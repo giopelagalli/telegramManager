@@ -464,3 +464,39 @@ async def test_ingest_caps_the_course_topics(rig, monkeypatch):
 
     await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None, channel=COURSE)
     assert store.get_course("cs101").topics == existing
+
+
+async def test_a_markdown_upload_is_stored_as_notes(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    client.responses.append(ModelResponse(
+        '{"title": "Lecture 4", "kind": "notes", "topics": ["pointers"], "summary": "Notes."}', []))
+
+    outs = await router.on_document(
+        "# Pointers\nThey hold addresses".encode(), "lecture4.md", "text/markdown", None,
+        channel=COURSE,
+    )
+    assert outs[0].channel == "course:cs101"
+    source = store.sources("cs101")[0]
+    assert source.kind == "notes" and source.pages is None
+    assert source.body == "# Pointers\nThey hold addresses"
+
+
+async def test_a_text_upload_with_no_mime_type_is_stored_as_notes(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    client.responses.append(ModelResponse(
+        '{"title": "Notes", "kind": "notes", "topics": [], "summary": ""}', []))
+
+    await router.on_document("plain notes".encode(), "notes.txt", "", None, channel=COURSE)
+    assert store.sources("cs101")[0].body == "plain notes"
+
+
+async def test_a_missing_course_file_asks_for_a_rebind(rig):
+    router, store, client, state, _ = rig
+    outs = await router.on_document(b"x", "notes.txt", "text/plain", None, channel=COURSE)
+    assert outs[0].text == "This topic's course file is gone; /bind again."
+    assert store.sources("cs101") == [] and client.calls == []
+
+    outs = await router.on_text("what is a pointer?", channel=COURSE)
+    assert outs[0].text == "This topic's course file is gone; /bind again."

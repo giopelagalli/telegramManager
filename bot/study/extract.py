@@ -15,6 +15,8 @@ PART_MARKER = "part "
 PDF_MIMES = ("application/pdf",)
 PPTX_MIMES = ("application/vnd.openxmlformats-officedocument.presentationml.presentation",)
 DOCX_MIMES = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document",)
+TEXT_MIMES = ("text/plain", "text/markdown", "text/x-markdown")
+_TEXT_SUFFIXES = (".txt", ".md")
 _IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")
 _DOCX_PARAGRAPHS_PER_CHUNK = 40
 
@@ -50,6 +52,15 @@ def extract_docx(data: bytes) -> list[tuple[int, str]]:
     return chunks
 
 
+def is_plain_text(filename: str, mime: str) -> bool:
+    return Path((filename or "").lower()).suffix in _TEXT_SUFFIXES or (mime or "").lower() in TEXT_MIMES
+
+
+def extract_text(data: bytes) -> str:
+    """A .txt/.md upload is already the text; it goes in as written."""
+    return data.decode("utf-8", errors="replace").strip()
+
+
 def render_pages(pages: list[tuple[int, str]], marker: str) -> str:
     """One `## p.N` / `## slide N` heading per page, empty pages skipped."""
     blocks = [f"## {marker}{n}\n{text.strip()}" for n, text in pages if text.strip()]
@@ -63,7 +74,7 @@ def guess_kind(filename: str, mime: str) -> str:
         return "slides"
     if name.endswith(".pdf") or mime in PDF_MIMES:
         return "chapter"
-    if name.endswith(".docx") or mime in DOCX_MIMES:
+    if name.endswith(".docx") or mime in DOCX_MIMES or is_plain_text(name, mime):
         return "notes"
     if mime.startswith("image/") or Path(name).suffix in _IMAGE_SUFFIXES:
         return "photo"

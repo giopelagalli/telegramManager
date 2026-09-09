@@ -63,7 +63,6 @@ def _parse_date(value) -> date:
     return date.fromisoformat(value)
 
 
-CHANNEL_KINDS = ("life", "course", "assignments", "exams", "review")
 # A group topic with no binding: carries the thread so the router can warn there once.
 UNBOUND = "unbound"
 

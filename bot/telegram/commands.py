@@ -268,9 +268,9 @@ def _bind_course(rest: str, store, channel: Channel) -> list[Outbound]:
     try:
         course = store.get_course(slug)
     except KeyError:
+        # New course and its binding land in one commit, so /undo takes both.
         course = Course(path=f"courses/{slug}.md", title=title.strip() or code)
         store.add_course(course)
-        store.commit(f"course: {course.title}")
     bound = Channel(channel.chat_id, channel.thread_id, "course", slug)
     _save_binding(store, bound, f"bind: course {slug}")
     text = f"Bound this topic to {esc(code)} ({esc(course.title)})."

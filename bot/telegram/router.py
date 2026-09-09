@@ -19,7 +19,9 @@ from bot.study.extract import (
     extract_docx,
     extract_pdf,
     extract_pptx,
+    extract_text,
     guess_kind,
+    is_plain_text,
     render_pages,
 )
 from bot.study.select import select_sources
@@ -34,6 +36,7 @@ MAX_COURSE_TOPICS = 50
 NOTE_SUMMARY_CHARS = 300
 UNREADABLE_REPLY = "Stored the file but couldn't read it."
 TUTOR_OFFLINE_REPLY = "The model is offline; ask again in a bit."
+COURSE_GONE_REPLY = "This topic's course file is gone; /bind again."
 TOO_LARGE_REPLY = (
     "That file is over Telegram's 20 MB bot limit. Split it or send a smaller export."
 )
@@ -223,15 +226,20 @@ class Router:
         if kind == "photo":
             return await self._ingest_photo(data, caption, channel)
 
-        pages = _extract(data, kind, filename)
-        marker = SLIDE_MARKER if kind == "slides" else PART_MARKER if kind == "notes" else PAGE_MARKER
-        body = render_pages(pages, marker) if pages else ""
+        if is_plain_text(filename, mime):
+            pages, body = None, extract_text(data)
+        else:
+            pages = _extract(data, kind, filename)
+            marker = SLIDE_MARKER if kind == "slides" else PART_MARKER if kind == "notes" else PAGE_MARKER
+            body = render_pages(pages, marker) if pages else ""
         if not body.strip():
             self.store.keep_raw(channel.course, filename, data)
             self.store.commit(f"ingest: {filename}")
             return [Outbound(esc(UNREADABLE_REPLY), kind="reply")]
 
-        course = self.store.get_course(channel.course)
+        course = self._course(channel)
+        if course is None:
+            return [Outbound(esc(COURSE_GONE_REPLY), kind="reply")]
         described = await self.agent.describe_source(body, filename, course.title)
         source = Source(
             path="",
@@ -240,7 +248,7 @@ class Router:
             kind=described["kind"],
             topics=described["topics"],
             summary=described["summary"],
-            pages=len(pages),
+            pages=len(pages) if pages else None,
             body=body,
         )
         return [self._store_source(source, course)]
@@ -249,7 +257,9 @@ class Router:
         self, image: bytes, caption: str | None, channel: Channel
     ) -> list[Outbound]:
         self._touch()
-        course = self.store.get_course(channel.course)
+        course = self._course(channel)
+        if course is None:
+            return [Outbound(esc(COURSE_GONE_REPLY), kind="reply")]
         text = await self.agent.ocr(image)
         body = text if text else (caption or "")
         if body.strip():
@@ -283,7 +293,9 @@ class Router:
 
     async def _tutor(self, text: str, channel: Channel, via_voice: bool) -> list[Outbound]:
         self._touch()
-        course = self.store.get_course(channel.course)
+        course = self._course(channel)
+        if course is None:
+            return [Outbound(esc(COURSE_GONE_REPLY), kind="reply")]
         sources = select_sources(text, self.store.sources(channel.course), self._tutor_budget())
         answer, note = await self.agent.tutor(text, course, sources)
 
@@ -292,6 +304,13 @@ class Router:
         if answer is None:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
         return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
+
+    def _course(self, channel: Channel) -> Course | None:
+        try:
+            return self.store.get_course(channel.course)
+        except KeyError:
+            logger.warning("course file %s is gone", channel.course)
+            return None
 
     def _tutor_budget(self) -> int:
         """The fallback model is a rented context; don't ship it the local budget."""
