@@ -5,6 +5,7 @@ import html
 import logging
 import re
 from pathlib import Path
+from typing import Callable
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 from telegram.error import BadRequest, NetworkError
@@ -23,28 +24,63 @@ def plain_text(text: str) -> str:
     return html.unescape(_TAG_RE.sub("", text))
 
 
+def channel_resolver(store, dm_chat_id: int) -> Callable[[str], tuple[int, int | None]]:
+    """Resolves an Outbound channel to (chat_id, thread_id), falling back to the DM."""
+    warned: set[str] = set()
+
+    def resolve(channel: str) -> tuple[int, int | None]:
+        if channel == "life":
+            return dm_chat_id, None
+        kind, _, course = channel.partition(":")
+        bound = store.channels().for_kind(kind, course or None)
+        if bound is None:
+            if channel not in warned:
+                warned.add(channel)
+                logger.warning("channel %s is not bound, sending to the DM", channel)
+            return dm_chat_id, None
+        return bound.chat_id, bound.thread_id
+
+    return resolve
+
+
 class Sender:
     """Sends an Outbound to one chat, retrying transient network failures."""
 
-    def __init__(self, bot, chat_id: int, synthesizer=None, tmp_dir: Path = Path(".")):
+    def __init__(
+        self,
+        bot,
+        chat_id: int,
+        synthesizer=None,
+        tmp_dir: Path = Path("."),
+        resolve: Callable[[str], tuple[int, int | None]] | None = None,
+    ):
         self.bot = bot
         self.chat_id = chat_id
         self.synthesizer = synthesizer
         self.tmp_dir = Path(tmp_dir)
+        self.resolve = resolve
+
+    def _target(self, out: Outbound) -> tuple[int, dict]:
+        if self.resolve is None:
+            return self.chat_id, {}
+        chat_id, thread_id = self.resolve(out.channel)
+        return chat_id, {} if thread_id is None else {"message_thread_id": thread_id}
 
     async def send(self, out: Outbound) -> None:
+        chat_id, thread = self._target(out)
         if out.edit_message_id is not None:
-            await self._edit(out)
+            await self._edit(out, chat_id)
             return
 
         try:
             await self._retry(
                 lambda: self.bot.send_message(
-                    chat_id=self.chat_id,
+                    chat_id=chat_id,
                     text=out.text,
                     parse_mode="HTML",
                     reply_markup=_markup(out),
                     disable_notification=out.silent,
+                    **thread,
                 )
             )
         except NetworkError as exc:
@@ -52,13 +88,14 @@ class Sender:
             return
 
         if out.voice and self.synthesizer is not None:
-            await self._send_voice(out.text, out.silent)
+            await self._send_voice(out.text, out.silent, chat_id, thread)
 
-    async def _edit(self, out: Outbound) -> None:
+    async def _edit(self, out: Outbound, chat_id: int) -> None:
+        # No message_thread_id here: an edit is addressed by chat_id + message_id.
         async def call():
             try:
                 return await self.bot.edit_message_text(
-                    chat_id=self.chat_id,
+                    chat_id=chat_id,
                     message_id=out.edit_message_id,
                     text=out.text,
                     parse_mode="HTML",
@@ -74,7 +111,7 @@ class Sender:
         except NetworkError as exc:
             logger.error("edit_message_text gave up after retries: %s", exc)
 
-    async def _send_voice(self, text: str, silent: bool = False) -> None:
+    async def _send_voice(self, text: str, silent: bool, chat_id: int, thread: dict) -> None:
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         try:
             path = await self.synthesizer.synthesize(plain_text(text), self.tmp_dir)
@@ -85,7 +122,7 @@ class Sender:
             data = path.read_bytes()
             await self._retry(
                 lambda: self.bot.send_voice(
-                    chat_id=self.chat_id, voice=data, disable_notification=silent
+                    chat_id=chat_id, voice=data, disable_notification=silent, **thread
                 )
             )
         except NetworkError as exc:

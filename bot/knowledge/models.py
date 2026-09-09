@@ -63,6 +63,120 @@ def _parse_date(value) -> date:
     return date.fromisoformat(value)
 
 
+CHANNEL_KINDS = ("life", "course", "assignments", "exams", "review")
+# A group topic with no binding: carries the thread so the router can warn there once.
+UNBOUND = "unbound"
+
+
+def channel_key(chat_id: int, thread_id: int | None) -> str:
+    return f"{chat_id}:{thread_id or 0}"
+
+
+@dataclass
+class Channel:
+    chat_id: int
+    thread_id: int | None
+    kind: str
+    course: str | None = None
+
+    @property
+    def key(self) -> str:
+        return channel_key(self.chat_id, self.thread_id)
+
+    @property
+    def name(self) -> str:
+        """The string an Outbound carries to be routed back here."""
+        return f"course:{self.course}" if self.kind == "course" else self.kind
+
+
+@dataclass
+class Channels:
+    bindings: dict[str, Channel] = field(default_factory=dict)
+
+    def by_key(self, key: str) -> Channel | None:
+        return self.bindings.get(key)
+
+    def for_kind(self, kind: str, course: str | None = None) -> Channel | None:
+        for channel in self.bindings.values():
+            if channel.kind == kind and (course is None or channel.course == course):
+                return channel
+        return None
+
+    def bind(self, channel: Channel) -> None:
+        self.bindings[channel.key] = channel
+
+    def unbind(self, key: str) -> None:
+        self.bindings.pop(key, None)
+
+    def to_markdown(self) -> str:
+        meta = {
+            "type": "channels",
+            "bindings": {
+                key: {
+                    "chat_id": c.chat_id,
+                    "thread_id": c.thread_id,
+                    "kind": c.kind,
+                    "course": c.course,
+                }
+                for key, c in self.bindings.items()
+            },
+        }
+        lines = ["# Channels\n"]
+        for key, c in self.bindings.items():
+            lines.append(f"- {key} — {c.name}")
+        return dump_frontmatter(meta, "\n".join(lines))
+
+    @classmethod
+    def from_markdown(cls, text: str) -> "Channels":
+        meta, _body = parse_frontmatter(text)
+        bindings = {}
+        for key, value in (meta.get("bindings") or {}).items():
+            bindings[str(key)] = Channel(
+                chat_id=value["chat_id"],
+                thread_id=value.get("thread_id"),
+                kind=value["kind"],
+                course=value.get("course"),
+            )
+        return cls(bindings=bindings)
+
+
+@dataclass
+class Course:
+    path: str
+    title: str
+    term: str | None = None
+    topics: list[str] = field(default_factory=list)
+    timestamp: datetime | None = None
+    body: str = ""
+
+    @property
+    def slug(self) -> str:
+        name = self.path.rsplit("/", 1)[-1]
+        return name[:-3] if name.endswith(".md") else name
+
+    def to_markdown(self) -> str:
+        meta: dict = {"type": "course", "title": self.title}
+        if self.term is not None:
+            meta["term"] = self.term
+        meta["topics"] = self.topics
+        if self.timestamp is not None:
+            meta["timestamp"] = self.timestamp
+        return dump_frontmatter(meta, self.body)
+
+    @classmethod
+    def from_markdown(cls, path: str, text: str) -> "Course":
+        meta, body = parse_frontmatter(text)
+        timestamp = meta.get("timestamp")
+        return cls(
+            path=path,
+            title=meta.get("title", ""),
+            term=meta.get("term"),
+            topics=list(meta.get("topics", [])),
+            timestamp=_parse_datetime(timestamp, "timestamp") if timestamp is not None else None,
+            body=body,
+        )
+
+
 @dataclass
 class Todo:
     path: str
@@ -75,6 +189,8 @@ class Todo:
     done_at: datetime | None = None
     confirmed: bool = True
     tags: list[str] = field(default_factory=list)
+    course: str | None = None
+    kind: str | None = None
     timestamp: datetime | None = None
     body: str = ""
 
@@ -105,6 +221,10 @@ class Todo:
         meta["confirmed"] = self.confirmed
         if self.tags:
             meta["tags"] = self.tags
+        if self.course is not None:
+            meta["course"] = self.course
+        if self.kind is not None:
+            meta["kind"] = self.kind
         if self.timestamp is not None:
             meta["timestamp"] = self.timestamp
         return dump_frontmatter(meta, self.body)
@@ -126,6 +246,8 @@ class Todo:
             done_at=_parse_datetime(done_at, "done_at") if done_at is not None else None,
             confirmed=meta.get("confirmed", True),
             tags=list(meta.get("tags", [])),
+            course=meta.get("course"),
+            kind=meta.get("kind"),
             timestamp=_parse_datetime(timestamp, "timestamp") if timestamp is not None else None,
             body=body,
         )
@@ -151,6 +273,9 @@ class Event:
     importance: str = "normal"
     verify: str = "none"
     status: str = "upcoming"
+    course: str | None = None
+    kind: str | None = None
+    topics: list[str] = field(default_factory=list)
     timestamp: datetime | None = None
     body: str = ""
 
@@ -175,6 +300,12 @@ class Event:
         meta["importance"] = self.importance
         meta["verify"] = self.verify
         meta["status"] = self.status
+        if self.course is not None:
+            meta["course"] = self.course
+        if self.kind is not None:
+            meta["kind"] = self.kind
+        if self.topics:
+            meta["topics"] = self.topics
         if self.timestamp is not None:
             meta["timestamp"] = self.timestamp
         return dump_frontmatter(meta, self.body)
@@ -197,6 +328,9 @@ class Event:
             importance=meta.get("importance", "normal"),
             verify=meta.get("verify", "none"),
             status=meta.get("status", "upcoming"),
+            course=meta.get("course"),
+            kind=meta.get("kind"),
+            topics=list(meta.get("topics", [])),
             timestamp=_parse_datetime(timestamp, "timestamp") if timestamp is not None else None,
             body=body,
         )
@@ -253,6 +387,16 @@ class Profile:
     wakeup_engage_seconds: int = 120
     voice_on_proactive: bool = True
     voice_reply_mode: str = "on_voice"
+    tutor_context_chars: int = 150000
+    assignment_lead_days: int = 3
+    exam_review_offsets_days: list[int] = field(default_factory=lambda: [7, 3, 1])
+    cards_per_topic: int = 8
+    review_time: str = "18:00"
+    review_daily_cap: int = 8
+    review_exam_cap: int = 15
+    exam_focus_days: int = 7
+    digest_time: str = "08:30"
+    digest_cadence: str = "daily"
     body: str = ""
 
     @property
@@ -290,6 +434,16 @@ class Profile:
             "wakeup_engage_seconds": self.wakeup_engage_seconds,
             "voice_on_proactive": self.voice_on_proactive,
             "voice_reply_mode": self.voice_reply_mode,
+            "tutor_context_chars": self.tutor_context_chars,
+            "assignment_lead_days": self.assignment_lead_days,
+            "exam_review_offsets_days": self.exam_review_offsets_days,
+            "cards_per_topic": self.cards_per_topic,
+            "review_time": self.review_time,
+            "review_daily_cap": self.review_daily_cap,
+            "review_exam_cap": self.review_exam_cap,
+            "exam_focus_days": self.exam_focus_days,
+            "digest_time": self.digest_time,
+            "digest_cadence": self.digest_cadence,
         }
         return dump_frontmatter(meta, self.body)
 

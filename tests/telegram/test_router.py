@@ -4,10 +4,11 @@ import pytest
 from bot.agent.client import FakeModelClient, ModelResponse, ToolCall
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.models import Todo, Event
+from bot.knowledge.models import Todo, Event, Channel, UNBOUND
+from bot.knowledge.views import esc
 from bot.scheduler.state import RuntimeState, Chain, CriticalLeaveState
 from bot.scheduler.clock import FakeClock
-from bot.telegram.router import Router
+from bot.telegram.router import Router, UNBOUND_REPLY
 
 NY = ZoneInfo("America/New_York")
 NOW = datetime(2026, 9, 3, 14, 0, tzinfo=NY)
@@ -182,3 +183,35 @@ async def test_last_outcome_tracks_capture_and_inbox(rig):
     client.responses.append(ModelResponse(None, []))
     await router.on_text("something rambling")
     assert router.last_outcome == "inbox"
+
+
+async def test_unbound_topic_is_warned_once_then_ignored(rig):
+    router, store, client, state, _ = rig
+    topic = Channel(-100, 45, UNBOUND)
+    outs = await router.on_text("some notes", channel=topic)
+    assert outs[0].text == esc(UNBOUND_REPLY)
+    assert "/bind course" in outs[0].text
+    assert await router.on_text("more notes", channel=topic) == []
+    assert await router.on_photo(b"img", channel=topic) == []
+    assert state.last_user_message_at is None and client.calls == []
+
+    other = Channel(-100, 46, UNBOUND)
+    assert len(await router.on_text("hi", channel=other)) == 1
+
+
+async def test_bound_topic_reply_carries_the_channel(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("reply", {"text": "Noted."})))
+    outs = await router.on_text("chapter 4 is dense", channel=Channel(-100, 45, "course", "cs101"))
+    assert outs[0].text == "Noted." and outs[0].channel == "course:cs101"
+
+    outs = await router.command("todo", "", channel=Channel(-100, 46, "assignments"))
+    assert outs[0].channel == "assignments"
+
+
+async def test_dm_channel_behaves_like_today(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("reply", {"text": "Sure."})))
+    outs = await router.on_text("hi", channel=Channel(42, None, "life"))
+    assert outs[0].text == "Sure." and outs[0].channel == "life"
+    assert state.last_user_message_at == NOW

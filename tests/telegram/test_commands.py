@@ -4,7 +4,7 @@ import pytest
 from bot.agent.client import FakeModelClient
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.models import Todo, Event
+from bot.knowledge.models import Todo, Event, Channel, UNBOUND
 from bot.scheduler.state import RuntimeState
 from bot.scheduler.clock import FakeClock
 from bot.telegram.router import Router
@@ -63,3 +63,61 @@ async def test_brief_now_and_shift(rig):
 async def test_undo(rig):
     r, store, state = rig
     assert "Reverted: s" in (await r.command("undo", ""))[0].text
+
+
+TOPIC = Channel(-100, 45, UNBOUND)
+DM = Channel(42, None, "life")
+
+
+def _subject(store):
+    import subprocess
+    return subprocess.run(["git", "log", "-1", "--format=%s"], cwd=store.root,
+                          capture_output=True, text=True).stdout.strip()
+
+
+async def test_bind_course_creates_the_course_and_the_binding(rig):
+    r, store, _ = rig
+    out = (await r.command("bind", "course CS101 Intro to CS", channel=TOPIC))[0]
+    assert out.text == "Bound this topic to CS101 (Intro to CS)."
+    assert out.channel == "course:cs101"
+    assert store.get_course("cs101").title == "Intro to CS"
+    assert store.channels().by_key("-100:45") == Channel(-100, 45, "course", "cs101")
+    assert _subject(store) == "bind: course cs101"
+
+    # a second topic for the same code reuses the existing course
+    out = (await r.command("bind", "course CS101", channel=Channel(-100, 46, UNBOUND)))[0]
+    assert out.text == "Bound this topic to CS101 (Intro to CS)."
+    assert len(store.courses()) == 1
+
+
+async def test_bind_kind_and_unbind(rig):
+    r, store, _ = rig
+    out = (await r.command("bind", "assignments", channel=TOPIC))[0]
+    assert out.text == "Bound this topic to assignments." and out.channel == "assignments"
+    assert store.channels().for_kind("assignments").thread_id == 45
+
+    bound = Channel(-100, 45, "assignments")
+    assert "Unbound" in (await r.command("unbind", "", channel=bound))[0].text
+    assert store.channels().for_kind("assignments") is None
+    assert (await r.command("unbind", "", channel=bound))[0].text == "Nothing is bound here."
+
+
+async def test_bind_usage_and_dm_refusal(rig):
+    r, store, _ = rig
+    assert (await r.command("bind", "", channel=DM))[0].text == "Bind topics inside your group, not here."
+    assert "Usage" in (await r.command("bind", "", channel=TOPIC))[0].text
+    assert "Usage" in (await r.command("bind", "lectures", channel=TOPIC))[0].text
+    assert "Usage" in (await r.command("bind", "course", channel=TOPIC))[0].text
+    assert store.channels().bindings == {}
+
+
+async def test_channels_and_courses_listings(rig):
+    r, store, _ = rig
+    assert "Nothing bound yet" in (await r.command("channels", ""))[0].text
+    assert "No courses yet" in (await r.command("courses", ""))[0].text
+
+    await r.command("bind", "course CS101 Intro to CS", channel=TOPIC)
+    await r.command("bind", "review", channel=Channel(-100, 46, UNBOUND))
+    text = (await r.command("channels", ""))[0].text
+    assert "course:cs101 — Intro to CS" in text and "- review" in text
+    assert "Intro to CS (cs101) — 0 topics" in (await r.command("courses", ""))[0].text

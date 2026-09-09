@@ -4,8 +4,9 @@ import pytest
 from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.error import BadRequest, NetworkError, TimedOut
 
+from bot.knowledge.models import Channel, Channels
 from bot.scheduler.outbound import Outbound
-from bot.telegram.sender import Sender, plain_text
+from bot.telegram.sender import Sender, channel_resolver, plain_text
 
 
 class FakeBot:
@@ -156,3 +157,51 @@ async def test_silent_flag_reaches_both_legs(tmp_path):
     assert all(kwargs["disable_notification"] for _, kwargs in bot.calls)
     await Sender(bot, 7).send(Outbound("loud"))
     assert bot.calls[-1][1]["disable_notification"] is False
+
+
+class FakeStore:
+    def __init__(self, channels):
+        self._channels = channels
+
+    def channels(self):
+        return self._channels
+
+
+async def test_channel_routes_to_the_bound_thread(tmp_path):
+    bot = FakeBot()
+    channels = Channels()
+    channels.bind(Channel(-100, 45, "review"))
+    resolve = channel_resolver(FakeStore(channels), 7)
+
+    class FakeSynth:
+        async def synthesize(self, text, out_dir):
+            path = tmp_path / "v.ogg"
+            path.write_bytes(b"ogg")
+            return path
+
+    sender = Sender(bot, 7, FakeSynth(), tmp_path, resolve=resolve)
+    await sender.send(Outbound("quiz time", voice=True, channel="review"))
+    for _, kwargs in bot.calls:
+        assert kwargs["chat_id"] == -100 and kwargs["message_thread_id"] == 45
+
+
+async def test_unbound_channel_falls_back_to_the_dm(caplog):
+    bot = FakeBot()
+    resolve = channel_resolver(FakeStore(Channels()), 7)
+    sender = Sender(bot, 7, resolve=resolve)
+    with caplog.at_level("WARNING"):
+        await sender.send(Outbound("hi", channel="course:cs101"))
+        await sender.send(Outbound("again", channel="course:cs101"))
+    _, kwargs = bot.calls[0]
+    assert kwargs["chat_id"] == 7 and "message_thread_id" not in kwargs
+    assert sum("course:cs101" in r.message for r in caplog.records) == 1
+
+
+async def test_life_channel_and_no_resolver_go_to_the_dm():
+    bot = FakeBot()
+    channels = Channels()
+    channels.bind(Channel(-100, 45, "review"))
+    await Sender(bot, 7, resolve=channel_resolver(FakeStore(channels), 7)).send(Outbound("hi"))
+    await Sender(bot, 7).send(Outbound("hi", channel="review"))
+    for _, kwargs in bot.calls:
+        assert kwargs["chat_id"] == 7 and "message_thread_id" not in kwargs

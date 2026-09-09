@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 import pytest
-from bot.knowledge.models import Todo, Event, Goal, Profile, EventTimes, slugify, parse_frontmatter, dump_frontmatter
+from bot.knowledge.models import (Todo, Event, Goal, Profile, EventTimes, Channel, Channels, Course,
+                                  slugify, parse_frontmatter, dump_frontmatter)
 
 NY = ZoneInfo("America/New_York")
 
@@ -83,3 +84,50 @@ def test_frontmatter_helpers():
     meta, body = parse_frontmatter("---\na: 1\n---\nhi\n")
     assert meta == {"a": 1} and body.strip() == "hi"
     assert dump_frontmatter({"type": "todo", "due": date(2026, 9, 5)}, "b") == "---\ntype: todo\ndue: 2026-09-05\n---\nb\n"
+
+def test_todo_and_event_carry_course_fields():
+    t = Todo(path="todos/x.md", title="Lab 3", course="cs101", kind="lab")
+    assert Todo.from_markdown(t.path, t.to_markdown()) == t
+    e = Event(path="schedule/x.md", title="Midterm", start=datetime(2026, 9, 4, 9, 0, tzinfo=NY),
+              course="cs101", kind="exam", topics=["recursion", "sorting"])
+    assert Event.from_markdown(e.path, e.to_markdown()) == e
+
+def test_profile_study_defaults():
+    p = Profile()
+    assert p.tutor_context_chars == 150000 and p.exam_review_offsets_days == [7, 3, 1]
+    assert p.review_time == "18:00" and p.digest_cadence == "daily"
+    assert Profile.from_markdown(p.to_markdown()) == p
+
+def test_channel_key_and_name():
+    assert Channel(-100, 45, "review").key == "-100:45"
+    assert Channel(-100, None, "life").key == "-100:0"
+    assert Channel(-100, 45, "course", "cs101").name == "course:cs101"
+    assert Channel(-100, 45, "review").name == "review"
+
+def test_channels_round_trip_and_lookup():
+    c = Channels()
+    c.bind(Channel(-100, 45, "course", "cs101"))
+    c.bind(Channel(-100, 46, "review"))
+    again = Channels.from_markdown(c.to_markdown())
+    assert again == c
+    assert again.by_key("-100:45").course == "cs101"
+    assert again.for_kind("review").thread_id == 46
+    assert again.for_kind("course", "cs101").thread_id == 45
+    assert again.for_kind("course", "phys1") is None
+    assert again.for_kind("exams") is None
+    c.unbind("-100:46")
+    assert c.for_kind("review") is None
+    assert "course:cs101" in c.to_markdown()
+
+def test_channels_empty_round_trip():
+    assert Channels.from_markdown(Channels().to_markdown()) == Channels()
+
+def test_course_round_trip_and_slug():
+    c = Course(path="courses/cs101.md", title="Intro to CS", term="Fall 2026", topics=["recursion"])
+    assert c.slug == "cs101"
+    assert Course.from_markdown(c.path, c.to_markdown()) == c
+    assert c.to_markdown().startswith("---\ntype: course\n")
+
+def test_course_defaults_when_keys_missing():
+    c = Course.from_markdown("courses/x.md", "---\ntype: course\ntitle: X\n---\n")
+    assert c.term is None and c.topics == []

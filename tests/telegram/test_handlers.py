@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from bot.knowledge.models import UNBOUND, Channel, Channels
 from bot.scheduler.outbound import Outbound
 from bot.telegram.handlers import Handlers
 
@@ -28,30 +29,44 @@ class FakeSender:
         self.sent.append(out)
 
 
+class FakeStore:
+    def __init__(self, channels=None):
+        self._channels = channels or Channels()
+
+    def channels(self):
+        return self._channels
+
+
 class FakeRouter:
-    def __init__(self, outcome="captured", outs=None):
+    def __init__(self, outcome="captured", outs=None, store=None):
         self.last_outcome = outcome
         self.outs = outs or []
         self.callbacks = []
+        self.channels = []
+        self.store = store or FakeStore()
 
-    async def on_text(self, text, via_voice=False):
+    async def on_text(self, text, via_voice=False, *, channel=None):
+        self.channels.append(channel)
         return [Outbound("ok", kind="reply")]
 
-    async def on_callback(self, data, message_id=None, message_html=None, buttons=None):
+    async def on_callback(self, data, message_id=None, message_html=None, buttons=None, *, channel=None):
         self.callbacks.append((data, message_id, message_html, buttons))
         return self.outs
 
 
-def _rig(outcome="captured", outs=None):
+def _rig(outcome="captured", outs=None, store=None):
     bot = FakeBot()
     sender = FakeSender(bot)
-    router = FakeRouter(outcome, outs)
+    router = FakeRouter(outcome, outs, store)
     return Handlers(router, sender), bot, sender, router
 
 
-def _text_update():
-    message = SimpleNamespace(chat_id=42, message_id=7, text="buy milk")
-    return SimpleNamespace(effective_message=message)
+def _text_update(chat_id=42, chat_type="private", thread_id=None):
+    message = SimpleNamespace(
+        chat_id=chat_id, message_id=7, text="buy milk", message_thread_id=thread_id
+    )
+    chat = SimpleNamespace(id=chat_id, type=chat_type)
+    return SimpleNamespace(effective_message=message, effective_chat=chat)
 
 
 async def test_text_reacts_seen_then_captured_and_types():
@@ -85,7 +100,7 @@ async def test_callback_answers_with_the_toast():
         message=SimpleNamespace(message_id=9, text_html="1. X", reply_markup=None),
         answer=lambda **kw: _record(answered, kw),
     )
-    await handlers.on_callback(SimpleNamespace(callback_query=query), None)
+    await handlers.on_callback(_callback_update(query), None)
     assert answered == [{"text": "Done: X"}]
     assert router.callbacks == [("done:a", 9, "1. X", None)]
     assert sender.sent == [out]
@@ -97,8 +112,31 @@ async def test_callback_without_toast_answers_empty():
     query = SimpleNamespace(
         data="snooze:1", message=None, answer=lambda **kw: _record(answered, kw)
     )
-    await handlers.on_callback(SimpleNamespace(callback_query=query), None)
+    await handlers.on_callback(_callback_update(query), None)
     assert answered == [{}]
+
+
+def _callback_update(query):
+    return SimpleNamespace(
+        callback_query=query,
+        effective_message=None,
+        effective_chat=SimpleNamespace(id=42, type="private"),
+    )
+
+
+async def test_dm_is_the_life_channel():
+    handlers, _bot, _sender, router = _rig()
+    await handlers.on_text(_text_update(), None)
+    assert router.channels == [Channel(42, None, "life")]
+
+
+async def test_group_topic_channel_comes_from_the_bindings():
+    channels = Channels()
+    channels.bind(Channel(-100, 45, "course", "cs101"))
+    handlers, _bot, _sender, router = _rig(store=FakeStore(channels))
+    await handlers.on_text(_text_update(-100, "supergroup", 45), None)
+    await handlers.on_text(_text_update(-100, "supergroup", 46), None)
+    assert router.channels == [Channel(-100, 45, "course", "cs101"), Channel(-100, 46, UNBOUND)]
 
 
 async def _noop():

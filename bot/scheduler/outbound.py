@@ -17,3 +17,5 @@ class Outbound:
     silent: bool = False
     edit_message_id: int | None = None
     toast: str | None = None
+    # life, review, assignments, exams or course:<slug>; the sender resolves it
+    channel: str = "life"

@@ -106,3 +106,33 @@ async def test_error_handler_replies_to_the_owner_only():
 
     await handler(SimpleNamespace(effective_chat=SimpleNamespace(id=MINE)), context)
     assert sent == [(MINE, ERROR_REPLY)]
+
+
+def _group_update(user_id: int, thread_id: int | None = None, **content) -> Update:
+    user = User(id=user_id, first_name="U", is_bot=False)
+    chat = Chat(id=-100, type=Chat.SUPERGROUP, is_forum=True)
+    message = Message(
+        message_id=1,
+        date=datetime(2026, 9, 3, tzinfo=timezone.utc),
+        chat=chat,
+        from_user=user,
+        message_thread_id=thread_id,
+        **content,
+    )
+    return Update(update_id=1, message=message)
+
+
+def test_group_topic_messages_reach_the_handlers():
+    """filters.TEXT & filters.User already cover groups; only the owner is answered."""
+    app = build_application(FakeSettings(), router=None, sender=None)
+    message_handlers = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
+    mine = _group_update(MINE, thread_id=45, text="hi")
+    assert sum(1 for h in message_handlers if h.check_update(mine)) == 1
+    assert not any(h.check_update(_group_update(FOREIGN, 45, text="hi")) for h in message_handlers)
+
+    # /bind@BotName in a group is unwrapped by CommandHandler itself; the owner filter
+    # is what this build has to get right.
+    command_handlers = [h for h in app.handlers[0] if isinstance(h, CommandHandler)]
+    bind = next(h for h in command_handlers if "bind" in h.commands)
+    assert bind.filters.check_update(_group_update(MINE, 45, text="/bind assignments"))
+    assert not bind.filters.check_update(_group_update(FOREIGN, 45, text="/bind assignments"))

@@ -7,11 +7,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from bot.knowledge.models import Event, Goal, Profile, Todo, dump_frontmatter, slugify
+from bot.knowledge.models import (
+    Channels,
+    Course,
+    Event,
+    Goal,
+    Profile,
+    Todo,
+    dump_frontmatter,
+    slugify,
+)
 
 logger = logging.getLogger(__name__)
 
-_FOLDERS = ["todos", "backlog", "goals", "schedule", "inbox"]
+_FOLDERS = ["todos", "backlog", "goals", "schedule", "inbox", "courses"]
 _DEFAULT_FOLDER = {Todo: "todos", Event: "schedule", Goal: "goals"}
 _ROOT_INDEX = """# Knowledge Bundle
 
@@ -19,8 +28,10 @@ _ROOT_INDEX = """# Knowledge Bundle
 - [backlog](backlog/index.md) — deferred to-dos
 - [goals](goals/index.md) — ongoing goals
 - [schedule](schedule/index.md) — calendar events
+- [courses](courses/index.md) — courses and their topics
 
-See `profile.md` for personal settings and `log.md` for the action history.
+See `profile.md` for personal settings, `channels.md` for topic bindings and
+`log.md` for the action history.
 """
 
 
@@ -107,6 +118,17 @@ class KnowledgeStore:
     def save_profile(self, p: Profile) -> None:
         (self.root / "profile.md").write_text(p.to_markdown())
 
+    # -- channels ---------------------------------------------------------
+
+    def channels(self) -> Channels:
+        path = self.root / "channels.md"
+        if not path.exists():
+            return Channels()
+        return Channels.from_markdown(path.read_text())
+
+    def save_channels(self, channels: Channels) -> None:
+        (self.root / "channels.md").write_text(channels.to_markdown())
+
     # -- listing (skip-and-log broken files) ------------------------------
 
     def _load_folder(self, folder: str, model, broken: list[str]) -> list:
@@ -141,6 +163,23 @@ class KnowledgeStore:
         items = self._load_folder("goals", Goal, broken)
         self.broken_files = broken
         return items
+
+    def courses(self) -> list[Course]:
+        broken: list[str] = []
+        items = self._load_folder("courses", Course, broken)
+        self.broken_files = broken
+        return sorted(items, key=lambda c: c.path)
+
+    def get_course(self, slug: str) -> Course:
+        path = f"courses/{slug}.md"
+        return Course.from_markdown(path, self._read(path))
+
+    def add_course(self, course: Course) -> str:
+        course.timestamp = self.clock()
+        course.path = course.path or f"courses/{slugify(course.title)}.md"
+        (self.root / course.path).write_text(course.to_markdown())
+        self.log("add", course.path)
+        return course.path
 
     def get_todo(self, path: str) -> Todo:
         return Todo.from_markdown(path, self._read(path))
@@ -223,6 +262,7 @@ class KnowledgeStore:
         self._write_todo_index("backlog")
         self._write_schedule_index()
         self._write_goal_index()
+        self._write_course_index()
 
     def _write_todo_index(self, folder: str) -> None:
         lines = [f"# {folder.capitalize()}\n"]
@@ -247,6 +287,14 @@ class KnowledgeStore:
             name = item.path.rsplit("/", 1)[-1]
             lines.append(f"- [{item.title}]({name}) — {item.period}, {item.status}")
         (self.root / "goals" / "index.md").write_text("\n".join(lines) + "\n")
+
+    def _write_course_index(self) -> None:
+        lines = ["# Courses\n"]
+        for item in self._load_folder("courses", Course, []):
+            name = item.path.rsplit("/", 1)[-1]
+            term = item.term or "no term"
+            lines.append(f"- [{item.title}]({name}) — {term}, {len(item.topics)} topics")
+        (self.root / "courses" / "index.md").write_text("\n".join(lines) + "\n")
 
     # -- commit / undo -----------------------------------------------------
 

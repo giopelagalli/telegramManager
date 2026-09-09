@@ -16,7 +16,7 @@ from bot.scheduler.engine import Engine
 from bot.scheduler.state import RuntimeState
 from bot.telegram.app import build_application
 from bot.telegram.router import Router
-from bot.telegram.sender import Sender
+from bot.telegram.sender import Sender, channel_resolver
 from bot.voice import stt, tts
 
 logger = logging.getLogger(__name__)
@@ -92,7 +92,13 @@ def main() -> None:
     agent = Agent(client, vision, store, clock.now)
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 
-    sender = Sender(None, settings.telegram_user_id, _synthesizer(), settings.data_dir / "tmp")
+    sender = Sender(
+        None,
+        settings.telegram_user_id,
+        _synthesizer(),
+        settings.data_dir / "tmp",
+        resolve=channel_resolver(store, settings.telegram_user_id),
+    )
     router = Router(store, agent, state, clock, maps)
     engine = Engine(store, agent, state, state_path, clock, sender, maps)
 

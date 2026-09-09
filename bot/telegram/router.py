@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
 from bot.agent.prompts import build_context
+from bot.knowledge.models import UNBOUND, Channel
 from bot.knowledge.views import esc
 from bot.maps.client import distance_m
 from bot.scheduler.chains import close_chain
@@ -16,6 +17,10 @@ from bot.telegram import callbacks, commands
 logger = logging.getLogger(__name__)
 
 VERIFY_RADIUS_M = 200
+UNBOUND_REPLY = (
+    "This topic isn't bound yet. Run /bind course <CODE> <title>, /bind assignments, "
+    "/bind exams, or /bind review here."
+)
 
 
 class Router:
@@ -28,10 +33,19 @@ class Router:
         self.clock = clock
         self.maps = maps
         self.last_outcome = "handled"
+        self._warned_threads: set[str] = set()
 
     # -- entry points ----------------------------------------------------
 
-    async def on_text(self, text: str, via_voice: bool = False) -> list[Outbound]:
+    async def on_text(
+        self, text: str, via_voice: bool = False, *, channel: Channel | None = None
+    ) -> list[Outbound]:
+        ignored = self._ignore_unbound(channel)
+        if ignored is not None:
+            return ignored
+        return self._tag(await self._text(text, via_voice), channel)
+
+    async def _text(self, text: str, via_voice: bool) -> list[Outbound]:
         now = self._touch()
         awaiting = self.state.chain.item if self.state.chain is not None else None
         close_chain(self.state)
@@ -55,16 +69,32 @@ class Router:
 
         return await self._capture(text, awaiting, via_voice, now)
 
-    async def on_voice_unavailable(self) -> list[Outbound]:
-        return [Outbound("Voice input isn't set up here. Send it as text.", kind="reply")]
+    async def on_voice_unavailable(self, *, channel: Channel | None = None) -> list[Outbound]:
+        ignored = self._ignore_unbound(channel)
+        if ignored is not None:
+            return ignored
+        out = Outbound("Voice input isn't set up here. Send it as text.", kind="reply")
+        return self._tag([out], channel)
 
-    async def on_voice_failed(self, reason: str) -> list[Outbound]:
+    async def on_voice_failed(self, reason: str, *, channel: Channel | None = None) -> list[Outbound]:
+        ignored = self._ignore_unbound(channel)
+        if ignored is not None:
+            return ignored
         self._touch()
         self.store.add_inbox(f"[voice note could not be transcribed: {reason}]")
         self.store.commit("inbox: voice note")
-        return [Outbound("Couldn't transcribe that. Saved a note in your inbox.", kind="reply")]
+        out = Outbound("Couldn't transcribe that. Saved a note in your inbox.", kind="reply")
+        return self._tag([out], channel)
 
-    async def on_location(self, lat: float, lng: float) -> list[Outbound]:
+    async def on_location(
+        self, lat: float, lng: float, *, channel: Channel | None = None
+    ) -> list[Outbound]:
+        ignored = self._ignore_unbound(channel)
+        if ignored is not None:
+            return ignored
+        return self._tag(await self._location(lat, lng), channel)
+
+    async def _location(self, lat: float, lng: float) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
 
@@ -81,7 +111,13 @@ class Router:
             return [out]
         return [Outbound("Got your location, nothing waiting for it.", kind="reply")]
 
-    async def on_photo(self, image: bytes) -> list[Outbound]:
+    async def on_photo(self, image: bytes, *, channel: Channel | None = None) -> list[Outbound]:
+        ignored = self._ignore_unbound(channel)
+        if ignored is not None:
+            return ignored
+        return self._tag(await self._photo(image), channel)
+
+    async def _photo(self, image: bytes) -> list[Outbound]:
         now = self._touch()
 
         if self._wake_active() and self.state.wake.phase == "challenge":
@@ -106,19 +142,43 @@ class Router:
         message_id: int | None = None,
         message_html: str | None = None,
         buttons: list[tuple[str, str]] | None = None,
+        *,
+        channel: Channel | None = None,
     ) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
-        return await callbacks.handle(
+        outs = await callbacks.handle(
             data, self.store, self.agent, self.state, now, message_id, message_html, buttons
         )
+        return self._tag(outs, channel)
 
-    async def command(self, name: str, arg: str) -> list[Outbound]:
+    async def command(
+        self, name: str, arg: str, *, channel: Channel | None = None
+    ) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
-        return await commands.handle(name, arg, self.store, self.agent, self.state, now)
+        outs = await commands.handle(name, arg, self.store, self.agent, self.state, now, channel)
+        return self._tag(outs, channel)
 
     # -- helpers ---------------------------------------------------------
+
+    def _ignore_unbound(self, channel: Channel | None) -> list[Outbound] | None:
+        """Warn once per unbound topic, then say nothing there. None means carry on."""
+        if channel is None or channel.kind != UNBOUND:
+            return None
+        if channel.key in self._warned_threads:
+            return []
+        self._warned_threads.add(channel.key)
+        return [Outbound(esc(UNBOUND_REPLY), kind="reply")]
+
+    def _tag(self, outs: list[Outbound], channel: Channel | None) -> list[Outbound]:
+        """Send replies back to the topic they were asked in."""
+        if channel is None or channel.kind in ("life", UNBOUND):
+            return outs
+        for out in outs:
+            if out.channel == "life":
+                out.channel = channel.name
+        return outs
 
     def _touch(self):
         now = self.clock.now()

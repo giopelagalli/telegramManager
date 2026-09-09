@@ -3,12 +3,16 @@ from __future__ import annotations
 import re
 from datetime import datetime, time, timedelta
 
+from bot.knowledge.models import Channel, Course, slugify
 from bot.knowledge.ranking import top
 from bot.knowledge.views import esc, fmt_time, render_backlog, render_goals, render_today, render_todo, render_week
 from bot.scheduler.briefings import send_morning
 from bot.scheduler.outbound import Outbound
 
 DEFAULT_PAUSE_MINUTES = 120
+BIND_KINDS = ("assignments", "exams", "review")
+BIND_USAGE = "Usage: /bind course <CODE> <title>, /bind assignments, /bind exams or /bind review."
+BIND_IN_DM = "Bind topics inside your group, not here."
 
 COMMANDS: list[tuple[str, str]] = [
     ("todo", "Top 5 open todos (/todo all for everything)"),
@@ -17,6 +21,10 @@ COMMANDS: list[tuple[str, str]] = [
     ("today", "Today's events and top todos"),
     ("week", "The next 7 days"),
     ("brief", "Morning briefing now (/brief 9am to shift today's)"),
+    ("courses", "Courses and their topic counts"),
+    ("channels", "Which topic is bound to what"),
+    ("bind", "Bind this topic (/bind course CS101 Intro to CS)"),
+    ("unbind", "Unbind this topic"),
     ("pause", "Quiet for a while (/pause 2h)"),
     ("quiet", "Quiet until the end of the day"),
     ("resume", "Cancel the pause"),
@@ -30,7 +38,9 @@ _DURATION_RE = re.compile(r"^(\d+)\s*([hm]?)$", re.IGNORECASE)
 _TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", re.IGNORECASE)
 
 
-async def handle(name: str, arg: str, store, agent, state, now: datetime) -> list[Outbound]:
+async def handle(
+    name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None
+) -> list[Outbound]:
     arg = (arg or "").strip()
     today = now.date()
 
@@ -54,6 +64,18 @@ async def handle(name: str, arg: str, store, agent, state, now: datetime) -> lis
 
     if name == "brief":
         return await _brief(arg, store, agent, state, now)
+
+    if name == "courses":
+        return [Outbound(_render_courses(store.courses()), kind="reply")]
+
+    if name == "channels":
+        return [Outbound(_render_channels(store), kind="reply")]
+
+    if name == "bind":
+        return _bind(arg, store, channel)
+
+    if name == "unbind":
+        return _unbind(store, channel)
 
     if name == "pause":
         minutes = _parse_duration(arg)
@@ -93,6 +115,78 @@ async def _brief(arg: str, store, agent, state, now: datetime) -> list[Outbound]
     state.briefing_override[f"morning:{day}"] = f"{at.hour:02d}:{at.minute:02d}"
     when = datetime.combine(day, at, tzinfo=store.profile().tz)
     return [Outbound(f"Morning briefing moved to {fmt_time(when)} today.", kind="reply")]
+
+
+def _render_courses(courses) -> str:
+    if not courses:
+        return "No courses yet. Run /bind course CS101 Intro to CS inside a topic."
+    lines = ["<b>Courses</b>"]
+    for course in courses:
+        lines.append(f"- {esc(course.title)} ({esc(course.slug)}) — {len(course.topics)} topics")
+    return "\n".join(lines)
+
+
+def _render_channels(store) -> str:
+    bindings = store.channels().bindings
+    if not bindings:
+        return "Nothing bound yet. Run /bind inside a topic."
+    titles = {c.slug: c.title for c in store.courses()}
+    lines = ["<b>Channels</b>"]
+    for channel in bindings.values():
+        label = channel.name
+        if channel.kind == "course":
+            label = f"{label} — {titles.get(channel.course, channel.course)}"
+        lines.append(f"- {esc(label)}")
+    return "\n".join(lines)
+
+
+def _bind(arg: str, store, channel: Channel | None) -> list[Outbound]:
+    if channel is None or channel.kind == "life":
+        return [Outbound(BIND_IN_DM, kind="reply")]
+    kind, _, rest = arg.partition(" ")
+    kind = kind.lower()
+    if kind in BIND_KINDS:
+        bound = Channel(channel.chat_id, channel.thread_id, kind)
+        _save_binding(store, bound, f"bind: {kind}")
+        return [Outbound(f"Bound this topic to {kind}.", kind="reply", channel=bound.name)]
+    if kind == "course":
+        return _bind_course(rest.strip(), store, channel)
+    return [Outbound(esc(BIND_USAGE), kind="reply")]
+
+
+def _bind_course(rest: str, store, channel: Channel) -> list[Outbound]:
+    code, _, title = rest.partition(" ")
+    slug = slugify(code)
+    if not slug:
+        return [Outbound(esc(BIND_USAGE), kind="reply")]
+    try:
+        course = store.get_course(slug)
+    except KeyError:
+        course = Course(path=f"courses/{slug}.md", title=title.strip() or code)
+        store.add_course(course)
+        store.commit(f"course: {course.title}")
+    bound = Channel(channel.chat_id, channel.thread_id, "course", slug)
+    _save_binding(store, bound, f"bind: course {slug}")
+    text = f"Bound this topic to {esc(code)} ({esc(course.title)})."
+    return [Outbound(text, kind="reply", channel=bound.name)]
+
+
+def _unbind(store, channel: Channel | None) -> list[Outbound]:
+    channels = store.channels()
+    existing = channels.by_key(channel.key) if channel is not None else None
+    if existing is None:
+        return [Outbound("Nothing is bound here.", kind="reply")]
+    channels.unbind(channel.key)
+    store.save_channels(channels)
+    store.commit(f"bind: removed {existing.name}")
+    return [Outbound(f"Unbound this topic from {esc(existing.name)}.", kind="reply")]
+
+
+def _save_binding(store, bound: Channel, message: str) -> None:
+    channels = store.channels()
+    channels.bind(bound)
+    store.save_channels(channels)
+    store.commit(message)
 
 
 def _parse_duration(arg: str) -> int | None:

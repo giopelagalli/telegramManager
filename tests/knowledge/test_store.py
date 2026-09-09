@@ -2,7 +2,7 @@ import subprocess
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import pytest
-from bot.knowledge.models import Todo, Event, Goal, Profile
+from bot.knowledge.models import Todo, Event, Goal, Profile, Channel, Channels, Course
 from bot.knowledge.store import KnowledgeStore
 
 NY = ZoneInfo("America/New_York")
@@ -124,3 +124,35 @@ def test_bad_remote_does_not_block_the_good_one(tmp_path):
     s.commit("add todo")
     s.wait_for_pushes()
     assert _head(good, "main") == _head(s.root)
+
+def test_channels_missing_file_is_empty(store):
+    assert store.channels() == Channels()
+    assert store.channels().for_kind("review") is None
+
+def test_channels_save_and_reload(store):
+    channels = store.channels()
+    channels.bind(Channel(-100, 45, "course", "cs101"))
+    store.save_channels(channels)
+    assert (store.root / "channels.md").exists()
+    reloaded = store.channels()
+    assert reloaded.by_key("-100:45").kind == "course"
+    reloaded.unbind("-100:45")
+    store.save_channels(reloaded)
+    assert store.channels() == Channels()
+
+def test_add_and_get_course(store):
+    path = store.add_course(Course(path="", title="Intro to CS", term="Fall 2026"))
+    assert path == "courses/intro-to-cs.md"
+    assert store.get_course("intro-to-cs").term == "Fall 2026"
+    assert store.get_course("intro-to-cs").timestamp == T0
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS", topics=["recursion"]))
+    assert [c.slug for c in store.courses()] == ["cs101", "intro-to-cs"]
+    with pytest.raises(KeyError):
+        store.get_course("nope")
+
+def test_course_index_is_regenerated(store):
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS", topics=["recursion", "sorting"]))
+    store.commit("course: Intro to CS")
+    idx = (store.root / "courses" / "index.md").read_text()
+    assert "Intro to CS" in idx and "2 topics" in idx
+    assert "courses/index.md" in (store.root / "index.md").read_text()
