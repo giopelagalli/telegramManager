@@ -242,7 +242,7 @@ briefings never need a model at all.
 | `/brief` | Morning briefing now (`/brief 9am` to shift today's). |
 | `/courses` | Courses and their topic counts. |
 | `/channels` | Which topic is bound to what. |
-| `/bind`, `/unbind` | Bind this topic (`/bind course CS101 Intro to CS`). |
+| `/bind`, `/unbind` | Fallback bind for a topic created before the bot joined (`/bind course CS101 Intro to CS`). |
 | `/sources` | Course material stored here (see §7). |
 | `/summary` | Summary of a source from the last `/sources` (`/summary 2`). |
 | `/move` | Move the last ingested source to another course (`/move phys1`). |
@@ -259,19 +259,28 @@ with what it stored.
 ## 7. Study
 
 School runs in a **private Telegram group with Topics turned on**, with the
-bot added as an admin (setup checklist step 3). Your DM stays the life
+bot added as an admin (setup checklist step 3) — add the bot **before**
+creating any topics, so it sees each one get created. Your DM stays the life
 channel — briefings, check-ins, critical mode. Each topic in the group gets a
-job, assigned once with `/bind` run inside it:
+job from its own name: create a topic and name it, and the bot binds itself
+and replies to confirm.
 
 ```
-/bind course CS101 Intro to CS   # one topic per course
-/bind assignments                # HW, projects, labs across courses
-/bind exams                      # quizzes, exams, study plans
-/bind review                     # daily quiz session and digest
+CS101                             # one topic per course, named after it
+Assignments                       # HW, projects, labs across courses
+Exams                             # quizzes, exams, study plans
+Review                            # daily quiz session and digest
 ```
 
-`/bind course` creates the course file if it doesn't exist. A topic that
-isn't bound gets one reply explaining `/bind`, then is ignored.
+A course topic's name becomes the course title, and the course file is
+created if it doesn't exist. Renaming a topic rebinds it — an empty course
+is renamed in place, otherwise a new one is created. A topic named `Life`,
+`General` or `Main` gets a reply pointing back at your DM instead.
+
+If the bot joined **after** a topic already existed, that topic never fired
+the naming event; run `/bind` inside it as a fallback (`/bind course CS101
+Intro to CS`, `/bind assignments`, `/bind exams`, `/bind review`). A topic
+that isn't bound gets one reply explaining `/bind`, then is ignored.
 
 **Dropping sources.** In a course topic, send a PDF, a `.pptx`, a `.docx`, a
 `.txt`/`.md` file, or a photo of the board. PDFs are extracted per page, slides per slide (with

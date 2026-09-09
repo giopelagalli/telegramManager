@@ -46,6 +46,12 @@ def build_application(settings, router, sender, transcriber=None) -> Application
     app.add_handler(MessageHandler(only_me & filters.PHOTO, handlers.on_photo))
     app.add_handler(MessageHandler(only_me & filters.Document.ALL, handlers.on_document))
     app.add_handler(MessageHandler(only_me & filters.LOCATION, handlers.on_location))
+    app.add_handler(
+        MessageHandler(only_me & filters.StatusUpdate.FORUM_TOPIC_CREATED, handlers.on_forum_topic_created)
+    )
+    app.add_handler(
+        MessageHandler(only_me & filters.StatusUpdate.FORUM_TOPIC_EDITED, handlers.on_forum_topic_edited)
+    )
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_error_handler(on_error)
     return app

@@ -15,13 +15,16 @@ on (see README §1.3 for the full table).
 
 3. **The private group with topics.** In Telegram: New Group → name it → add
    any placeholder member (you can remove them after) → open the group's
-   settings → Edit → turn on **Topics**. Then add your bot to the group and
-   promote it to admin (group settings → Administrators → Add Admin), so it
-   sees every message. Create one topic per course plus `assignments`,
-   `exams` and `review`, and run `/bind` inside each (README §7). Nothing to
-   put in `.env` — the bindings live in `knowledge/channels.md`. Telegram
-   only lets a bot download files up to 20 MB, so split anything bigger
-   before sending it; the bot says so instead of ingesting it.
+   settings → Edit → turn on **Topics**. Add your bot to the group and
+   promote it to admin (group settings → Administrators → Add Admin)
+   **first**, so it sees every topic get created. Then create one topic per
+   course plus `Assignments`, `Exams` and `Review`, naming each as you go —
+   the bot binds itself from the name and replies in the topic to confirm
+   (README §7). Only a topic created before the bot joined needs `/bind` run
+   inside it as a fallback. Nothing to put in `.env` — the bindings live in
+   `knowledge/channels.md`. Telegram only lets a bot download files up to
+   20 MB, so split anything bigger before sending it; the bot says so
+   instead of ingesting it.
 
 4. **Fireworks API key.** Sign in at
    [app.fireworks.ai](https://app.fireworks.ai) → click your account (top

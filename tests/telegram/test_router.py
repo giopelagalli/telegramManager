@@ -500,3 +500,82 @@ async def test_a_missing_course_file_asks_for_a_rebind(rig):
 
     outs = await router.on_text("what is a pointer?", channel=COURSE)
     assert outs[0].text == "This topic's course file is gone; /bind again."
+
+
+# -- auto-bind topics from their names -----------------------------------
+
+
+def test_topic_named_binds_each_kind(rig):
+    router, store, *_ = rig
+    out = router.on_topic_named(-100, 10, "Homework")
+    assert out[0].text == "Got it — this is your assignments topic."
+    assert out[0].target == (-100, 10)
+    assert store.channels().by_key("-100:10") == Channel(-100, 10, "assignments")
+
+    out = router.on_topic_named(-100, 11, "Quizzes and Exams")
+    assert out[0].text == "Got it — this is your exams topic."
+    assert store.channels().by_key("-100:11").kind == "exams"
+
+    out = router.on_topic_named(-100, 12, "Recall")
+    assert out[0].text == "Got it — this is your review topic."
+    assert store.channels().by_key("-100:12").kind == "review"
+
+
+def test_topic_named_binds_a_course_from_its_name(rig):
+    router, store, *_ = rig
+    out = router.on_topic_named(-100, 20, "Bio 201 🧬")
+    assert out[0].text == "Got it — this topic is Bio 201 🧬."
+    assert store.channels().by_key("-100:20") == Channel(-100, 20, "course", "bio-201")
+    assert store.get_course("bio-201").title == "Bio 201 🧬"
+
+
+def test_topic_named_is_idempotent(rig):
+    router, store, *_ = rig
+    router.on_topic_named(-100, 30, "Assignments")
+    assert router.on_topic_named(-100, 30, "Assignments") == []
+
+    router.on_topic_named(-100, 31, "CS101")
+    assert router.on_topic_named(-100, 31, "CS101") == []
+    assert len(store.courses()) == 1
+
+
+def test_topic_named_life_hint_never_binds(rig):
+    router, store, *_ = rig
+    out = router.on_topic_named(-100, 40, "General")
+    assert out[0].text == (
+        "Use your DM for life stuff; name this topic after a course to use it here."
+    )
+    assert out[0].target == (-100, 40)
+    assert store.channels().by_key("-100:40") is None
+
+
+def test_topic_named_renames_an_empty_course_in_place(rig):
+    router, store, *_ = rig
+    router.on_topic_named(-100, 50, "CS101")
+    out = router.on_topic_named(-100, 50, "Intro to Computer Science")
+    assert out[0].text == "Renamed: this topic is now Intro to Computer Science."
+    channel = store.channels().by_key("-100:50")
+    assert channel.course == "cs101"
+    assert store.get_course("cs101").title == "Intro to Computer Science"
+
+
+def test_topic_named_rename_leaves_a_course_with_sources_alone(rig):
+    router, store, *_ = rig
+    router.on_topic_named(-100, 60, "CS101")
+    store.add_source(Source(path="", title="Ch1", course="cs101"))
+    store.commit("ingest")
+
+    out = router.on_topic_named(-100, 60, "Physics 101")
+    assert out[0].text == "Renamed: this topic is now Physics 101."
+    assert store.get_course("cs101").title == "CS101"
+    channel = store.channels().by_key("-100:60")
+    assert channel.course == "physics-101"
+    assert store.get_course("physics-101").title == "Physics 101"
+
+
+def test_topic_named_renames_between_kinds(rig):
+    router, store, *_ = rig
+    router.on_topic_named(-100, 70, "Assignments")
+    out = router.on_topic_named(-100, 70, "Exams")
+    assert out[0].text == "Renamed: this topic is now Exams."
+    assert store.channels().by_key("-100:70").kind == "exams"

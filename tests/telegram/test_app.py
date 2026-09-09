@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-from telegram import Chat, Location, Message, PhotoSize, Update, User, Voice
+from telegram import Chat, ForumTopicCreated, Location, Message, PhotoSize, Update, User, Voice
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 
 from bot.telegram.app import ERROR_REPLY, build_application
@@ -45,15 +45,16 @@ def _update(user_id: int, **content) -> Update:
 def test_build_application_registers_every_handler():
     app = build_application(FakeSettings(), router=None, sender=None)
     registered = app.handlers[0]
-    # one per command, plus text, voice, photo, document, location, callback
-    assert len(registered) == len(COMMANDS) + 6
+    # one per command, plus text, voice, photo, document, location, forum topic
+    # created, forum topic edited, callback
+    assert len(registered) == len(COMMANDS) + 8
     assert app.error_handlers
 
 
 def test_message_handlers_accept_only_the_owner():
     app = build_application(FakeSettings(), router=None, sender=None)
     message_handlers = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
-    assert len(message_handlers) == 5
+    assert len(message_handlers) == 7
 
     for kind, content in CONTENT.items():
         mine = _update(MINE, **content)
@@ -157,3 +158,13 @@ def test_group_topic_messages_reach_the_handlers():
     bind = next(h for h in command_handlers if "bind" in h.commands)
     assert bind.filters.check_update(_group_update(MINE, 45, text="/bind assignments"))
     assert not bind.filters.check_update(_group_update(FOREIGN, 45, text="/bind assignments"))
+
+
+def test_forum_topic_created_reaches_the_handler_owner_only():
+    app = build_application(FakeSettings(), router=None, sender=None)
+    message_handlers = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
+    created = dict(forum_topic_created=ForumTopicCreated(name="CS101", icon_color=0))
+    mine = _group_update(MINE, thread_id=45, **created)
+    foreign = _group_update(FOREIGN, thread_id=45, **created)
+    assert sum(1 for h in message_handlers if h.check_update(mine)) == 1
+    assert not any(h.check_update(foreign) for h in message_handlers)

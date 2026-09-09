@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta
 
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
 from bot.agent.prompts import build_context
-from bot.knowledge.models import UNBOUND, Channel, Course, Source
+from bot.knowledge.models import UNBOUND, Channel, Course, Source, channel_key, slugify
 from bot.knowledge.views import esc
 from bot.maps.client import distance_m
 from bot.scheduler.chains import close_chain
@@ -44,6 +45,29 @@ UNBOUND_REPLY = (
     "This topic isn't bound yet. Run /bind course <CODE> <title>, /bind assignments, "
     "/bind exams, or /bind review here."
 )
+
+# Topic-name auto-binding: what a topic's own name maps to, once cleaned up.
+_ASSIGNMENT_TOPIC_NAMES = {"assignments", "assignment", "homework", "hw"}
+_EXAM_TOPIC_NAMES = {"exams", "exam", "quizzes", "quiz", "tests", "quizzes and exams", "exams and quizzes"}
+_REVIEW_TOPIC_NAMES = {"review", "reviews", "digest", "recall"}
+_LIFE_TOPIC_NAMES = {"life", "general", "main"}
+LIFE_TOPIC_HINT = "Use your DM for life stuff; name this topic after a course to use it here."
+
+
+def _normalize_topic_name(name: str) -> str:
+    """Case-insensitive, with emoji/punctuation and extra whitespace stripped."""
+    cleaned = re.sub(r"[^\w\s]", "", name, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", cleaned).strip().lower()
+
+
+def _topic_kind(normalized: str) -> str | None:
+    if normalized in _ASSIGNMENT_TOPIC_NAMES:
+        return "assignments"
+    if normalized in _EXAM_TOPIC_NAMES:
+        return "exams"
+    if normalized in _REVIEW_TOPIC_NAMES:
+        return "review"
+    return None
 
 
 def _is_course(channel: Channel | None) -> bool:
@@ -162,6 +186,53 @@ class Router:
         if out is not None:
             return [out]
         return [Outbound("Got your location, nothing waiting for it.", kind="reply")]
+
+    def on_topic_named(self, chat_id: int, thread_id: int, name: str) -> list[Outbound]:
+        """A forum topic was created or renamed: bind it from its own name."""
+        target = (chat_id, thread_id)
+        normalized = _normalize_topic_name(name)
+        if normalized in _LIFE_TOPIC_NAMES:
+            return [Outbound(LIFE_TOPIC_HINT, kind="reply", target=target)]
+
+        existing = self.store.channels().by_key(channel_key(chat_id, thread_id))
+        renamed = existing is not None
+        kind = _topic_kind(normalized)
+
+        if kind is not None:
+            if existing is not None and existing.kind == kind:
+                return []
+            bound = Channel(chat_id, thread_id, kind)
+            commands._save_binding(self.store, bound, f"bind: {name}")
+            if renamed:
+                return [Outbound(f"Renamed: this topic is now {kind.capitalize()}.", kind="reply", target=target)]
+            return [Outbound(f"Got it — this is your {kind} topic.", kind="reply", target=target)]
+
+        slug = slugify(name)
+        title = name
+        if existing is not None and existing.kind == "course" and existing.course == slug:
+            return []
+        if renamed and existing.kind == "course":
+            try:
+                old_course = self.store.get_course(existing.course)
+            except KeyError:
+                old_course = None
+            if old_course is not None and not self.store.sources(existing.course):
+                old_course.title = title
+                self.store.save_course(old_course)
+                self.store.commit(f"course: rename {existing.course} -> {title}")
+                slug = existing.course
+
+        try:
+            self.store.get_course(slug)
+        except KeyError:
+            self.store.add_course(Course(path=f"courses/{slug}.md", title=title))
+            self.store.commit(f"course: {title}")
+
+        bound = Channel(chat_id, thread_id, "course", slug)
+        commands._save_binding(self.store, bound, f"bind: {name}")
+        if renamed:
+            return [Outbound(f"Renamed: this topic is now {title}.", kind="reply", target=target)]
+        return [Outbound(f"Got it — this topic is {title}.", kind="reply", target=target)]
 
     async def on_photo(
         self, image: bytes, caption: str | None = None, *, channel: Channel | None = None

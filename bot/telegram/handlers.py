@@ -148,6 +148,21 @@ class Handlers:
         )
         await self._send(outs)
 
+    async def on_forum_topic_created(self, update, context) -> None:
+        message = update.effective_message
+        outs = self.router.on_topic_named(
+            update.effective_chat.id, message.message_thread_id, message.forum_topic_created.name
+        )
+        await self._send(outs)
+
+    async def on_forum_topic_edited(self, update, context) -> None:
+        message = update.effective_message
+        name = message.forum_topic_edited.name
+        if name is None:
+            return
+        outs = self.router.on_topic_named(update.effective_chat.id, message.message_thread_id, name)
+        await self._send(outs)
+
     async def on_callback(self, update, context) -> None:
         query = update.callback_query
         message = query.message
