@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import pytest
-from bot.agent.client import FakeModelClient
+from bot.agent.client import FakeModelClient, ModelResponse
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.models import Todo, Event, Channel, Course, Source, UNBOUND
@@ -262,3 +262,56 @@ async def test_help_lists_the_rest_under_more(rig):
     assert "<b>Commands</b>" in text and "<b>More</b>" in text
     assert "/todo" in text and "/backlog" in text
     assert text.index("/todo") < text.index("<b>More</b>") < text.index("/backlog")
+
+
+def _rig_with_hard(tmp_path, hard):
+    clock = FakeClock(NOW)
+    store = KnowledgeStore(tmp_path / "k", clock=clock.now)
+    store.init()
+    state = RuntimeState.load(tmp_path / "s.json")
+    primary = FakeModelClient([])
+    agent = Agent(primary, None, store, clock.now, hard=hard)
+    return Router(store, agent, state, clock, None), store, primary
+
+
+async def test_hard_without_hard_model_configured(rig):
+    r, *_ = rig
+    out = (await r.command("hard", "why does this happen?"))[0]
+    assert out.text == "No hard model configured. Set HARD_MODEL in .env."
+
+
+async def test_hard_in_dm_answers_with_via_line_and_writes_nothing(tmp_path):
+    hard = FakeModelClient([ModelResponse("42", [])], model="glm-5.3")
+    r, store, primary = _rig_with_hard(tmp_path, hard)
+
+    out = (await r.command("hard", "what is the answer?", channel=DM))[0]
+
+    assert out.text == "<i>via glm-5.3</i>\n42"
+    assert store.todos() == []
+    assert primary.calls == [] and len(hard.calls) == 1
+
+
+async def test_hard_in_a_course_topic_uses_the_hard_client(tmp_path):
+    hard = FakeModelClient([ModelResponse("Because of pointers.", [])], model="glm-5.3")
+    r, store, primary = _rig_with_hard(tmp_path, hard)
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    store.commit("c")
+
+    out = (await r.command("hard", "why does this crash?", channel=CS101))[0]
+
+    assert out.text == "<i>via glm-5.3</i>\nBecause of pointers."
+    assert primary.calls == []
+    assert len(hard.calls) == 1 and hard.calls[0]["tools"] is None
+    assert store.sources("cs101") == []
+
+
+async def test_hard_model_offline(tmp_path):
+    class Boom:
+        model = "glm-5.3"
+
+        async def chat(self, *a, **k):
+            raise ConnectionError("down")
+
+    r, store, primary = _rig_with_hard(tmp_path, Boom())
+    out = (await r.command("hard", "why?", channel=DM))[0]
+    assert out.text == "The hard model didn't answer; try again."

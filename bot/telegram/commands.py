@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, time, timedelta
 
+from bot.agent.prompts import build_context
 from bot.knowledge.models import Channel, Course, slugify
 from bot.knowledge.ranking import top
 from bot.knowledge.views import (
@@ -17,6 +18,8 @@ from bot.knowledge.views import (
 )
 from bot.scheduler.briefings import send_morning
 from bot.scheduler.outbound import Outbound
+from bot.study.select import select_sources
+from bot.telegram.markdown import md_to_html
 
 DEFAULT_PAUSE_MINUTES = 120
 BIND_KINDS = ("assignments", "exams", "review")
@@ -24,6 +27,9 @@ BIND_USAGE = "Usage: /bind course <CODE> <title>, /bind assignments, /bind exams
 BIND_IN_DM = "Bind topics inside your group, not here."
 MOVE_USAGE = "Usage: /move <slug> — the course slug from /courses."
 NOW_LEAD_MINUTES = 90
+HARD_UNCONFIGURED_REPLY = "No hard model configured. Set HARD_MODEL in .env."
+HARD_OFFLINE_REPLY = "The hard model didn't answer; try again."
+HARD_COURSE_GONE_REPLY = "This topic's course file is gone; /bind again."
 
 COMMANDS: list[tuple[str, str, bool]] = [
     ("todo", "Top 5 open todos (/todo all for everything)", True),
@@ -44,6 +50,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("quiet", "Quiet until the end of the day", False),
     ("resume", "Cancel the pause", False),
     ("undo", "Revert the last change", False),
+    ("hard", "Ask the big cloud model (/hard why does X happen?)", False),
     ("help", "List commands", True),
 ]
 
@@ -133,6 +140,9 @@ async def handle(
             return [Outbound("Nothing to undo.", kind="reply")]
         return [Outbound(f"Reverted: {esc(subject)}", kind="reply")]
 
+    if name == "hard":
+        return await _hard(arg, store, agent, now, channel)
+
     if name == "help":
         return [Outbound(HELP_TEXT, kind="reply")]
 
@@ -149,6 +159,27 @@ async def _brief(arg: str, store, agent, state, now: datetime) -> list[Outbound]
     state.briefing_override[f"morning:{day}"] = f"{at.hour:02d}:{at.minute:02d}"
     when = datetime.combine(day, at, tzinfo=store.profile().tz)
     return [Outbound(f"Morning briefing moved to {fmt_time(when)} today.", kind="reply")]
+
+
+async def _hard(text: str, store, agent, now: datetime, channel: Channel | None) -> list[Outbound]:
+    if agent.hard is None:
+        return [Outbound(HARD_UNCONFIGURED_REPLY, kind="reply")]
+    model_name = getattr(agent.hard, "model", "the hard model")
+
+    if channel is not None and channel.kind == "course":
+        try:
+            course = store.get_course(channel.course)
+        except KeyError:
+            return [Outbound(esc(HARD_COURSE_GONE_REPLY), kind="reply")]
+        sources = select_sources(text, store.sources(channel.course), store.profile().tutor_context_chars)
+        answer, _note = await agent.tutor(text, course, sources, notes_tool=False, client=agent.hard)
+    else:
+        answer = await agent.answer(text, build_context(store, now), client=agent.hard)
+
+    if answer is None:
+        return [Outbound(HARD_OFFLINE_REPLY, kind="reply")]
+    via = f"<i>via {esc(model_name)}</i>"
+    return [Outbound(f"{via}\n{md_to_html(answer)}", kind="reply")]
 
 
 def _render_now(store, now: datetime) -> str:

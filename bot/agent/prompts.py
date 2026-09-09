@@ -23,6 +23,9 @@ Read the start of a document and answer with strict JSON, nothing else:
 
 OCR_PROMPT = "Transcribe all text in this image verbatim, preserving line breaks."
 
+ANSWER_SYSTEM = """Answer the question directly and accurately, grounded in the context
+below. Markdown is fine. If the context doesn't cover it, say so rather than guessing."""
+
 TUTOR_SYSTEM = """You are {name}'s tutor for {course}. Ground every answer in the sources
 below and cite them as [<source title>, p.N]. If the sources don't cover it, say so instead
 of inventing an answer. Keep it short enough for a Telegram message.

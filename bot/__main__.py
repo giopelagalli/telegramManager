@@ -99,7 +99,16 @@ def main() -> None:
                 enable_thinking=None,
             ),
         )
-    agent = Agent(client, vision, store, clock.now)
+    hard: ModelClient | None = None
+    if settings.hard_model:
+        hard = OpenAIModelClient(
+            settings.fallback_base_url,
+            settings.fallback_api_key,
+            settings.hard_model,
+            enable_thinking=None,
+            timeout=300,
+        )
+    agent = Agent(client, vision, store, clock.now, hard=hard)
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 
     sender = Sender(

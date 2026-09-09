@@ -10,6 +10,7 @@ from typing import Callable
 
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
+    ANSWER_SYSTEM,
     CAPTURE_SYSTEM,
     COMPOSE_SYSTEM,
     DESCRIBE_SOURCE_SYSTEM,
@@ -48,11 +49,13 @@ class Agent:
         vision: ModelClient | None,
         store: KnowledgeStore,
         clock: Callable[[], datetime],
+        hard: ModelClient | None = None,
     ):
         self.client = client
         self.vision = vision
         self.store = store
         self.clock = clock
+        self.hard = hard
 
     async def capture(self, text: str, awaiting: str | None = None) -> CaptureResult:
         now = self.clock()
@@ -91,9 +94,9 @@ class Agent:
         reply_text = self._reply_text(response.tool_calls)
         return CaptureResult(response.tool_calls, reply_text, parsed=True)
 
-    async def _chat_or_none(self, messages, tools, temperature):
+    async def _chat_or_none(self, messages, tools, temperature, client: ModelClient | None = None):
         try:
-            return await self.client.chat(messages, tools=tools, temperature=temperature)
+            return await (client or self.client).chat(messages, tools=tools, temperature=temperature)
         except Exception:
             return None
 
@@ -217,7 +220,12 @@ class Agent:
         return (response.text or "").strip() or None
 
     async def tutor(
-        self, question: str, course: Course, sources: list[Source], notes_tool: bool = True
+        self,
+        question: str,
+        course: Course,
+        sources: list[Source],
+        notes_tool: bool = True,
+        client: ModelClient | None = None,
     ) -> tuple[str | None, dict | None]:
         """(answer, save_note arguments). Both None when the model is unreachable."""
         profile = self.store.profile()
@@ -229,11 +237,23 @@ class Agent:
             {"role": "system", "content": _render_sources(sources)},
             {"role": "user", "content": question},
         ]
-        response = await self._chat_or_none(messages, TUTOR_TOOLS if notes_tool else None, 0.3)
+        response = await self._chat_or_none(messages, TUTOR_TOOLS if notes_tool else None, 0.3, client=client)
         if response is None:
             return None, None
         note = next((_note_args(c) for c in response.tool_calls if c.name == "save_note"), None)
         return (response.text or "").strip() or None, note
+
+    async def answer(self, question: str, context: str, client: ModelClient | None = None) -> str | None:
+        """Plain grounded Q&A, no tools. None when the model is unreachable."""
+        messages = [
+            {"role": "system", "content": ANSWER_SYSTEM},
+            {"role": "system", "content": context},
+            {"role": "user", "content": question},
+        ]
+        response = await self._chat_or_none(messages, None, 0.3, client=client)
+        if response is None:
+            return None
+        return (response.text or "").strip() or None
 
     async def rate_answer(self, question: str, answer: str) -> bool:
         try:

@@ -90,6 +90,7 @@ chmod 600 .env
 | `FALLBACK_MODEL` | A Fireworks model that supports tool calling — a Qwen3 variant keeps behavior closest to the local one. All three `FALLBACK_*` variables must be set together, or none of them. |
 | `VISION_BASE_URL` / `VISION_MODEL` | The Spark endpoint / `qwen3.8-flash-next`. Worth trying — if the endpoint rejects image input, photo checks (wake-up, task verification) degrade to "not verified" automatically rather than breaking. Vision does not fall back. |
 | `FALLBACK_VISION_MODEL` | Optional; a vision-capable Fireworks model. Requires `FALLBACK_BASE_URL` and `FALLBACK_API_KEY` to also be set. When set, photo checks and OCR fall back to Fireworks too when the Spark is down. |
+| `HARD_MODEL` | Optional; a strong Fireworks model (e.g. GLM 5.3 or Kimi K3) for `/hard`, the explicit escape hatch to a bigger cloud model. Requires `FALLBACK_BASE_URL` and `FALLBACK_API_KEY` to also be set. |
 | `GOOGLE_MAPS_API_KEY` | Optional. Without it, travel time falls back to the stored `travel_minutes` on each event. |
 | `KNOWLEDGE_DIR` | `/home/<user>/telegramManager/knowledge` |
 | `KNOWLEDGE_REMOTES` | `<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git` — see §1.4. |
@@ -251,11 +252,24 @@ briefings never need a model at all.
 | `/quiet` | Quiet until the end of the day. |
 | `/resume` | Cancel the pause. |
 | `/undo` | Revert the last change. |
+| `/hard` | Ask the big cloud model directly, bypassing the Spark (`/hard why does X happen?`). |
 | `/help` | List commands. |
 
 Anything else you send — text or a voice note — is treated as free-form
 capture: the model turns it into todos/events/goals as needed and replies
 with what it stored.
+
+**`/hard`** always goes to `HARD_MODEL` over `FALLBACK_BASE_URL`, never the
+Spark, and never opens the circuit breaker if that endpoint is slow or down.
+In a course topic it grounds the answer in that course's sources like normal
+tutoring, sized for the Spark's full context rather than the smaller fallback
+budget; anywhere else it's a plain grounded Q&A over your profile and
+schedule, with no capture and no knowledge-base writes. Every reply is
+prefixed with a small `via <model>` line so it's obvious when you're not
+talking to the usual model. If nothing is configured, `/hard` says so. Phase 2
+and 3 (plan generation, flashcards) will reach for `HARD_MODEL` automatically
+when it's set, for the same reason: some jobs are worth the trip off the
+Spark.
 
 ## 7. Study
 

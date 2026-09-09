@@ -44,7 +44,7 @@ class OpenAIModelClient:
         timeout: float = 120.0,
     ):
         self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
-        self._model = model
+        self.model = model
         self._enable_thinking = enable_thinking
 
     async def chat(
@@ -57,7 +57,7 @@ class OpenAIModelClient:
         if self._enable_thinking is not None:
             extra_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": self._enable_thinking}}
         response = await self._client.chat.completions.create(
-            model=self._model,
+            model=self.model,
             messages=messages,
             tools=tools or NOT_GIVEN,
             tool_choice="auto" if tools else NOT_GIVEN,
@@ -123,9 +123,10 @@ class FallbackModelClient:
 
 
 class FakeModelClient:
-    def __init__(self, responses: list[ModelResponse]):
+    def __init__(self, responses: list[ModelResponse], model: str = "fake-model"):
         self.responses: list[ModelResponse] = list(responses)
         self.calls: list[dict] = []
+        self.model = model
 
     async def chat(
         self,

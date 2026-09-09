@@ -64,3 +64,21 @@ def test_knowledge_remotes_split_and_strip():
     assert Settings.from_env(BASE).knowledge_remotes == []
     env = dict(BASE, KNOWLEDGE_REMOTES=" git@a:x.git , u@b:y.git ")
     assert Settings.from_env(env).knowledge_remotes == ["git@a:x.git", "u@b:y.git"]
+
+def test_hard_model_default_none():
+    assert Settings.from_env(BASE).hard_model is None
+
+def test_hard_model_without_fallback_raises():
+    env = dict(BASE, HARD_MODEL="h")
+    with pytest.raises(ValueError, match="HARD_MODEL requires FALLBACK_BASE_URL and FALLBACK_API_KEY"):
+        Settings.from_env(env)
+
+def test_hard_model_with_fallback_base_and_key_set():
+    env = dict(
+        BASE,
+        HARD_MODEL="h",
+        FALLBACK_BASE_URL="http://f/v1",
+        FALLBACK_API_KEY="k",
+        FALLBACK_MODEL="m",
+    )
+    assert Settings.from_env(env).hard_model == "h"

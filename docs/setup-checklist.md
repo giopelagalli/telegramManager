@@ -40,6 +40,13 @@ on (see README §1.3 for the full table).
    `FALLBACK_MODEL`; optionally also pick a vision-capable model (filter:
    vision) for `FALLBACK_VISION_MODEL`
 
+   Three roles share this one Fireworks account, each with its own id from
+   [app.fireworks.ai/models](https://app.fireworks.ai/models): `FALLBACK_MODEL`
+   is a Flash-sized model that keeps behavior closest to the Spark,
+   `FALLBACK_VISION_MODEL` is a Flash-sized vision model (e.g. GLM 5.3
+   Flash), and `HARD_MODEL` is a strong model for `/hard` (e.g. GLM 5.3 or
+   Kimi K3) — copy the exact id from that page for each, verbatim.
+
 6. **Digital Ocean droplet details.** From the droplet's page in the DO
    console: its public IPv4 address and the SSH user you created (usually
    `root` or your own user). SSH in and note `nproc` (cores — 4+ means you
