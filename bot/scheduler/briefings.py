@@ -10,6 +10,7 @@ from bot.knowledge.views import esc, fmt_time, render_today
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import is_due
 from bot.scheduler.state import Chain, RuntimeState
+from bot.telegram.markdown import md_to_html
 
 _FALLBACK_PROSE = "Have a good one."
 
@@ -123,7 +124,7 @@ async def _compose_prose(store: KnowledgeStore, now: datetime, agent) -> str:
 
 async def _morning_outbound(store: KnowledgeStore, now: datetime, agent, note: str | None = None) -> Outbound:
     prose = await _compose_prose(store, now, agent)
-    text = morning_text(store, now).replace("{prose}", esc(prose))
+    text = morning_text(store, now).replace("{prose}", md_to_html(prose))
     if note:
         text = f"{note}\n\n{text}"
     profile = store.profile()
@@ -163,7 +164,7 @@ async def due_briefings(now: datetime, store: KnowledgeStore, state: RuntimeStat
     if is_due(evening_key, evening_at, now, state):
         body, buttons = evening_text(store, now)
         prose = await _compose_prose(store, now, agent)
-        text = f"{body}\n\n{esc(prose)}"
+        text = f"{body}\n\n{md_to_html(prose)}"
         out.append(Outbound(text, voice=profile.voice_on_proactive, buttons=buttons, kind="briefing"))
         state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[text])
 

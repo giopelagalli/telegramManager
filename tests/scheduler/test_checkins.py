@@ -59,3 +59,11 @@ async def test_composed_prose_is_escaped(store):
     key, due = checkin_slots(store.profile(), D)[2]
     out = await due_checkin(due, store, s, HtmlAgent())
     assert "&lt;b&gt;" in out.text and "<b>now</b>" not in out.text
+
+async def test_composed_prose_markdown_bold(store):
+    class MdAgent:
+        async def compose(self, kind, context, fallback): return "**Nice work**"
+    s = RuntimeState.load(Path("/nonexistent"))
+    key, due = checkin_slots(store.profile(), D)[2]
+    out = await due_checkin(due, store, s, MdAgent())
+    assert "<b>Nice work</b>" in out.text

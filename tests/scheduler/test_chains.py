@@ -66,3 +66,10 @@ async def test_composed_prose_is_escaped(store):
     s = RuntimeState.load(Path("/nonexistent")); s.chain = Chain("checkin", T(10), T(10), 0, "X", [])
     out = await due_followup(T(10, 15), store, s, HtmlAgent())
     assert "&lt;b&gt;" in out.text and "<b>now</b>" not in out.text
+
+async def test_composed_prose_markdown_bold(store):
+    class MdAgent:
+        async def compose(self, kind, context, fallback): return "**Nice work**"
+    s = RuntimeState.load(Path("/nonexistent")); s.chain = Chain("checkin", T(10), T(10), 0, "X", [])
+    out = await due_followup(T(10, 15), store, s, MdAgent())
+    assert "<b>Nice work</b>" in out.text

@@ -87,3 +87,11 @@ async def test_evening_escapes_composed_prose(store):
     s = RuntimeState.load(Path("/nonexistent"))
     out = await due_briefings(T(21), store, s, Sharp())
     assert out and out[-1].text.endswith("&lt;Dune&gt; &amp; rest")
+
+
+async def test_composed_prose_markdown_bold(store):
+    class MdAgent:
+        async def compose(self, kind, context, fallback): return "**Nice work**"
+    s = RuntimeState.load(Path("/nonexistent"))
+    out = (await due_briefings(T(8), store, s, MdAgent()))[0]
+    assert "<b>Nice work</b>" in out.text

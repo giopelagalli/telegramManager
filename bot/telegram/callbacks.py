@@ -9,6 +9,7 @@ from bot.knowledge.views import esc
 from bot.scheduler.chains import close_chain
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.state import PendingVerify
+from bot.telegram.markdown import md_to_html
 
 SNOOZE_MINUTES = 30
 
@@ -68,7 +69,7 @@ async def _done(path, store, agent, state, now, message_id, message_html, remain
         question = await agent.compose(
             "verify_question", build_context(store, now), f"How did {todo.title} go?"
         )
-        text = esc(question)
+        text = md_to_html(question)
     else:
         text = _ASK[todo.verify]
 

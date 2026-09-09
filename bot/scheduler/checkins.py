@@ -7,10 +7,11 @@ from bot.agent.prompts import build_context
 from bot.knowledge.models import Event, Profile
 from bot.knowledge.ranking import top
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.views import esc, fmt_time
+from bot.knowledge.views import fmt_time
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import is_due
 from bot.scheduler.state import Chain, RuntimeState
+from bot.telegram.markdown import md_to_html
 
 
 def checkin_slots(profile: Profile, day: date) -> list[tuple[str, datetime]]:
@@ -78,7 +79,7 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
         fallback = " ".join(parts)
 
         context = build_context(store, now)
-        text = esc(await agent.compose("checkin", context, fallback))
+        text = md_to_html(await agent.compose("checkin", context, fallback))
 
         item = (top1.title if top1 else None) or (next_event.title if next_event else None) or ""
         state.chain = Chain("checkin", now, now, 0, item=item, history=[text])

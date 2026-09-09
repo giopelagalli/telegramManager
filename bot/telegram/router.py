@@ -14,7 +14,9 @@ from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_mes
 from bot.scheduler.outbound import Outbound
 from bot.study.extract import (
     PAGE_MARKER,
+    PART_MARKER,
     SLIDE_MARKER,
+    extract_docx,
     extract_pdf,
     extract_pptx,
     guess_kind,
@@ -22,6 +24,7 @@ from bot.study.extract import (
 )
 from bot.study.select import select_sources
 from bot.telegram import callbacks, commands
+from bot.telegram.markdown import md_to_html
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,8 @@ def _extract(data: bytes, kind: str, filename: str) -> list[tuple[int, str]] | N
             return extract_pptx(data)
         if kind == "chapter":
             return extract_pdf(data)
+        if kind == "notes":
+            return extract_docx(data)
     except Exception as exc:
         logger.warning("could not extract %s: %s", filename, exc)
     return None
@@ -97,7 +102,7 @@ class Router:
             question = await self.agent.compose(
                 "wake", build_context(self.store, now), "What's next after that?"
             )
-            return [Outbound(esc(question), kind="wake")]
+            return [Outbound(md_to_html(question), kind="wake")]
 
         if self.state.critical is not None:
             out = leave_on_text(self.state, self.store)
@@ -207,7 +212,8 @@ class Router:
             return await self._ingest_photo(data, caption, channel)
 
         pages = _extract(data, kind, filename)
-        body = render_pages(pages, SLIDE_MARKER if kind == "slides" else PAGE_MARKER) if pages else ""
+        marker = SLIDE_MARKER if kind == "slides" else PART_MARKER if kind == "notes" else PAGE_MARKER
+        body = render_pages(pages, marker) if pages else ""
         if not body.strip():
             self.store.keep_raw(channel.course, filename, data)
             self.store.commit(f"ingest: {filename}")
@@ -266,7 +272,7 @@ class Router:
             return [self._save_note(note, channel)]
         if answer is None:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
-        return [Outbound(esc(answer), voice=self._voice_reply(via_voice), kind="reply")]
+        return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
 
     def _save_note(self, note: dict, channel: Channel) -> Outbound:
         text = note["text"].strip()
@@ -352,7 +358,7 @@ class Router:
         await self._geocode_home(result.actions)
         await self._geocode_events(result.actions, applied)
 
-        lines = [esc(result.reply)] + [esc(s) for s in applied.summary]
+        lines = [md_to_html(result.reply)] + [esc(s) for s in applied.summary]
         return [
             Outbound(
                 "\n".join(line for line in lines if line),

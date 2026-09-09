@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 from bot.agent.prompts import build_context
 from bot.knowledge.models import Profile
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.views import esc
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.state import RuntimeState
+from bot.telegram.markdown import md_to_html
 
 _FALLBACKS = [
     "{name}, still there? {item} is the one thing right now.",
@@ -57,7 +57,7 @@ async def due_followup(now: datetime, store: KnowledgeStore, state: RuntimeState
     context = build_context(store, now)
     context += f"\nFollow-up step: {chain.step}\nItem: {chain.item}\nHistory: {chain.history}"
 
-    text = esc(await agent.compose("followup", context, fallback))
+    text = md_to_html(await agent.compose("followup", context, fallback))
 
     chain.step += 1
     chain.last_sent_at = now
