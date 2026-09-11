@@ -2,10 +2,11 @@
 
 A single-user Telegram bot that keeps a plain-text/Markdown knowledge base
 (todos, events, goals, a profile) in a git repo, reminds you on schedule,
-and talks to a model over an OpenAI-compatible endpoint. It runs as a systemd
-service on the same DGX Spark that serves the model, next to the existing
-`sparkbot`. An always-on Digital Ocean droplet is available as an
-alternative, for uptime through Spark reboots — see §1.5.
+and talks to a model over an OpenAI-compatible endpoint. It runs as a
+systemd service on an always-on $6/month DigitalOcean droplet, 24/7,
+independent of the DGX Spark that serves the model over Tailscale. Running
+everything on the Spark instead is free but goes down whenever the Spark
+does — see §1.5.
 
 See `docs/superpowers/specs/2026-09-03-telegram-assistant-design.md` for the
 full design.
@@ -19,43 +20,46 @@ machine detail this section needs, and exactly where to click to get it.
 
 Two machines, one bot:
 
-- **DGX Spark.** Runs both the bot and the model. The bot (Telegram polling,
-  scheduler, knowledge repo, voice on CPU) is a second systemd service next
-  to the existing `sparkbot`/`sparkmodel`. It talks to vLLM at
-  `OPENAI_BASE_URL=http://localhost:8888/v1` — no Tailscale hop, no network
-  round trip, since both are on the same box. Memory is cheap here: the bot
-  itself is ~200 MB and CPU Whisper adds ~1.5 GB, both drawn from the host's
-  general reserve; neither ever touches the GPU, which stays fully committed
-  to `sparkmodel`.
-- **Fireworks AI.** The fallback model endpoint, unchanged by where the bot
-  runs: `FALLBACK_MODEL` for chat when the local model is slow to answer or
-  misbehaving, `FALLBACK_VISION_MODEL` for photo checks, and `HARD_MODEL` for
-  the explicit `/hard` escape hatch.
+- **DigitalOcean droplet.** Runs the bot 24/7: Telegram polling, scheduler,
+  knowledge repo, and voice (Kokoro for replies). A $6/month 1 vCPU / 1 GB
+  droplet is enough — the 1 GB is plenty because Whisper is never loaded
+  here (`STT_PROVIDER=api`, §1.2); `pip install -e '.[voice]'` still pulls in
+  faster-whisper alongside Kokoro, it's just dead weight in this topology.
+- **DGX Spark.** Serves the model only, reached over Tailscale at
+  `OPENAI_BASE_URL=http://<spark-hostname>:8888/v1` — a network hop instead
+  of the same box.
+- **Fireworks AI.** `FALLBACK_MODEL` for chat when the Spark is slow or
+  unreachable, `FALLBACK_VISION_MODEL` for photo checks, `HARD_MODEL` for
+  the explicit `/hard` escape hatch, and `STT_MODEL` (Fireworks Whisper) for
+  voice transcription, since the droplet has no spare CPU for faster-whisper.
 
-Knowledge backups go to two places after every change: a bare git repo on
-the owner's Mac, reachable over Tailscale, and a nightly, client-side
-encrypted `restic` snapshot of `knowledge/` and `data/` to Backblaze B2. See
-§1.3.
+Knowledge backups go to two places after every change: bare git repos on the
+Spark and the owner's Mac, both reachable over Tailscale, and a nightly,
+client-side encrypted `restic` snapshot of `knowledge/` and `data/` to
+Backblaze B2. See §1.3.
 
-**Honest cost of this topology:** the bot and the model share a failure
-domain. When the Spark is down or rebooting, the bot is down too — no
-replies, no reminders, nothing — until it's back, which is roughly 10
-minutes after boot while vLLM loads (§1.4). There is no fallback that keeps
-the bot itself running; Fireworks only covers the *model* being briefly
-unreachable while the bot process stays up. If you need the bot to survive a
-Spark reboot, run it on the always-on droplet instead — see §1.5.
+**Honest cost of this topology:** the bot and the model no longer share a
+failure domain — when the Spark reboots, the droplet keeps running, replies
+and reminders keep flowing, and chat/vision fall back to Fireworks for
+roughly the 10 minutes vLLM takes to reload (§5). What you trade for that:
+the model is a network hop away instead of local, so the Spark being
+unreachable (not just slow) leans on Fireworks until Tailscale or the Spark
+recovers, and it costs $6/month instead of nothing. Running everything on
+the Spark instead is free but puts the bot back in the same failure domain
+as the model — see §1.5.
 
-Message content (and, for the classroom tutor, the sources it draws on) is
-processed on the Spark itself. Fireworks only sees traffic when it's used as
-the chat/vision fallback or for `/hard` — a tradeoff the owner has accepted
-in exchange for the bot staying responsive when the local model is
-struggling.
+Message content is processed wherever it's answered — normally the Spark,
+over Tailscale, but Fireworks whenever it's used as the chat/vision
+fallback, for `/hard`, or to transcribe a voice note — a tradeoff the owner
+has accepted in exchange for the bot staying responsive when the local model
+is struggling or unreachable.
 
 ### 1.1 Telegram bot
 
 1. Talk to [@BotFather](https://t.me/BotFather) on Telegram, run `/newbot`,
-   and copy the bot token it gives you. **Create a new bot — do not reuse
-   the token from the `sparkbot` service already running on this box.**
+   and copy the bot token it gives you. **Create a new bot for this
+   purpose** — don't reuse a token from another bot you run (e.g.
+   `sparkbot` on the Spark).
 2. Talk to [@userinfobot](https://t.me/userinfobot) to get your own numeric
    Telegram user ID. The bot only responds to this one user.
 
@@ -73,7 +77,7 @@ chmod 600 .env
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Token from BotFather (the new bot from §1.1). |
 | `TELEGRAM_USER_ID` | Your numeric user ID from `@userinfobot` (§1.1). |
-| `OPENAI_BASE_URL` | `http://localhost:8888/v1` — the Spark's own vLLM, `sparkmodel.service`. Same box, no Tailscale involved. |
+| `OPENAI_BASE_URL` | `http://<spark-hostname>:8888/v1` — the Spark's vLLM, reached over Tailscale (`<spark-hostname>` is the Spark's MagicDNS name or `100.x.y.z` address, from `tailscale status`). |
 | `OPENAI_API_KEY` | `unused` — vLLM does not check it. |
 | `CHAT_MODEL` | `qwen3.8-flash-next` — must match what `sparkmodel` is serving. |
 | `CHAT_ENABLE_THINKING` | `false`. Qwen thinks by default; the Spark's tool-call parser (`qwen3_coder`) works fastest with thinking off. |
@@ -81,17 +85,19 @@ chmod 600 .env
 | `FALLBACK_API_KEY` | Your Fireworks API key. |
 | `FALLBACK_MODEL` | A Fireworks model that supports tool calling — a Qwen3 variant keeps behavior closest to the local one. All three `FALLBACK_*` variables must be set together, or none of them. |
 | `FALLBACK_EXTRA_BODY` | Optional JSON object merged into every request to `FALLBACK_MODEL`, e.g. `{"thinking": {"type": "disabled"}}`. See "Thinking on Fireworks models" below. |
-| `VISION_BASE_URL` / `VISION_MODEL` | `http://localhost:8888/v1` / `qwen3.8-flash-next`. Worth trying — if the endpoint rejects image input, photo checks (wake-up, task verification) degrade to "not verified" automatically rather than breaking. Vision does not fall back. |
+| `VISION_BASE_URL` / `VISION_MODEL` | `http://<spark-hostname>:8888/v1` / `qwen3.8-flash-next`. Worth trying — if the endpoint rejects image input, photo checks (wake-up, task verification) degrade to "not verified" automatically rather than breaking. Vision does not fall back. |
 | `FALLBACK_VISION_MODEL` | Optional; a vision-capable Fireworks model. Requires `FALLBACK_BASE_URL` and `FALLBACK_API_KEY` to also be set. When set, photo checks and OCR fall back to Fireworks too when the Spark is down. |
 | `FALLBACK_VISION_EXTRA_BODY` | Optional JSON object merged into every request to `FALLBACK_VISION_MODEL`. |
 | `HARD_MODEL` | Optional; a strong Fireworks model (e.g. GLM 5.3 or Kimi K3) for `/hard`, the explicit escape hatch to a bigger cloud model. Requires `FALLBACK_BASE_URL` and `FALLBACK_API_KEY` to also be set. |
 | `HARD_EXTRA_BODY` | Optional JSON object merged into every request to `HARD_MODEL`, e.g. `{"thinking": {"type": "enabled"}}` or `{"reasoning_effort": "high"}`. See "Thinking on Fireworks models" below. |
 | `GOOGLE_MAPS_API_KEY` | Optional. Without it, travel time falls back to the stored `travel_minutes` on each event. |
-| `KNOWLEDGE_DIR` | `/home/giospark1/telegramManager/knowledge` |
-| `KNOWLEDGE_REMOTES` | `<mac-user>@<mac-hostname>:backups/knowledge.git` — see §1.3. |
-| `DATA_DIR` | `/home/giospark1/telegramManager/data` |
-| `WHISPER_MODEL` | `base` or `small`, depending on how many CPU cores the Spark's host reserve gives you. |
-| `KOKORO_MODEL_DIR` | `/home/giospark1/telegramManager/models` |
+| `KNOWLEDGE_DIR` | `/home/<droplet-user>/telegramManager/knowledge` |
+| `KNOWLEDGE_REMOTES` | `<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git` — see §1.3. |
+| `DATA_DIR` | `/home/<droplet-user>/telegramManager/data` |
+| `WHISPER_MODEL` | Unused on this path (`STT_PROVIDER=api` below) — leave blank. |
+| `STT_PROVIDER` | `api` — the droplet transcribes voice notes through an OpenAI-compatible endpoint instead of running faster-whisper locally. |
+| `STT_BASE_URL` / `STT_API_KEY` / `STT_MODEL` | `https://api.fireworks.ai/inference/v1` / your Fireworks key / a Whisper model id, e.g. `whisper-v3` — see app.fireworks.ai/models. All three are required when `STT_PROVIDER=api`. |
+| `KOKORO_MODEL_DIR` | `/home/<droplet-user>/telegramManager/models` |
 
 The token in `.env` is a live credential — keep the file at mode `600`
 (owner read/write only). The Fireworks key in the same file deserves the
@@ -104,12 +110,12 @@ reasoning/thinking parameter, and paste it as JSON into the matching
 `*_EXTRA_BODY` variable above. Recommended: thinking on for `HARD_MODEL`
 (`HARD_EXTRA_BODY`), off for `FALLBACK_MODEL` (`FALLBACK_EXTRA_BODY`).
 
-A complete example for the Spark, with secrets left blank:
+A complete example for the droplet, with secrets left blank:
 
 ```bash
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_USER_ID=
-OPENAI_BASE_URL=http://localhost:8888/v1
+OPENAI_BASE_URL=http://<spark-hostname>:8888/v1
 OPENAI_API_KEY=unused
 CHAT_MODEL=qwen3.8-flash-next
 CHAT_ENABLE_THINKING=
@@ -117,45 +123,48 @@ FALLBACK_BASE_URL=https://api.fireworks.ai/inference/v1
 FALLBACK_API_KEY=
 FALLBACK_MODEL=
 FALLBACK_EXTRA_BODY=
-VISION_BASE_URL=http://localhost:8888/v1
+VISION_BASE_URL=http://<spark-hostname>:8888/v1
 VISION_MODEL=qwen3.8-flash-next
 FALLBACK_VISION_MODEL=
 FALLBACK_VISION_EXTRA_BODY=
 HARD_MODEL=
 HARD_EXTRA_BODY=
 GOOGLE_MAPS_API_KEY=
-KNOWLEDGE_DIR=/home/giospark1/telegramManager/knowledge
-KNOWLEDGE_REMOTES=<mac-user>@<mac-hostname>:backups/knowledge.git
-DATA_DIR=/home/giospark1/telegramManager/data
-WHISPER_MODEL=small
-KOKORO_MODEL_DIR=/home/giospark1/telegramManager/models
+KNOWLEDGE_DIR=/home/<droplet-user>/telegramManager/knowledge
+KNOWLEDGE_REMOTES=<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git
+DATA_DIR=/home/<droplet-user>/telegramManager/data
+WHISPER_MODEL=
+STT_PROVIDER=api
+STT_BASE_URL=https://api.fireworks.ai/inference/v1
+STT_API_KEY=
+STT_MODEL=whisper-v3
+KOKORO_MODEL_DIR=/home/<droplet-user>/telegramManager/models
 ```
 
 ### 1.3 Knowledge backups
 
 The knowledge repo is pushed to every URL in `KNOWLEDGE_REMOTES` after each
 commit, in a background thread — a remote that's down only logs a warning.
-On the Spark there's just one remote to set up: a bare repo on the owner's
-Mac, not GitHub — a private GitHub repo is still plaintext to GitHub, and
-this bundle holds home address, schedule, health and school data. (There's
-no Spark-side bare repo here, unlike the droplet setup in §1.5 — the working
-`knowledge/` repo already lives on the Spark, so a second copy on the same
-box buys nothing.)
+On the droplet there are two remotes to set up: bare repos on the Spark and
+on the owner's Mac, neither on GitHub — a private GitHub repo is still
+plaintext to GitHub, and this bundle holds home address, schedule, health
+and school data.
 
 Set it up once:
 
-1. Install Tailscale on the Spark and the Mac (`tailscale up` on each,
-   joining the same tailnet) if it isn't already there — this is the one
-   place the primary setup still needs it.
-2. On the Mac: `git init --bare ~/backups/knowledge.git`. The Mac needs
+1. Install Tailscale on the droplet, the Spark and the Mac (`tailscale up`
+   on each, joining the same tailnet) if it isn't already there.
+2. On the Spark: `git init --bare ~/backups/knowledge.git`.
+3. On the Mac: `git init --bare ~/backups/knowledge.git`. The Mac needs
    Tailscale running and Remote Login enabled (System Settings → General →
    Sharing → turn on Remote Login) so it accepts SSH over the tailnet.
-3. On the Spark, `ssh-keygen -t ed25519` (no passphrase — systemd runs the
+4. On the droplet, `ssh-keygen -t ed25519` (no passphrase — systemd runs the
    push unattended), then append `~/.ssh/id_ed25519.pub` to
-   `~/.ssh/authorized_keys` on the Mac.
-4. Test it by hand from `knowledge/` before trusting it:
+   `~/.ssh/authorized_keys` on both the Spark and the Mac.
+5. Test it by hand from `knowledge/` before trusting it:
 
 ```bash
+git -C knowledge push <spark-user>@<spark-hostname>:backups/knowledge.git HEAD:refs/heads/main
 git -C knowledge push <mac-user>@<mac-hostname>:backups/knowledge.git HEAD:refs/heads/main
 ```
 
@@ -164,18 +173,30 @@ git -C knowledge push <mac-user>@<mac-hostname>:backups/knowledge.git HEAD:refs/
 
 `deploy/backup.sh` covers the other layer: a nightly `restic` snapshot of
 `knowledge/` and `data/` to Backblaze B2, client-side encrypted before it
-leaves the Spark. See the script's header and the setup checklist for the
+leaves the droplet. See the script's header and the setup checklist for the
 one-time B2 setup.
 
 ### 1.4 Install
 
-On the Spark, as `giospark1`:
+On the droplet, as `<droplet-user>`:
 
-1. The repo is private, so the Spark needs a deploy key. Generate one there:
-   `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_telegrammanager -N ""`, then
-   on GitHub go to the repo → **Settings → Deploy keys → Add deploy key**,
-   paste `~/.ssh/id_ed25519_telegrammanager.pub` (read-only is enough).
-2. Clone and install:
+1. The repo is private, so the droplet needs a deploy key. Generate one
+   there: `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_telegrammanager -N
+   ""`, then on GitHub go to the repo → **Settings → Deploy keys → Add
+   deploy key**, paste `~/.ssh/id_ed25519_telegrammanager.pub` (read-only is
+   enough).
+2. Confirm the Spark is reachable over Tailscale before going further:
+
+```bash
+curl -s http://<spark-hostname>:8888/v1/models
+```
+
+   If that hangs or refuses, vLLM on the Spark is almost certainly bound to
+   `localhost` only — publish the port on all interfaces (`-p 8888:8888`
+   rather than `-p 127.0.0.1:8888:8888` if it runs in a container, or the
+   equivalent host/PORT setting otherwise), restart the model service, and
+   re-run the `curl`.
+3. Clone and install:
 
 ```bash
 git clone git@github.com:giopelagalli/telegramManager.git ~/telegramManager
@@ -186,59 +207,56 @@ bash deploy/install.sh
 This creates a venv, installs the package with the `voice` extra, creates
 `knowledge/`, `data/`, `models/`, copies `.env.example` to `.env` if it
 doesn't exist yet (mode `600`), and writes
-`deploy/assistant.service.generated` with this user and path filled in. Edit
-`.env` with the values from §1.2 and §1.3, then run the `sudo` line the
-script prints to install and start the `assistant` systemd unit.
+`deploy/assistant.service.generated` with this user and path filled in.
+`pip install -e '.[voice]'` still installs faster-whisper along with Kokoro,
+but with `STT_PROVIDER=api` (§1.2) faster-whisper is never loaded — only
+Kokoro (voice replies) runs on the droplet's CPU, which is why the 1 GB
+droplet from the setup checklist is enough. Edit `.env` with the values from
+§1.2 and §1.3, then run the `sudo` line the script prints to install and
+start the `assistant` systemd unit.
 
-The unit is named `assistant` — distinct from the existing `sparkbot` and
-`sparkmodel` units on this box. `deploy/assistant.service` doesn't declare
-`After=sparkmodel.service`; the bot handles the model being unready fine
-(§5), but if you'd rather the unit not even start until `sparkmodel` is up,
-add that line to `deploy/assistant.service.generated` by hand before the
-`sudo` step, or to the installed unit file afterward followed by
-`sudo systemctl daemon-reload`.
+For voice replies, also run `bash scripts/download_voice_models.sh` (see
+§3) to fetch the Kokoro models onto the droplet.
 
-For voice, also run `bash scripts/download_voice_models.sh` (see §3). Both
-Whisper (speech-to-text) and Kokoro (text-to-speech) run on the Spark's CPU,
-out of the same host reserve mentioned in §1.0 — never the GPU.
+### 1.5 Alternative: run everything on the Spark (free, but down when the Spark is down)
 
-### 1.5 Alternative: always-on droplet
+Use this instead of §1.1–§1.4 if you'd rather not pay for a droplet — at
+the cost of the bot sharing the Spark's failure domain: no replies, no
+reminders, nothing, whenever the Spark is down or rebooting.
 
-Use this instead of §1.4 if you want the bot to keep running through a Spark
-reboot — at the cost of the model becoming a network hop away and a second
-knowledge-backup remote to maintain.
-
-- **Topology.** The droplet runs the bot; the Spark runs only vLLM, reached
-  over Tailscale at `OPENAI_BASE_URL=http://<spark-hostname>:8888/v1`
-  (`<spark-hostname>` is the Spark's MagicDNS name or `100.x.y.z` address,
-  from `tailscale status`). Install Tailscale on both machines and run
-  `tailscale up` on each, joining the same tailnet, then confirm from the
-  droplet:
-
-  ```bash
-  curl -s http://<spark-hostname>:8888/v1/models
-  ```
-
-  If that hangs or refuses, vLLM on the Spark is almost certainly bound to
-  `localhost` only — publish the port on all interfaces (`-p 8888:8888`
-  rather than `-p 127.0.0.1:8888:8888` if it runs in a container, or the
-  equivalent host/PORT setting otherwise), restart the model service, and
-  re-run the `curl`.
-- **Knowledge backups.** `KNOWLEDGE_REMOTES` needs a second bare repo, this
-  one on the Spark (`git init --bare ~/backups/knowledge.git`), alongside
-  the Mac one from §1.3:
-  `KNOWLEDGE_REMOTES=<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git`.
-  Generate the droplet's own deploy key the same way as §1.3 step 3 and
-  append its public key to `authorized_keys` on both the Spark and the Mac.
-- **Install.** Same steps as §1.4, run on the droplet instead: clone the
-  repo (a deploy key is still needed, since it's private), `bash
-  deploy/install.sh`, fill `.env` (`KNOWLEDGE_DIR`/`DATA_DIR`/
-  `KOKORO_MODEL_DIR` under this user's home on the droplet instead of
-  `giospark1`'s), then the printed `sudo` lines. The unit is still named
-  `assistant`; there's no `sparkmodel` on this box to sequence after.
-- **Warm-up.** After a Spark reboot, `sparkmodel` takes about 10 minutes to
-  load; the bot on the droplet stays up throughout and just gets fast
-  failures to Fireworks during that window (§5).
+- **Topology.** The Spark runs both the bot and the model as two systemd
+  services side by side (the existing `sparkbot`/`sparkmodel`, plus a new
+  `assistant`). The bot talks to vLLM at `OPENAI_BASE_URL=http://localhost:8888/v1`
+  — no Tailscale hop, no network round trip, since both are on the same
+  box. Memory is cheap here: the bot itself is ~200 MB and CPU Whisper adds
+  ~1.5 GB, both drawn from the host's general reserve; neither ever touches
+  the GPU, which stays fully committed to `sparkmodel`. Voice input runs
+  locally too (`STT_PROVIDER=local`, faster-whisper) instead of through
+  Fireworks.
+- **Knowledge backups.** Only one remote is needed: a bare repo on the
+  owner's Mac (§1.3 steps 3–5, skipping the Spark leg — the working
+  `knowledge/` repo already lives on the Spark, so a second copy on the same
+  box buys nothing).
+  `KNOWLEDGE_REMOTES=<mac-user>@<mac-hostname>:backups/knowledge.git`.
+- **`.env`.** Same table as §1.2, except: `OPENAI_BASE_URL=http://localhost:8888/v1`
+  and `VISION_BASE_URL=http://localhost:8888/v1` (no Tailscale hop),
+  `KNOWLEDGE_DIR`/`DATA_DIR`/`KOKORO_MODEL_DIR` under
+  `/home/giospark1/telegramManager/...`, `STT_PROVIDER=local` with
+  `WHISPER_MODEL` set to `base` or `small` depending on how many CPU cores
+  the Spark's host reserve gives you (leave `STT_BASE_URL`/`STT_API_KEY`/
+  `STT_MODEL` blank).
+- **Install.** Same steps as §1.4, run on the Spark instead, as
+  `giospark1`. The Tailscale/`curl` check in step 2 doesn't apply — vLLM is
+  local. The unit is still named `assistant`, distinct from `sparkbot` and
+  `sparkmodel`. `deploy/assistant.service` doesn't declare
+  `After=sparkmodel.service`; the bot handles the model being unready fine
+  (§5), but if you'd rather the unit not even start until `sparkmodel` is
+  up, add that line to `deploy/assistant.service.generated` by hand before
+  the `sudo` step, or to the installed unit file afterward followed by
+  `sudo systemctl daemon-reload`. For voice, also run `bash
+  scripts/download_voice_models.sh` (see §3); both Whisper and Kokoro run
+  on the Spark's CPU, out of the host reserve mentioned above — never the
+  GPU.
 
 ## 2. Knowledge base
 
@@ -305,17 +323,18 @@ sudo systemctl restart assistant   # after editing .env or pulling changes
 already (see `bot/knowledge/store.py`).
 
 **Warm-up.** vLLM (`sparkmodel`) takes about 10 minutes to load, whether
-after a full Spark reboot or just its own service restarting. If only
-`sparkmodel` restarts, `assistant` keeps running throughout: the first chat
-request fails fast on the connection timeout, the circuit breaker opens, and
-chat goes to Fireworks for the next ten minutes before the Spark's own model
-is tried again. If the whole Spark reboots, `assistant` itself is down until
-systemd brings it back up too — see the honest-cost note in §1.0.
+after a full Spark reboot or just its own service restarting. `assistant` on
+the droplet keeps running throughout: the first chat request fails fast on
+the connection timeout, the circuit breaker opens, and chat goes to
+Fireworks for the next ten minutes before the Spark's own model is tried
+again. (Running on the Spark instead, per §1.5, `assistant` shares its
+failure domain and is down until systemd brings the whole box back up too —
+see that section's honest-cost note.)
 
-Only the chat model falls back. Vision (photo checks) is Spark-only and
-degrades to "not verified" while the Spark is away; commands, reminders and
-briefings never need a model at all, but they do need `assistant` itself to
-be running.
+Only the chat model falls back. Vision (photo checks) degrades to "not
+verified" while the Spark is unreachable and no `FALLBACK_VISION_MODEL` is
+set; commands, reminders and briefings never need a model at all, but they
+do need `assistant` itself to be running.
 
 ## 6. Commands
 
