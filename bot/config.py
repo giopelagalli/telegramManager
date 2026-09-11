@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,9 @@ class Settings:
     vision_model: str | None
     fallback_vision_model: str | None
     hard_model: str | None
+    fallback_extra_body: dict | None
+    hard_extra_body: dict | None
+    fallback_vision_extra_body: dict | None
     google_maps_api_key: str | None
     knowledge_dir: Path
     data_dir: Path
@@ -36,6 +40,17 @@ class Settings:
         def opt(k: str) -> str | None:
             v = e.get(k, "").strip()
             return v or None
+        def json_obj(k: str) -> dict | None:
+            v = e.get(k, "").strip()
+            if not v:
+                return None
+            try:
+                parsed = json.loads(v)
+            except json.JSONDecodeError:
+                raise ValueError(f"{k} must be a JSON object")
+            if not isinstance(parsed, dict):
+                raise ValueError(f"{k} must be a JSON object")
+            return parsed
         fallback = {k: opt(k) for k in ("FALLBACK_BASE_URL", "FALLBACK_API_KEY", "FALLBACK_MODEL")}
         if any(fallback.values()) and not all(fallback.values()):
             raise ValueError("FALLBACK_BASE_URL, FALLBACK_API_KEY and FALLBACK_MODEL must be set together")
@@ -58,6 +73,9 @@ class Settings:
             vision_model=opt("VISION_MODEL"),
             fallback_vision_model=fallback_vision_model,
             hard_model=hard_model,
+            fallback_extra_body=json_obj("FALLBACK_EXTRA_BODY"),
+            hard_extra_body=json_obj("HARD_EXTRA_BODY"),
+            fallback_vision_extra_body=json_obj("FALLBACK_VISION_EXTRA_BODY"),
             google_maps_api_key=opt("GOOGLE_MAPS_API_KEY"),
             knowledge_dir=Path(req("KNOWLEDGE_DIR")),
             data_dir=Path(req("DATA_DIR")),

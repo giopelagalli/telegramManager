@@ -82,3 +82,35 @@ def test_hard_model_with_fallback_base_and_key_set():
         FALLBACK_MODEL="m",
     )
     assert Settings.from_env(env).hard_model == "h"
+
+def test_extra_body_defaults_to_none():
+    s = Settings.from_env(BASE)
+    assert s.fallback_extra_body is None
+    assert s.hard_extra_body is None
+    assert s.fallback_vision_extra_body is None
+
+def test_extra_body_empty_string_is_none():
+    env = dict(BASE, FALLBACK_EXTRA_BODY="")
+    assert Settings.from_env(env).fallback_extra_body is None
+
+def test_extra_body_valid_json_object():
+    env = dict(
+        BASE,
+        FALLBACK_EXTRA_BODY='{"thinking": {"type": "disabled"}}',
+        HARD_EXTRA_BODY='{"reasoning_effort": "high"}',
+        FALLBACK_VISION_EXTRA_BODY='{"thinking": {"type": "disabled"}}',
+    )
+    s = Settings.from_env(env)
+    assert s.fallback_extra_body == {"thinking": {"type": "disabled"}}
+    assert s.hard_extra_body == {"reasoning_effort": "high"}
+    assert s.fallback_vision_extra_body == {"thinking": {"type": "disabled"}}
+
+def test_extra_body_invalid_json_raises():
+    env = dict(BASE, FALLBACK_EXTRA_BODY="not json")
+    with pytest.raises(ValueError, match="FALLBACK_EXTRA_BODY must be a JSON object"):
+        Settings.from_env(env)
+
+def test_extra_body_non_object_json_raises():
+    env = dict(BASE, HARD_EXTRA_BODY="[1, 2, 3]")
+    with pytest.raises(ValueError, match="HARD_EXTRA_BODY must be a JSON object"):
+        Settings.from_env(env)

@@ -78,6 +78,7 @@ def main() -> None:
                 settings.fallback_api_key,
                 settings.fallback_model,
                 enable_thinking=None,
+                extra_body=settings.fallback_extra_body,
             ),
         )
     vision: ModelClient | None = (
@@ -98,6 +99,7 @@ def main() -> None:
                 settings.fallback_api_key,
                 settings.fallback_vision_model,
                 enable_thinking=None,
+                extra_body=settings.fallback_vision_extra_body,
             ),
         )
     hard: ModelClient | None = None
@@ -107,6 +109,7 @@ def main() -> None:
             settings.fallback_api_key,
             settings.hard_model,
             enable_thinking=None,
+            extra_body=settings.hard_extra_body,
             timeout=300,
         )
     agent = Agent(client, vision, store, clock.now, hard=hard)

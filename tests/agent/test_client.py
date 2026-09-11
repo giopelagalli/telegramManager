@@ -36,6 +36,50 @@ async def test_enable_thinking_none_omits_extra_body():
     assert "extra_body" not in kwargs
 
 
+async def test_extra_body_only_is_passed_through():
+    client = OpenAIModelClient(
+        "http://x", "k", "m", enable_thinking=None, extra_body={"reasoning_effort": "high"}
+    )
+    client._client.chat.completions.create = AsyncMock(return_value=_make_response())
+
+    await client.chat([{"role": "user", "content": "hi"}])
+
+    _, kwargs = client._client.chat.completions.create.call_args
+    assert kwargs["extra_body"] == {"reasoning_effort": "high"}
+
+
+async def test_enable_thinking_only_sets_chat_template_kwargs():
+    client = OpenAIModelClient("http://x", "k", "m", enable_thinking=True, extra_body=None)
+    client._client.chat.completions.create = AsyncMock(return_value=_make_response())
+
+    await client.chat([{"role": "user", "content": "hi"}])
+
+    _, kwargs = client._client.chat.completions.create.call_args
+    assert kwargs["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
+
+
+async def test_enable_thinking_and_extra_body_merge_with_thinking_winning():
+    client = OpenAIModelClient(
+        "http://x",
+        "k",
+        "m",
+        enable_thinking=True,
+        extra_body={
+            "chat_template_kwargs": {"enable_thinking": False, "other_key": "keep"},
+            "unrelated": "stays",
+        },
+    )
+    client._client.chat.completions.create = AsyncMock(return_value=_make_response())
+
+    await client.chat([{"role": "user", "content": "hi"}])
+
+    _, kwargs = client._client.chat.completions.create.call_args
+    assert kwargs["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": True, "other_key": "keep"},
+        "unrelated": "stays",
+    }
+
+
 class _Recorder:
     def __init__(self, raises: Exception | None = None):
         self.raises = raises

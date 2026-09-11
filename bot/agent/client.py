@@ -41,11 +41,13 @@ class OpenAIModelClient:
         api_key: str,
         model: str,
         enable_thinking: bool | None = None,
+        extra_body: dict | None = None,
         timeout: float = 120.0,
     ):
         self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
         self.model = model
         self.enable_thinking = enable_thinking
+        self.extra_body = extra_body
 
     async def chat(
         self,
@@ -54,8 +56,13 @@ class OpenAIModelClient:
         temperature: float = 0.2,
     ) -> ModelResponse:
         extra_kwargs = {}
+        merged_extra_body = dict(self.extra_body or {})
         if self.enable_thinking is not None:
-            extra_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": self.enable_thinking}}
+            chat_template_kwargs = dict(merged_extra_body.get("chat_template_kwargs") or {})
+            chat_template_kwargs["enable_thinking"] = self.enable_thinking
+            merged_extra_body["chat_template_kwargs"] = chat_template_kwargs
+        if merged_extra_body:
+            extra_kwargs["extra_body"] = merged_extra_body
         response = await self._client.chat.completions.create(
             model=self.model,
             messages=messages,

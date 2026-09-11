@@ -88,9 +88,12 @@ chmod 600 .env
 | `FALLBACK_BASE_URL` | `https://api.fireworks.ai/inference/v1`. |
 | `FALLBACK_API_KEY` | Your Fireworks API key. |
 | `FALLBACK_MODEL` | A Fireworks model that supports tool calling — a Qwen3 variant keeps behavior closest to the local one. All three `FALLBACK_*` variables must be set together, or none of them. |
+| `FALLBACK_EXTRA_BODY` | Optional JSON object merged into every request to `FALLBACK_MODEL`, e.g. `{"thinking": {"type": "disabled"}}`. See "Thinking on Fireworks models" below. |
 | `VISION_BASE_URL` / `VISION_MODEL` | The Spark endpoint / `qwen3.8-flash-next`. Worth trying — if the endpoint rejects image input, photo checks (wake-up, task verification) degrade to "not verified" automatically rather than breaking. Vision does not fall back. |
 | `FALLBACK_VISION_MODEL` | Optional; a vision-capable Fireworks model. Requires `FALLBACK_BASE_URL` and `FALLBACK_API_KEY` to also be set. When set, photo checks and OCR fall back to Fireworks too when the Spark is down. |
+| `FALLBACK_VISION_EXTRA_BODY` | Optional JSON object merged into every request to `FALLBACK_VISION_MODEL`. |
 | `HARD_MODEL` | Optional; a strong Fireworks model (e.g. GLM 5.3 or Kimi K3) for `/hard`, the explicit escape hatch to a bigger cloud model. Requires `FALLBACK_BASE_URL` and `FALLBACK_API_KEY` to also be set. |
+| `HARD_EXTRA_BODY` | Optional JSON object merged into every request to `HARD_MODEL`, e.g. `{"thinking": {"type": "enabled"}}` or `{"reasoning_effort": "high"}`. See "Thinking on Fireworks models" below. |
 | `GOOGLE_MAPS_API_KEY` | Optional. Without it, travel time falls back to the stored `travel_minutes` on each event. |
 | `KNOWLEDGE_DIR` | `/home/<user>/telegramManager/knowledge` |
 | `KNOWLEDGE_REMOTES` | `<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git` — see §1.4. |
@@ -101,6 +104,13 @@ chmod 600 .env
 The token in `.env` is a live credential — keep the file at mode `600`
 (owner read/write only). The Fireworks key in the same file deserves the
 same care.
+
+**Thinking on Fireworks models.** The thinking switch differs per model
+family — there's no single flag that works everywhere. Open the model's
+page on [app.fireworks.ai](https://app.fireworks.ai), find its
+reasoning/thinking parameter, and paste it as JSON into the matching
+`*_EXTRA_BODY` variable above. Recommended: thinking on for `HARD_MODEL`
+(`HARD_EXTRA_BODY`), off for `FALLBACK_MODEL` (`FALLBACK_EXTRA_BODY`).
 
 ### 1.4 Knowledge backups
 

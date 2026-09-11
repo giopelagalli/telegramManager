@@ -47,6 +47,13 @@ on (see README §1.3 for the full table).
    Flash), and `HARD_MODEL` is a strong model for `/hard` (e.g. GLM 5.3 or
    Kimi K3) — copy the exact id from that page for each, verbatim.
 
+   **Thinking on Fireworks models.** The thinking switch differs per model
+   family — open the model's page on
+   [app.fireworks.ai](https://app.fireworks.ai), find its reasoning/thinking
+   parameter, and paste it as JSON into the matching `*_EXTRA_BODY` variable
+   (`FALLBACK_EXTRA_BODY`, `HARD_EXTRA_BODY`, `FALLBACK_VISION_EXTRA_BODY`).
+   Recommended: thinking on for `HARD_MODEL`, off for `FALLBACK_MODEL`.
+
 6. **Digital Ocean droplet details.** From the droplet's page in the DO
    console: its public IPv4 address and the SSH user you created (usually
    `root` or your own user). SSH in and note `nproc` (cores — 4+ means you
