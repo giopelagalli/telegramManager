@@ -18,7 +18,7 @@ def test_from_env_reads_required_and_defaults():
     assert s.vision_model is None
     assert s.google_maps_api_key is None
     assert s.knowledge_dir == Path("/k")
-    assert s.chat_enable_thinking is False
+    assert s.chat_enable_thinking is None
 
 def test_chat_enable_thinking_true():
     env = dict(BASE, CHAT_ENABLE_THINKING="true")
@@ -114,3 +114,8 @@ def test_extra_body_non_object_json_raises():
     env = dict(BASE, HARD_EXTRA_BODY="[1, 2, 3]")
     with pytest.raises(ValueError, match="HARD_EXTRA_BODY must be a JSON object"):
         Settings.from_env(env)
+
+
+def test_chat_enable_thinking_false_is_explicit():
+    s = Settings.from_env(dict(BASE, CHAT_ENABLE_THINKING="false"))
+    assert s.chat_enable_thinking is False

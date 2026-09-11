@@ -68,7 +68,7 @@ def main() -> None:
         settings.openai_base_url,
         settings.openai_api_key,
         settings.chat_model,
-        enable_thinking=profile.thinking or settings.chat_enable_thinking,
+        enable_thinking=True if profile.thinking else settings.chat_enable_thinking,
     )
     if settings.fallback_base_url:
         client = FallbackModelClient(

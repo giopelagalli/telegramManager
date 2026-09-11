@@ -25,7 +25,7 @@ class Settings:
     google_maps_api_key: str | None
     knowledge_dir: Path
     data_dir: Path
-    chat_enable_thinking: bool
+    chat_enable_thinking: bool | None
     whisper_model: str
     knowledge_remotes: list[str]
 
@@ -79,7 +79,15 @@ class Settings:
             google_maps_api_key=opt("GOOGLE_MAPS_API_KEY"),
             knowledge_dir=Path(req("KNOWLEDGE_DIR")),
             data_dir=Path(req("DATA_DIR")),
-            chat_enable_thinking=(e.get("CHAT_ENABLE_THINKING", "").strip().lower() in ("1", "true", "yes", "on")),
+            chat_enable_thinking=_tristate(e.get("CHAT_ENABLE_THINKING", "")),
             whisper_model=opt("WHISPER_MODEL") or "small",
             knowledge_remotes=[r.strip() for r in e.get("KNOWLEDGE_REMOTES", "").split(",") if r.strip()],
         )
+
+
+def _tristate(raw: str) -> bool | None:
+    """Blank means "don't send the flag at all" (non-Qwen backends)."""
+    v = raw.strip().lower()
+    if not v:
+        return None
+    return v in ("1", "true", "yes", "on")
