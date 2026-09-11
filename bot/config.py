@@ -28,6 +28,10 @@ class Settings:
     chat_enable_thinking: bool | None
     whisper_model: str
     knowledge_remotes: list[str]
+    stt_provider: str
+    stt_base_url: str | None
+    stt_api_key: str | None
+    stt_model: str | None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -60,6 +64,12 @@ class Settings:
         hard_model = opt("HARD_MODEL")
         if hard_model and not (fallback["FALLBACK_BASE_URL"] and fallback["FALLBACK_API_KEY"]):
             raise ValueError("HARD_MODEL requires FALLBACK_BASE_URL and FALLBACK_API_KEY")
+        stt_provider = opt("STT_PROVIDER") or "local"
+        stt_base_url = opt("STT_BASE_URL")
+        stt_api_key = opt("STT_API_KEY")
+        stt_model = opt("STT_MODEL")
+        if stt_provider == "api" and not (stt_base_url and stt_api_key and stt_model):
+            raise ValueError("STT_PROVIDER=api requires STT_BASE_URL, STT_API_KEY and STT_MODEL")
         return cls(
             telegram_bot_token=req("TELEGRAM_BOT_TOKEN"),
             telegram_user_id=int(req("TELEGRAM_USER_ID")),
@@ -82,6 +92,10 @@ class Settings:
             chat_enable_thinking=_tristate(e.get("CHAT_ENABLE_THINKING", "")),
             whisper_model=opt("WHISPER_MODEL") or "small",
             knowledge_remotes=[r.strip() for r in e.get("KNOWLEDGE_REMOTES", "").split(",") if r.strip()],
+            stt_provider=stt_provider,
+            stt_base_url=stt_base_url,
+            stt_api_key=stt_api_key,
+            stt_model=stt_model,
         )
 
 

@@ -1,5 +1,6 @@
 import sys, types
 from pathlib import Path
+from unittest.mock import AsyncMock
 import pytest
 from bot.voice import stt, tts
 
@@ -14,6 +15,19 @@ async def test_transcriber_uses_model(monkeypatch, tmp_path):
     t = stt.Transcriber()
     text, conf = await t.transcribe(tmp_path / "x.ogg")
     assert text == "hello world hello world" and conf == pytest.approx(-0.2)
+
+async def test_api_transcriber_calls_client(tmp_path):
+    path = tmp_path / "x.ogg"
+    path.write_bytes(b"OggS")
+    t = stt.ApiTranscriber("http://s/v1", "key", "whisper-v3")
+    t._client.audio.transcriptions.create = AsyncMock(return_value=" hello world ")
+    text, conf = await t.transcribe(path)
+    assert text == "hello world" and conf == 0.0
+    kwargs = t._client.audio.transcriptions.create.call_args.kwargs
+    assert kwargs["model"] == "whisper-v3"
+    assert kwargs["response_format"] == "text"
+    assert kwargs["file"].name == str(path)
+
 
 async def test_synthesizer_writes_ogg(monkeypatch, tmp_path):
     import numpy as np

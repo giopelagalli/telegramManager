@@ -119,3 +119,26 @@ def test_extra_body_non_object_json_raises():
 def test_chat_enable_thinking_false_is_explicit():
     s = Settings.from_env(dict(BASE, CHAT_ENABLE_THINKING="false"))
     assert s.chat_enable_thinking is False
+
+
+def test_stt_provider_defaults_to_local():
+    s = Settings.from_env(BASE)
+    assert s.stt_provider == "local"
+    assert s.stt_base_url is None
+    assert s.stt_api_key is None
+    assert s.stt_model is None
+
+
+def test_stt_provider_api_valid():
+    env = dict(BASE, STT_PROVIDER="api", STT_BASE_URL="http://s/v1", STT_API_KEY="k", STT_MODEL="whisper-v3")
+    s = Settings.from_env(env)
+    assert s.stt_provider == "api"
+    assert s.stt_base_url == "http://s/v1"
+    assert s.stt_api_key == "k"
+    assert s.stt_model == "whisper-v3"
+
+
+def test_stt_provider_api_missing_fields_raises():
+    env = dict(BASE, STT_PROVIDER="api", STT_BASE_URL="http://s/v1")
+    with pytest.raises(ValueError, match="STT_PROVIDER=api requires STT_BASE_URL, STT_API_KEY and STT_MODEL"):
+        Settings.from_env(env)

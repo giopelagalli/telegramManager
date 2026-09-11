@@ -35,11 +35,13 @@ def _synthesizer() -> tts.Synthesizer | None:
     return tts.Synthesizer(model_path, voices_path)
 
 
-def _transcriber(model_size: str) -> stt.Transcriber | None:
+def _transcriber(settings: Settings) -> stt.Transcriber | stt.ApiTranscriber | None:
+    if settings.stt_provider == "api":
+        return stt.ApiTranscriber(settings.stt_base_url, settings.stt_api_key, settings.stt_model)
     if not stt.available():
         logger.warning("voice input off: faster-whisper not installed")
         return None
-    return stt.Transcriber(model_size=model_size)
+    return stt.Transcriber(model_size=settings.whisper_model)
 
 
 def main() -> None:
@@ -125,7 +127,7 @@ def main() -> None:
     router = Router(store, agent, state, clock, maps)
     engine = Engine(store, agent, state, state_path, clock, sender, maps)
 
-    application = build_application(settings, router, sender, _transcriber(settings.whisper_model))
+    application = build_application(settings, router, sender, _transcriber(settings))
     sender.bot = application.bot
 
     set_my_commands = application.post_init

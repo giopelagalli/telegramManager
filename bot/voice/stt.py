@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import openai
+
 
 def _importable(name: str) -> bool:
     if name in sys.modules:
@@ -47,3 +49,16 @@ class Transcriber:
 
     async def transcribe(self, path: Path) -> tuple[str, float]:
         return await asyncio.to_thread(self._transcribe_sync, path)
+
+
+class ApiTranscriber:
+    def __init__(self, base_url: str, api_key: str, model: str, timeout: float = 60.0):
+        self._model = model
+        self._client = openai.AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+
+    async def transcribe(self, path: Path) -> tuple[str, float]:
+        with open(path, "rb") as f:
+            text = await self._client.audio.transcriptions.create(
+                model=self._model, file=f, response_format="text"
+            )
+        return text.strip(), 0.0
