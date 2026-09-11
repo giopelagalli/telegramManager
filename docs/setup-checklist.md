@@ -2,7 +2,10 @@
 
 Everything the bot needs before the first run, in the order it's easiest to
 collect. Each item says exactly where to get it and which `.env` line it goes
-on (see README §1.3 for the full table).
+on (see README §1.2 for the full table). This is the checklist for the
+primary path — the bot running on the Spark itself (README §1.0). If you're
+setting up the always-on droplet instead, see "Alternative: always-on
+droplet" at the bottom.
 
 1. **Telegram bot token.** Open [@BotFather](https://t.me/BotFather) in
    Telegram, send `/newbot`, answer the name and username prompts, and copy
@@ -54,63 +57,83 @@ on (see README §1.3 for the full table).
    (`FALLBACK_EXTRA_BODY`, `HARD_EXTRA_BODY`, `FALLBACK_VISION_EXTRA_BODY`).
    Recommended: thinking on for `HARD_MODEL`, off for `FALLBACK_MODEL`.
 
-6. **Digital Ocean droplet details.** From the droplet's page in the DO
-   console: its public IPv4 address and the SSH user you created (usually
-   `root` or your own user). SSH in and note `nproc` (cores — 4+ means you
-   can run the `small` Whisper model), `free -h` (RAM) and
-   `lsb_release -a` (Ubuntu version; 24.04 LTS is what `deploy/install.sh`
-   assumes). Install Tailscale there with the one-liner from
-   [tailscale.com/download/linux](https://tailscale.com/download/linux),
-   then `sudo tailscale up` and follow the printed login URL. →
-   `KNOWLEDGE_DIR`, `DATA_DIR`, `KOKORO_MODEL_DIR` all live under this
-   user's home directory.
+6. **A GitHub deploy key for the Spark.** The repo is private, so the Spark
+   needs its own read access to it. On the Spark (as `giospark1`):
+   `ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_telegrammanager -N ""`. On
+   GitHub: repo → **Settings → Deploy keys → Add deploy key**, paste
+   `~/.ssh/id_ed25519_telegrammanager.pub` (read-only is enough). Nothing to
+   put in `.env` — this just lets `git clone git@github.com:...` work.
+   Continue with README §1.4.
 
-7. **The Spark's Tailscale hostname.** On the Spark, `tailscale status`
-   prints its MagicDNS name and `100.x.y.z` address — either works. vLLM
-   must listen on the Tailscale interface, not just localhost: publish the
-   port as `-p 8888:8888` (not `-p 127.0.0.1:8888:8888`) and confirm from
-   the droplet with `curl -s http://<spark-hostname>:8888/v1/models`. →
-   `OPENAI_BASE_URL=http://<spark-hostname>:8888/v1`, `VISION_BASE_URL` the
-   same, plus `CHAT_MODEL` / `VISION_MODEL` matching what the Spark serves.
+7. **The Mac bare repo.** On the Mac: `git init --bare
+   ~/backups/knowledge.git`. The Mac needs Tailscale running (install it,
+   `tailscale up`) and Remote Login enabled (System Settings → General →
+   Sharing → turn on Remote Login) so it accepts SSH over the tailnet. On
+   the Spark, install Tailscale too and join the same tailnet, then
+   `ssh-keygen -t ed25519` (no passphrase — systemd runs the push
+   unattended) if it doesn't already have a key, and append
+   `~/.ssh/id_ed25519.pub` to `~/.ssh/authorized_keys` on the Mac. →
+   `KNOWLEDGE_REMOTES=<mac-user>@<mac-hostname>:backups/knowledge.git`
 
-8. **The Spark bare repo.** On the Spark:
-   `git init --bare ~/backups/knowledge.git`. → first entry of
-   `KNOWLEDGE_REMOTES`, as `<spark-user>@<spark-hostname>:backups/knowledge.git`
+   Why not GitHub? A private GitHub repo is still plaintext to GitHub, and
+   this bundle holds home address, schedule, health and school data — so
+   backups go only to a machine the owner controls, over the tailnet.
 
-9. **The Mac bare repo.** On the Mac, the same command:
-   `git init --bare ~/backups/knowledge.git`. The Mac needs Tailscale
-   running and Remote Login enabled (System Settings → General → Sharing →
-   turn on Remote Login) so it accepts SSH over the tailnet. → second entry
-   of `KNOWLEDGE_REMOTES`, as `<mac-user>@<mac-hostname>:backups/knowledge.git`
+8. **Backblaze B2 for the nightly `restic` backup.**
+   [backblaze.com](https://www.backblaze.com) → **B2 Cloud Storage** →
+   create a bucket (private) → **Application Keys** → create a new key
+   scoped to that bucket. On the Spark, create
+   `~/telegramManager/.restic.env` (mode 600) with:
+   `RESTIC_REPOSITORY=b2:<bucket>:assistant`, `RESTIC_PASSWORD` (a new
+   passphrase for the repo, or `RESTIC_PASSWORD_FILE` pointing at one),
+   `B2_ACCOUNT_ID` and `B2_ACCOUNT_KEY` from the application key. Run
+   `restic init` once (see `deploy/backup.sh` header), then add its cron
+   line. Restore with `restic restore latest --target /path`.
 
-10. **Droplet's SSH key on both remotes.** On the droplet, run
+9. **Google Maps key (optional).**
+   [console.cloud.google.com](https://console.cloud.google.com) → pick or
+   create a project → **APIs & Services** → **Library**: enable both the
+   **Geocoding API** and the **Directions API** → **Credentials** →
+   Create credentials → API key, and restrict it to those two APIs.
+   Without it, travel time falls back to each event's stored
+   `travel_minutes`. → `GOOGLE_MAPS_API_KEY`
+
+Then copy `.env.example` to `.env`, fill those lines in, `chmod 600 .env`,
+and follow README §1.4.
+
+## Alternative: always-on droplet
+
+Extra items needed only if you're running the bot on a Digital Ocean droplet
+instead (README §1.5), so it survives a Spark reboot:
+
+10. **Digital Ocean droplet details.** From the droplet's page in the DO
+    console: its public IPv4 address and the SSH user you created (usually
+    `root` or your own user). SSH in and note `nproc` (cores — 4+ means you
+    can run the `small` Whisper model), `free -h` (RAM) and
+    `lsb_release -a` (Ubuntu version; 24.04 LTS is what `deploy/install.sh`
+    assumes). Install Tailscale there with the one-liner from
+    [tailscale.com/download/linux](https://tailscale.com/download/linux),
+    then `sudo tailscale up` and follow the printed login URL. →
+    `KNOWLEDGE_DIR`, `DATA_DIR`, `KOKORO_MODEL_DIR` all live under this
+    user's home directory.
+
+11. **The Spark's Tailscale hostname.** On the Spark, `tailscale status`
+    prints its MagicDNS name and `100.x.y.z` address — either works. vLLM
+    must listen on the Tailscale interface, not just localhost: publish the
+    port as `-p 8888:8888` (not `-p 127.0.0.1:8888:8888`) and confirm from
+    the droplet with `curl -s http://<spark-hostname>:8888/v1/models`. →
+    `OPENAI_BASE_URL=http://<spark-hostname>:8888/v1`, `VISION_BASE_URL` the
+    same, plus `CHAT_MODEL` / `VISION_MODEL` matching what the Spark serves.
+
+12. **The Spark bare repo.** On the Spark:
+    `git init --bare ~/backups/knowledge.git`. → first entry of
+    `KNOWLEDGE_REMOTES`, as `<spark-user>@<spark-hostname>:backups/knowledge.git`,
+    alongside the Mac one from item 7.
+
+13. **Droplet's SSH key on both remotes.** On the droplet, run
     `ssh-keygen -t ed25519` with no passphrase (systemd runs the push
     unattended), then append `~/.ssh/id_ed25519.pub` to
     `~/.ssh/authorized_keys` on both the Spark and the Mac. →
     `KNOWLEDGE_REMOTES=<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git`
 
-    Why not GitHub? A private GitHub repo is still plaintext to GitHub, and
-    this bundle holds home address, schedule, health and school data — so
-    backups go only to machines the owner controls.
-
-11. **Backblaze B2 for the nightly `restic` backup.**
-    [backblaze.com](https://www.backblaze.com) → **B2 Cloud Storage** →
-    create a bucket (private) → **Application Keys** → create a new key
-    scoped to that bucket. On the droplet, create
-    `~/telegramManager/.restic.env` (mode 600) with:
-    `RESTIC_REPOSITORY=b2:<bucket>:assistant`, `RESTIC_PASSWORD` (a new
-    passphrase for the repo, or `RESTIC_PASSWORD_FILE` pointing at one),
-    `B2_ACCOUNT_ID` and `B2_ACCOUNT_KEY` from the application key. Run
-    `restic init` once (see `deploy/backup.sh` header), then add its cron
-    line. Restore with `restic restore latest --target /path`.
-
-12. **Google Maps key (optional).**
-    [console.cloud.google.com](https://console.cloud.google.com) → pick or
-    create a project → **APIs & Services** → **Library**: enable both the
-    **Geocoding API** and the **Directions API** → **Credentials** →
-    Create credentials → API key, and restrict it to those two APIs.
-    Without it, travel time falls back to each event's stored
-    `travel_minutes`. → `GOOGLE_MAPS_API_KEY`
-
-Then copy `.env.example` to `.env`, fill those lines in, `chmod 600 .env`,
-and follow README §1.5.
+Then follow README §1.5.
