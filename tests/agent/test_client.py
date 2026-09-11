@@ -86,6 +86,12 @@ async def test_connection_error_opens_breaker_and_uses_fallback():
     assert primary.calls == 2
 
 
+async def test_fallback_client_exposes_primary():
+    primary, fallback = _Recorder(), _Recorder()
+    client = FallbackModelClient(primary, fallback)
+    assert client.primary is primary
+
+
 async def test_other_exception_propagates_without_opening_breaker():
     primary, fallback = _Recorder(raises=ValueError("boom")), _Recorder()
     client = FallbackModelClient(primary, fallback)

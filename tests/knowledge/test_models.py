@@ -98,6 +98,12 @@ def test_profile_study_defaults():
     assert p.review_time == "18:00" and p.digest_cadence == "daily"
     assert Profile.from_markdown(p.to_markdown()) == p
 
+def test_profile_thinking_round_trip():
+    p = Profile()
+    assert p.thinking is False
+    p.thinking = True
+    assert Profile.from_markdown(p.to_markdown()) == p
+
 def test_channel_key_and_name():
     assert Channel(-100, 45, "review").key == "-100:45"
     assert Channel(-100, None, "life").key == "-100:0"

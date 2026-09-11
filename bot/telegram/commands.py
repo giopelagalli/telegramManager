@@ -51,6 +51,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("resume", "Cancel the pause", False),
     ("undo", "Revert the last change", False),
     ("hard", "Ask the big cloud model (/hard why does X happen?)", False),
+    ("think", "Model thinking on/off for the Spark model (/think on)", False),
     ("help", "List commands", True),
 ]
 
@@ -143,6 +144,9 @@ async def handle(
     if name == "hard":
         return await _hard(arg, store, agent, now, channel)
 
+    if name == "think":
+        return _think(arg, store, agent)
+
     if name == "help":
         return [Outbound(HELP_TEXT, kind="reply")]
 
@@ -180,6 +184,23 @@ async def _hard(text: str, store, agent, now: datetime, channel: Channel | None)
         return [Outbound(HARD_OFFLINE_REPLY, kind="reply")]
     via = f"<i>via {esc(model_name)}</i>"
     return [Outbound(f"{via}\n{md_to_html(answer)}", kind="reply")]
+
+
+def _think(arg: str, store, agent) -> list[Outbound]:
+    profile = store.profile()
+    if not arg:
+        return [Outbound(f"Thinking is {'on' if profile.thinking else 'off'}.", kind="reply")]
+    word = arg.strip().lower()
+    if word not in ("on", "off"):
+        return [Outbound("Usage: /think on or /think off.", kind="reply")]
+    value = word == "on"
+    profile.thinking = value
+    store.save_profile(profile)
+    store.commit(f"profile: thinking {word}")
+    client = getattr(agent.client, "primary", agent.client)
+    client.enable_thinking = value
+    text = "Thinking on — answers are slower but deeper." if value else "Thinking off — fast mode."
+    return [Outbound(text, kind="reply")]
 
 
 def _render_now(store, now: datetime) -> str:

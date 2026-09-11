@@ -58,7 +58,8 @@ def main() -> None:
         remotes=settings.knowledge_remotes,
     )
     store.init()
-    clock = SystemClock(store.profile().tz)
+    profile = store.profile()
+    clock = SystemClock(profile.tz)
 
     state_path = settings.data_dir / "state.json"
     state = RuntimeState.load(state_path)
@@ -67,7 +68,7 @@ def main() -> None:
         settings.openai_base_url,
         settings.openai_api_key,
         settings.chat_model,
-        enable_thinking=settings.chat_enable_thinking,
+        enable_thinking=profile.thinking or settings.chat_enable_thinking,
     )
     if settings.fallback_base_url:
         client = FallbackModelClient(

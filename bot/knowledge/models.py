@@ -447,6 +447,7 @@ class Profile:
     exam_focus_days: int = 7
     digest_time: str = "08:30"
     digest_cadence: str = "daily"
+    thinking: bool = False
     body: str = ""
 
     @property
@@ -495,6 +496,7 @@ class Profile:
             "exam_focus_days": self.exam_focus_days,
             "digest_time": self.digest_time,
             "digest_cadence": self.digest_cadence,
+            "thinking": self.thinking,
         }
         return dump_frontmatter(meta, self.body)
 

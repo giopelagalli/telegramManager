@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import pytest
-from bot.agent.client import FakeModelClient, ModelResponse
+from bot.agent.client import FakeModelClient, FallbackModelClient, ModelResponse
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.models import Todo, Event, Channel, Course, Source, UNBOUND
@@ -58,6 +58,35 @@ async def test_brief_now_and_shift(rig):
     assert "Good morning" in o.text and "morning:2026-09-03" in state.fired
     o = (await r.command("brief", "9am"))[0]
     assert state.briefing_override["morning:2026-09-03"] == "09:00"
+
+
+async def test_think_reports_state_and_toggles(rig):
+    r, store, state = rig
+    assert (await r.command("think", ""))[0].text == "Thinking is off."
+
+    o = (await r.command("think", "on"))[0]
+    assert o.text == "Thinking on — answers are slower but deeper."
+    assert store.profile().thinking is True
+    assert r.agent.client.enable_thinking is True
+    assert _subject(store) == "profile: thinking on"
+    assert (await r.command("think", ""))[0].text == "Thinking is on."
+
+    o = (await r.command("think", "off"))[0]
+    assert o.text == "Thinking off — fast mode."
+    assert store.profile().thinking is False
+    assert r.agent.client.enable_thinking is False
+    assert _subject(store) == "profile: thinking off"
+
+
+async def test_think_unwraps_fallback_client_primary(rig):
+    r, store, state = rig
+    primary = FakeModelClient([])
+    r.agent.client = FallbackModelClient(primary, FakeModelClient([]))
+
+    await r.command("think", "on")
+
+    assert primary.enable_thinking is True
+    assert store.profile().thinking is True
 
 
 async def test_undo(rig):

@@ -253,6 +253,7 @@ briefings never need a model at all.
 | `/resume` | Cancel the pause. |
 | `/undo` | Revert the last change. |
 | `/hard` | Ask the big cloud model directly, bypassing the Spark (`/hard why does X happen?`). |
+| `/think` | Model thinking on/off for the Spark model (`/think on`). |
 | `/help` | List commands. |
 
 Anything else you send — text or a voice note — is treated as free-form

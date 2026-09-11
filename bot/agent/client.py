@@ -45,7 +45,7 @@ class OpenAIModelClient:
     ):
         self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
         self.model = model
-        self._enable_thinking = enable_thinking
+        self.enable_thinking = enable_thinking
 
     async def chat(
         self,
@@ -54,8 +54,8 @@ class OpenAIModelClient:
         temperature: float = 0.2,
     ) -> ModelResponse:
         extra_kwargs = {}
-        if self._enable_thinking is not None:
-            extra_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": self._enable_thinking}}
+        if self.enable_thinking is not None:
+            extra_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": self.enable_thinking}}
         response = await self._client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -100,6 +100,10 @@ class FallbackModelClient:
         self._open_until = 0.0
 
     @property
+    def primary(self) -> ModelClient:
+        return self._primary
+
+    @property
     def breaker_open(self) -> bool:
         return self._clock() < self._open_until
 
@@ -127,6 +131,7 @@ class FakeModelClient:
         self.responses: list[ModelResponse] = list(responses)
         self.calls: list[dict] = []
         self.model = model
+        self.enable_thinking: bool | None = None
 
     async def chat(
         self,
