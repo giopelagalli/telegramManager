@@ -683,4 +683,33 @@ async def test_new_exam_gets_a_plan_and_daily_study_todos(rig):
     assert "Plan for CS101 Midterm" in text and "3 days" in text and "Read Lecture 3" in text and "Doable" in text
     study = [t for t in store.todos() if t.kind == "study"]
     assert sorted(t.due for t in study) == [date(2026, 9, 4), date(2026, 9, 5)] and all(t.course == "cs101" for t in study)
-    assert "Days left: 3" in client.calls[-1]["messages"][1]["content"]
+    assert any("Days left: 3" in c["messages"][1]["content"] for c in client.calls)
+
+
+async def test_quiz_me_makes_cards_and_grades_answers(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS", topics=["stacks"]))
+    store.add_source(Source(path="", title="Lecture 3", course="cs101", kind="slides", topics=["stacks"],
+                            summary="Stacks.", body="A stack is LIFO. push and pop are O(1).")); store.commit("s")
+    client.responses.append(R(("review_now", {"topic": "stacks"}), ("reply", {"text": "Go."})))
+    client.responses.append(ModelResponse('{"cards": [{"q": "What order does a stack use?", "a": "LIFO"},'
+                                          ' {"q": "Cost of push?", "a": "O(1)"}]}', []))
+    outs = await router.on_text("quiz me on stacks")
+    assert "Quiz: stacks" in outs[0].text and "What order does a stack use?" in outs[0].text
+    assert len(store.cards("cs101")) == 2 and state.review["current"].startswith("cards/cs101/")
+    client.responses.append(ModelResponse('{"grade": 5, "feedback": "Exactly."}', []))
+    outs = await router.on_text("last in first out")
+    assert outs[0].text.startswith("✅ Exactly.") and "Cost of push?" in outs[0].text
+    client.responses.append(ModelResponse('{"grade": 1, "feedback": "Not quite."}', []))
+    outs = await router.on_text("O(n)")
+    assert "❌ Answer: O(1)" in outs[0].text and "Done: 1 right, 1 to see again." in outs[0].text
+    assert state.review is None
+    cards = sorted(store.cards("cs101"), key=lambda c: c.question)
+    assert cards[0].interval == 1 and cards[0].lapses == 1 and cards[1].reps == 1
+
+
+async def test_stop_ends_a_session(rig):
+    router, store, client, state, _ = rig
+    state.review = {"queue": [], "current": "cards/x/y.md", "asked_at": NOW.isoformat(), "right": 2, "again": 0, "label": "Review"}
+    outs = await router.on_text("stop")
+    assert outs[0].text.startswith("Stopped. 2 right") and state.review is None

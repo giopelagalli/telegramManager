@@ -23,7 +23,7 @@ def checkin_slots(profile: Profile, day: date) -> list[tuple[str, datetime]]:
         slot_start = start + timedelta(minutes=interval * i)
         if slot_start >= end:
             break
-        jitter = int(hashlib.sha256(f"{day}:{i}".encode()).hexdigest(), 16) % interval
+        jitter = 0 if profile.checkin_on_the_hour else int(hashlib.sha256(f"{day}:{i}".encode()).hexdigest(), 16) % interval
         due = slot_start + timedelta(minutes=jitter)
         slots.append((f"checkin:{day}:{i}", due))
         i += 1

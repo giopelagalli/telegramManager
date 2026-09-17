@@ -181,6 +181,7 @@ class RuntimeState:
     # source paths in the order the last /sources listing numbered them, for /summary <n>
     last_sources_listing: list[str] = field(default_factory=list)
     sprint: dict | None = None  # {"path": todo path, "title": str, "ends_at": ISO}
+    review: dict | None = None  # an open recall session: queue, current, right, again
 
     def save(self, path: Path) -> None:
         path = Path(path)
@@ -197,6 +198,7 @@ class RuntimeState:
             "pending_verify": _pv_to_json(self.pending_verify),
             "last_sources_listing": list(self.last_sources_listing),
             "sprint": self.sprint,
+            "review": self.review,
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -219,6 +221,7 @@ class RuntimeState:
                 pending_verify=_pv_from_json(data.get("pending_verify")),
                 last_sources_listing=list(data.get("last_sources_listing", [])),
                 sprint=data.get("sprint"),
+                review=data.get("review"),
             )
         except Exception as exc:
             logger.warning("failed to load state from %s: %s", path, exc)

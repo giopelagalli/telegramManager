@@ -10,6 +10,9 @@ from typing import Callable
 
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
+    CARDS_SYSTEM,
+    DIGEST_SYSTEM,
+    GRADE_SYSTEM,
     PLAN_SYSTEM,
     DESCRIBE_SOURCE_ANY_SYSTEM,
     ANSWER_SYSTEM,
@@ -247,6 +250,46 @@ class Agent:
             except (KeyError, ValueError, TypeError):
                 continue
         return {"days": clean, "advice": str(data.get("advice", "")).strip()}
+
+    async def make_cards(self, topic: str, sources: list, n: int) -> list[tuple[str, str]]:
+        """Question/answer pairs from the sources; empty on failure."""
+        body = "\n\n".join(f"### {s.title}\n{s.body[:20000]}" for s in sources)
+        messages = [
+            {"role": "system", "content": CARDS_SYSTEM.format(n=n)},
+            {"role": "user", "content": f"Topic: {topic}\n\n{body or '(no sources)'}"},
+        ]
+        response = await self._chat_or_none(messages, None, 0.4, client=self.hard or None)
+        data = _json_block(response.text if response else "")
+        cards = data.get("cards") if isinstance(data, dict) else None
+        out = []
+        for c in cards or []:
+            try:
+                q, a = str(c["q"]).strip(), str(c["a"]).strip()
+            except (KeyError, TypeError):
+                continue
+            if q and a:
+                out.append((q, a))
+        return out[:n]
+
+    async def grade(self, question: str, reference: str, answer: str) -> tuple[int, str]:
+        """(0-5, feedback). Unreachable model grades 3 with a neutral note, never punishes."""
+        messages = [
+            {"role": "system", "content": GRADE_SYSTEM},
+            {"role": "user", "content": f"Question: {question}\nReference: {reference}\nStudent: {answer}"},
+        ]
+        response = await self._chat_or_none(messages, None, 0.1)
+        data = _json_block(response.text if response else "")
+        try:
+            return max(0, min(5, int(data["grade"]))), str(data.get("feedback", "")).strip()
+        except (KeyError, TypeError, ValueError):
+            return 3, "Couldn't grade that properly; counting it as okay."
+
+    async def digest(self, items: list[tuple[str, str, str]]) -> str | None:
+        """items = (course title, source title, summary). Markdown text or None."""
+        listing = "\n\n".join(f"[{c}] {t}\n{s}" for c, t, s in items)
+        messages = [{"role": "system", "content": DIGEST_SYSTEM}, {"role": "user", "content": listing}]
+        response = await self._chat_or_none(messages, None, 0.6)
+        return (response.text or "").strip() or None if response else None
 
     async def ocr(self, image: bytes) -> str | None:
         if self.vision is None:
@@ -575,7 +618,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 store.save_profile(profile)
                 summary.append(f"Home is now: {name}")
                 changed_schedule = True
-            elif action.name in ("study", "directions", "search", "undo"):
+            elif action.name in ("study", "directions", "search", "undo", "review_now"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":
                 target = _resolve_course(store, str(args.get("course", "")))
@@ -634,3 +677,13 @@ def _match_place(profile, name: str) -> str | None:
         if key == wanted or wanted in key or key in wanted:
             return key
     return None
+
+
+def _json_block(text: str):
+    match = re.search(r"\{.*\}", text or "", re.DOTALL)
+    if match is None:
+        return None
+    try:
+        return json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None

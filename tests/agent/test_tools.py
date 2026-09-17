@@ -3,7 +3,7 @@ from bot.agent.tools import TOOL_SCHEMAS, validate_call, PROFILE_SETTABLE
 def test_schemas_cover_all_tools():
     names = {t["function"]["name"] for t in TOOL_SCHEMAS}
     assert names == {"add_todo","update_todo","move_todo","add_event","update_event","delete_event",
-                     "add_goal","update_goal","set_profile","snooze","reply","study","move_source","directions","search","save_place","set_base","undo"}
+                     "add_goal","update_goal","set_profile","snooze","reply","study","move_source","directions","search","save_place","set_base","undo","review_now"}
 
 def test_validate_ok_and_errors():
     assert validate_call("add_todo", {"title": "x", "priority": 1}) == []

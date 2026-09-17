@@ -35,6 +35,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("now", "Do this next", True),
     ("brief", "Briefing", True),
     ("pause", "Quiet for 2h", True),
+    ("review", "Quiz me on what's due", False),
     ("undo", "Revert the last change", False),
     ("hard", "Ask the big cloud model (/hard why does X happen?)", False),
     ("think", "Model thinking on/off for the Spark model (/think on)", False),
@@ -46,7 +47,7 @@ _MORE_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if not menu]
 HELP_TEXT = (
     "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MAIN_COMMANDS)
     + "\n\nEverything else, just say it: what you need to do, where you need to be, "
-    "what you're working on. Drop in files to study them. Also: /backlog, /goals, /undo, /hard."
+    "what you're working on. Drop in files to study them. Also: /review, /backlog, /goals, /undo, /hard."
 )
 
 _DURATION_RE = re.compile(r"^(\d+)\s*([hm]?)$", re.IGNORECASE)

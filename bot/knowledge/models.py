@@ -190,11 +190,14 @@ class Source:
     pages: int | None = None
     group: str | None = None
     ocr: str | None = None
+    last_surfaced: date | None = None  # when the digest last re-read it to the user
     timestamp: datetime | None = None
     body: str = ""
 
     def to_markdown(self) -> str:
         meta: dict = {"type": "source", "title": self.title, "course": self.course, "kind": self.kind}
+        if self.last_surfaced is not None:
+            meta["last_surfaced"] = self.last_surfaced
         meta["topics"] = self.topics
         meta["summary"] = self.summary
         if self.pages is not None:
@@ -221,6 +224,7 @@ class Source:
             pages=meta.get("pages"),
             group=meta.get("group"),
             ocr=meta.get("ocr"),
+            last_surfaced=_parse_date(meta.get("last_surfaced")) if meta.get("last_surfaced") else None,
             timestamp=_parse_datetime(timestamp, "timestamp") if timestamp is not None else None,
             body=body,
         )
@@ -398,6 +402,57 @@ class Event:
 
 
 @dataclass
+class Card:
+    """One recall question. SM-2 fields decide when it comes back."""
+    path: str
+    question: str
+    answer: str
+    course: str
+    topic: str = ""
+    source: str | None = None
+    ease: float = 2.5
+    interval: int = 0          # days
+    due: date | None = None
+    reps: int = 0
+    lapses: int = 0
+    history: list = field(default_factory=list)  # [[date, grade], ...]
+    timestamp: datetime | None = None
+    body: str = ""
+
+    @property
+    def title(self) -> str:
+        return self.question[:60]
+
+    def to_markdown(self) -> str:
+        meta: dict = {
+            "type": "card", "question": self.question, "answer": self.answer, "course": self.course,
+            "topic": self.topic, "ease": self.ease, "interval": self.interval, "reps": self.reps,
+            "lapses": self.lapses, "history": [[str(d), g] for d, g in self.history],
+        }
+        if self.source is not None:
+            meta["source"] = self.source
+        if self.due is not None:
+            meta["due"] = self.due
+        if self.timestamp is not None:
+            meta["timestamp"] = self.timestamp
+        return dump_frontmatter(meta, self.body)
+
+    @classmethod
+    def from_markdown(cls, path: str, text: str) -> "Card":
+        meta, body = parse_frontmatter(text)
+        ts = meta.get("timestamp")
+        return cls(
+            path=path, question=meta.get("question", ""), answer=meta.get("answer", ""),
+            course=meta.get("course", ""), topic=meta.get("topic", ""), source=meta.get("source"),
+            ease=float(meta.get("ease", 2.5)), interval=int(meta.get("interval", 0)),
+            due=_parse_date(meta.get("due")) if meta.get("due") else None,
+            reps=int(meta.get("reps", 0)), lapses=int(meta.get("lapses", 0)),
+            history=[(_parse_date(d), int(g)) for d, g in meta.get("history", [])],
+            timestamp=_parse_datetime(ts, "timestamp") if ts is not None else None, body=body,
+        )
+
+
+@dataclass
 class Goal:
     path: str
     title: str
@@ -459,6 +514,7 @@ class Profile:
     study_daily_minutes: int = 60          # default daily budget when planning for an exam
     cards_per_topic: int = 8
     review_time: str = "18:00"
+    checkin_on_the_hour: bool = True       # predictable check-ins; False = random minute
     review_daily_cap: int = 8
     review_exam_cap: int = 15
     exam_focus_days: int = 7
@@ -511,6 +567,7 @@ class Profile:
             "exam_review_offsets_days": self.exam_review_offsets_days,
             "study_daily_minutes": self.study_daily_minutes,
             "cards_per_topic": self.cards_per_topic,
+            "checkin_on_the_hour": self.checkin_on_the_hour,
             "review_time": self.review_time,
             "review_daily_cap": self.review_daily_cap,
             "review_exam_cap": self.review_exam_cap,

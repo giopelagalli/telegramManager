@@ -284,6 +284,18 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "review_now",
+            "description": "Start a recall quiz: \"quiz me\", \"quiz me on stacks\", \"let's review\".",
+            "parameters": {
+                "type": "object",
+                "properties": {"topic": {"type": "string"}, "course": {"type": "string"}},
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "undo",
             "description": "Revert the last change: \"undo that\", \"no, put it back\".",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},

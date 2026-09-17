@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from bot.knowledge.models import (
+    Card,
     Channels,
     Course,
     Event,
@@ -188,6 +189,33 @@ class KnowledgeStore:
         items = self._load_folder("schedule", Event, broken)
         self.broken_files = broken
         return sorted(items, key=lambda e: e.start)
+
+    def cards(self, course: str | None = None) -> list[Card]:
+        root = self.root / "cards"
+        if not root.exists():
+            return []
+        folders = [root / course] if course else sorted(p for p in root.iterdir() if p.is_dir())
+        broken: list[str] = []
+        items: list[Card] = []
+        for folder in folders:
+            if folder.exists():
+                items += self._load_folder(f"cards/{folder.name}", Card, broken)
+        self.broken_files = broken
+        return items
+
+    def add_card(self, card: Card) -> str:
+        (self.root / "cards" / card.course).mkdir(parents=True, exist_ok=True)
+        now = self.clock()
+        card.timestamp = now
+        stem = f"{now:%Y-%m-%d}-{slugify(card.question)[:40] or 'card'}"
+        path = self._avoid_collision(f"cards/{card.course}", stem)
+        (self.root / path).write_text(card.to_markdown(), encoding="utf-8")
+        card.path = path
+        self.log("add", path)
+        return path
+
+    def get_card(self, path: str) -> Card:
+        return Card.from_markdown(path, self._read(path))
 
     def series(self) -> list[Event]:
         """Recurring templates live under schedule/series/ and are never events themselves."""
@@ -396,7 +424,7 @@ class KnowledgeStore:
         self.log("add", path)
         return path
 
-    def save(self, item: Todo | Event | Goal) -> None:
+    def save(self, item) -> None:
         item.timestamp = self.clock()
         (self.root / item.path).write_text(item.to_markdown(), encoding="utf-8")
         self.log("save", item.path)

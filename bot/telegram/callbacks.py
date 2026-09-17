@@ -37,6 +37,9 @@ async def handle(
         return _defer(arg, store, now, message_id, message_html, remaining)
     if action == "ack":
         return _ack(arg, store, state, now, message_id, message_html)
+    if action == "quiz":
+        course, _, topic = arg.partition(":")
+        return await router_quiz(course, topic, store, agent, state, now)
     if action == "sprint":
         return _sprint(arg, store, state, now)
     if action == "resume":
@@ -162,3 +165,10 @@ def _sprint(path: str, store, state, now) -> list[Outbound]:
 def _hhmm(dt) -> str:
     from bot.knowledge.views import fmt_time
     return fmt_time(dt)
+
+
+async def router_quiz(course: str, topic: str, store, agent, state, now) -> list[Outbound]:
+    from bot.scheduler import review
+    cards = await review.ensure_cards(store, agent, course, topic, store.profile().cards_per_topic)
+    out = review.start_session(now, store, state, cards[:review.MINI_SESSION], f"Quiz: {topic}")
+    return [out] if out else [Outbound("Nothing to quiz on that yet.", kind="reply")]

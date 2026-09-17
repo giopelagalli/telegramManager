@@ -12,6 +12,7 @@ from bot.knowledge.views import esc
 from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
 from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_message, wake_on_photo
+from bot.scheduler import review
 from bot.scheduler.outbound import Outbound
 from bot.study.extract import (
     PAGE_MARKER,
@@ -146,6 +147,11 @@ class Router:
         pending = self.state.pending_verify
         if pending is not None and pending.kind == "question":
             return [await self._verify_answer(pending, text)]
+
+        if review.session_active(self.state):
+            if text.strip().lower() in ("stop", "quit", "enough", "later", "done"):
+                return [review.end_session(self.state)]
+            return await review.answer(now, self.store, self.state, self.agent, text)
 
         return await self._capture(text, awaiting, via_voice, now)
 
@@ -409,6 +415,32 @@ class Router:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
         return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
 
+    async def _quiz(self, now, topic: str | None, course: str | None, n: int | None = None) -> list[Outbound]:
+        """Start a session: on a topic (making cards if needed) or on whatever is due."""
+        from bot.study.srs import due_cards
+        profile = self.store.profile()
+        if topic:
+            slug = slugify(course) if course else None
+            if slug is None:
+                for c in self.store.courses():
+                    if any(topic.lower() in t.lower() for t in c.topics):
+                        slug = c.slug
+                        break
+            if slug is None:
+                return [Outbound("Which course is that for?", kind="reply")]
+            cards = await review.ensure_cards(self.store, self.agent, slug, topic, profile.cards_per_topic)
+            if not cards:
+                return [Outbound(f"Nothing stored to quiz you on for {esc(topic)}. Drop the material in first.", kind="reply")]
+            cards = cards[: (n or profile.review_daily_cap)]
+            label = f"Quiz: {topic}"
+        else:
+            cards = due_cards(self.store.cards(), now.date(), n or profile.review_daily_cap)
+            if not cards:
+                return [Outbound("Nothing due. Say \"quiz me on <topic>\" to drill something.", kind="reply")]
+            label = "Review"
+        out = review.start_session(now, self.store, self.state, cards, label)
+        return [out] if out else []
+
     async def _plan_new_exams(self, actions: list[ToolCall], now) -> list[str]:
         """A new exam gets a day-by-day plan and one study todo per day."""
         lines: list[str] = []
@@ -435,6 +467,12 @@ class Router:
                                     course=exam.course, kind="study"))
                 total += d["minutes"]
             self.store.commit(f"plan: {exam.title}")
+            if exam.course:
+                for topic in exam.topics[:6]:
+                    try:
+                        await review.ensure_cards(self.store, self.agent, exam.course, topic, profile.cards_per_topic)
+                    except Exception:
+                        logger.exception("card generation failed for %s", topic)
             per_day = round(total / max(1, len(plan["days"])))
             head = f"<b>Plan for {esc(exam.title)}</b> — {days_left} days, about {per_day} min/day"
             body = "\n".join(f"{d['date']:%a %b %d}: {esc(d['task'])} ({d['minutes']} min)" for d in plan["days"])
@@ -524,6 +562,10 @@ class Router:
     ) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
+        if name == "review":
+            if review.session_active(self.state):
+                return self._tag([review.end_session(self.state)], channel)
+            return self._tag(await self._quiz(now, arg or None, None), channel)
         outs = await commands.handle(name, arg, self.store, self.agent, self.state, now, channel)
         return self._tag(outs, channel)
 
@@ -586,6 +628,10 @@ class Router:
         search = next((a for a in result.actions if a.name == "search"), None)
         if search is not None and self.search is not None:
             return await self._search(str(search.arguments.get("query", text)), text, via_voice)
+
+        quiz = next((a for a in result.actions if a.name == "review_now"), None)
+        if quiz is not None:
+            return await self._quiz(now, quiz.arguments.get("topic"), quiz.arguments.get("course"))
 
         study = next((a for a in result.actions if a.name == "study"), None)
         if study is not None:

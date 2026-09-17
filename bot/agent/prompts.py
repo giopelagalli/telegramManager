@@ -57,6 +57,19 @@ and summaries, answer with strict JSON only:
 One entry per day from tomorrow to the day before the exam, front-load new material, keep the
 last two days for review and practice. Reference sources by their titles."""
 
+CARDS_SYSTEM = """Write recall questions for a student from the sources below, on the topic given.
+Strict JSON only: {{"cards": [{{"q": "...", "a": "..."}}]}}. {n} cards. Questions must be
+answerable from the sources, specific, one fact or step each; answers are one or two sentences."""
+
+GRADE_SYSTEM = """Grade a student's answer against the reference answer. Strict JSON only:
+{{"grade": 0-5, "feedback": "one short sentence"}}. 5 = perfect, 4 = right with minor slip,
+3 = mostly right, 2 = partly, 1 = wrong but related, 0 = blank or unrelated. Be fair, not soft."""
+
+DIGEST_SYSTEM = """You write a short morning digest of what a student has been learning, like a
+newspaper: two or three items, each a bold headline line then one or two plain paragraphs
+that re-teach the idea from the summaries given. About 250 words total. No preamble,
+no questions, no emoji. Markdown bold for headlines only."""
+
 OCR_PROMPT = "Transcribe all text in this image verbatim, preserving line breaks."
 
 ANSWER_SYSTEM = """Answer the question directly and accurately, grounded in the context
