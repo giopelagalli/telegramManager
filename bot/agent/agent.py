@@ -217,12 +217,16 @@ class Agent:
             "summary": "",
         }
 
-    async def plan_exam(self, exam, sources: list, days_left: int, minutes: int) -> dict | None:
-        """Day-by-day plan from the hard model when there is one; None when unparseable/offline."""
+    async def plan_exam(self, exam, sources: list, days_left: int, minutes: int, lookup: str | None = None) -> dict | None:
+        """Day-by-day plan from the hard model when there is one; None when unparseable/offline.
+
+        `lookup` is web-search text about the subject, used when nothing is stored yet."""
         listing = "\n".join(
             f"- {s.title} ({s.kind}{', ' + str(s.pages) + ' pages' if s.pages else ''}): {s.summary[:200]}"
             for s in sources
-        ) or "- no sources stored yet"
+        )
+        if not listing:
+            listing = "- nothing stored yet" + (f"\n\nWhat this subject usually covers (web search):\n{lookup}" if lookup else "")
         user = (
             f"Exam: {exam.title} on {exam.start:%A %b %d}. Topics: {', '.join(exam.topics) or 'unspecified'}.\n"
             f"Days left: {days_left}. Daily budget: {minutes} minutes. Today: {self.clock():%Y-%m-%d}.\n"
@@ -618,7 +622,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 store.save_profile(profile)
                 summary.append(f"Home is now: {name}")
                 changed_schedule = True
-            elif action.name in ("study", "directions", "search", "undo", "review_now"):
+            elif action.name in ("study", "directions", "search", "undo"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":
                 target = _resolve_course(store, str(args.get("course", "")))

@@ -57,8 +57,6 @@ class Engine:
             self._critical_leave,
             self._wake,
             self._briefings,
-            self._review,
-            self._digest,
             self._checkin,
             self._followup,
             self._expire_pending_verify,

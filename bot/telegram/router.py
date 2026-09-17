@@ -148,11 +148,6 @@ class Router:
         if pending is not None and pending.kind == "question":
             return [await self._verify_answer(pending, text)]
 
-        if review.session_active(self.state):
-            if text.strip().lower() in ("stop", "quit", "enough", "later", "done"):
-                return [review.end_session(self.state)]
-            return await review.answer(now, self.store, self.state, self.agent, text)
-
         return await self._capture(text, awaiting, via_voice, now)
 
     async def on_voice_unavailable(self, *, channel: Channel | None = None) -> list[Outbound]:
@@ -455,7 +450,11 @@ class Router:
                 continue
             profile = self.store.profile()
             sources = self.store.sources(exam.course) if exam.course else self.store.sources()
-            plan = await self.agent.plan_exam(exam, sources, days_left, profile.study_daily_minutes)
+            lookup = None
+            if not sources and self.search is not None:
+                course_title = next((c.title for c in self.store.courses() if c.slug == exam.course), exam.course or "")
+                lookup = await self.search.search(f"{course_title} {' '.join(exam.topics)} key concepts syllabus".strip())
+            plan = await self.agent.plan_exam(exam, sources, days_left, profile.study_daily_minutes, lookup=lookup)
             if plan is None or not plan["days"]:
                 lines.append(esc(f"{days_left} days until {exam.title}. Couldn't draft a plan right now; ask me again in a bit."))
                 continue
@@ -467,12 +466,6 @@ class Router:
                                     course=exam.course, kind="study"))
                 total += d["minutes"]
             self.store.commit(f"plan: {exam.title}")
-            if exam.course:
-                for topic in exam.topics[:6]:
-                    try:
-                        await review.ensure_cards(self.store, self.agent, exam.course, topic, profile.cards_per_topic)
-                    except Exception:
-                        logger.exception("card generation failed for %s", topic)
             per_day = round(total / max(1, len(plan["days"])))
             head = f"<b>Plan for {esc(exam.title)}</b> — {days_left} days, about {per_day} min/day"
             body = "\n".join(f"{d['date']:%a %b %d}: {esc(d['task'])} ({d['minutes']} min)" for d in plan["days"])
@@ -562,10 +555,6 @@ class Router:
     ) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
-        if name == "review":
-            if review.session_active(self.state):
-                return self._tag([review.end_session(self.state)], channel)
-            return self._tag(await self._quiz(now, arg or None, None), channel)
         outs = await commands.handle(name, arg, self.store, self.agent, self.state, now, channel)
         return self._tag(outs, channel)
 
@@ -628,10 +617,6 @@ class Router:
         search = next((a for a in result.actions if a.name == "search"), None)
         if search is not None and self.search is not None:
             return await self._search(str(search.arguments.get("query", text)), text, via_voice)
-
-        quiz = next((a for a in result.actions if a.name == "review_now"), None)
-        if quiz is not None:
-            return await self._quiz(now, quiz.arguments.get("topic"), quiz.arguments.get("course"))
 
         study = next((a for a in result.actions if a.name == "study"), None)
         if study is not None:

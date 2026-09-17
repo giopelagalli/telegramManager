@@ -37,9 +37,6 @@ async def handle(
         return _defer(arg, store, now, message_id, message_html, remaining)
     if action == "ack":
         return _ack(arg, store, state, now, message_id, message_html)
-    if action == "quiz":
-        course, _, topic = arg.partition(":")
-        return await router_quiz(course, topic, store, agent, state, now)
     if action == "sprint":
         return _sprint(arg, store, state, now)
     if action == "resume":
