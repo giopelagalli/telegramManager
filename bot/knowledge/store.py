@@ -5,7 +5,7 @@ import re
 import subprocess
 import threading
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -185,6 +185,56 @@ class KnowledgeStore:
         items = self._load_folder("schedule", Event, broken)
         self.broken_files = broken
         return sorted(items, key=lambda e: e.start)
+
+    def series(self) -> list[Event]:
+        """Recurring templates live under schedule/series/ and are never events themselves."""
+        broken: list[str] = []
+        (self.root / "schedule" / "series").mkdir(parents=True, exist_ok=True)
+        items = self._load_folder("schedule/series", Event, broken)
+        self.broken_files = broken
+        return sorted(items, key=lambda e: e.start)
+
+    def add_series(self, template: Event) -> str:
+        (self.root / "schedule" / "series").mkdir(parents=True, exist_ok=True)
+        return self.add(template, folder="schedule/series")
+
+    def materialize(self, now: datetime, days: int = 14) -> int:
+        """Create concrete events for every series over the next `days`; idempotent."""
+        existing = {(e.series, e.start.date()) for e in self.events() if e.series}
+        made = 0
+        for tpl in self.series():
+            for offset in range(days + 1):
+                day = now.date() + timedelta(days=offset)
+                if _WEEKDAYS[day.weekday()] not in tpl.repeat_days:
+                    continue
+                if tpl.repeat_until and day > tpl.repeat_until:
+                    continue
+                if day < tpl.start.date() or (tpl.path, day) in existing:
+                    continue
+                start = tpl.start.replace(year=day.year, month=day.month, day=day.day)
+                if start < now:
+                    continue
+                occurrence = Event(
+                    path="", title=tpl.title, start=start,
+                    end=tpl.end.replace(year=day.year, month=day.month, day=day.day) if tpl.end else None,
+                    location=tpl.location, location_latlng=tpl.location_latlng,
+                    travel_minutes=tpl.travel_minutes, prep_minutes=tpl.prep_minutes,
+                    importance=tpl.importance, course=tpl.course, kind=tpl.kind, series=tpl.path,
+                )
+                self.add(occurrence)
+                existing.add((tpl.path, day))
+                made += 1
+        return made
+
+    def delete_series(self, path: str, now: datetime) -> int:
+        """Remove a series and its future occurrences; the past stays as history."""
+        removed = 0
+        for ev in self.events():
+            if ev.series == path and ev.start >= now:
+                self.delete(ev.path)
+                removed += 1
+        self.delete(path)
+        return removed
 
     def goals(self) -> list[Goal]:
         broken: list[str] = []

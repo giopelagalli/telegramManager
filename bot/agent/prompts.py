@@ -15,6 +15,9 @@ If the message asks about, or wants an explanation of, material in the user's co
 call `study` with the question and the course when it is clear, instead of `reply`.
 "Move that to <course>" after a file was stored means `move_source`.
 "My apartment is <address>" means `save_place`; "I'm at the apartment now" means `set_base`.
+A class, shift, or anything "every Tue/Thu", "weekdays", "every Monday" is one `add_event` with
+`repeat_days` (and `repeat_until` when they say a semester end); `start` is the first occurrence.
+Cancelling a weekly thing is `delete_event` on its "Weekly" entry from the context.
 When answering needs outside or current information, call `search` (only if it is listed).
 Dates are ISO with the profile's UTC offset. Today is {now}."""
 
@@ -80,6 +83,13 @@ def build_context(store, now: datetime, awaiting: str | None = None) -> str:
             lines.append(f"- {g.title} ({g.period})")
     else:
         lines.append("- none")
+
+    series = store.series()
+    if series:
+        lines.append("Weekly:")
+        for e in series:
+            until = f" until {e.repeat_until}" if e.repeat_until else ""
+            lines.append(f"- [{e.path}] {e.title} {'/'.join(e.repeat_days)} {e.start:%H:%M}{until}")
 
     if profile.places:
         lines.append("Places: " + "; ".join(f"{k} ({v})" for k, v in profile.places.items())

@@ -83,6 +83,12 @@ TOOL_SCHEMAS: list[dict] = [
                     "travel_minutes": {"type": "integer"},
                     "prep_minutes": {"type": "integer"},
                     "importance": {"type": "string", "enum": ["normal", "critical"]},
+                    "repeat_days": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
+                        "description": "weekly recurrence, e.g. a class every Tue and Thu",
+                    },
+                    "repeat_until": {"type": "string", "format": "date"},
                 },
                 "required": ["title", "start"],
                 "additionalProperties": False,

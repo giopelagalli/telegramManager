@@ -433,7 +433,9 @@ class Router:
             return [Outbound("Nothing stored to study from yet. Drop in slides, a PDF, or notes.", kind="reply")]
         scope = course or Course(path="", title="your notes")
         selected = select_sources(question, sources, self._tutor_budget())
-        answer, _ = await self.agent.tutor(question, scope, selected, notes_tool=False)
+        answer, _ = await self.agent.tutor(
+            question, scope, selected, notes_tool=False, client=self.agent.hard or None
+        )
         if answer is None:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
         return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]

@@ -436,14 +436,26 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                     travel_minutes=args.get("travel_minutes", 0),
                     prep_minutes=args.get("prep_minutes"),
                     importance=args.get("importance", "normal"),
+                    repeat_days=list(args.get("repeat_days") or []),
+                    repeat_until=date.fromisoformat(args["repeat_until"]) if args.get("repeat_until") else None,
                 )
-                store.add(event)
                 profile = store.profile()
                 leave_by = event.times(profile).leave_by
-                summary.append(
-                    f"Added event: {event.title} {_fmt_event_start(event.start)}, "
-                    f"leave by {_fmt_clock(leave_by)}"
-                )
+                if event.repeat_days:
+                    store.add_series(event)
+                    made = store.materialize(now)
+                    days = "/".join(d.title() for d in event.repeat_days)
+                    until = f" until {_fmt_due(event.repeat_until)}" if event.repeat_until else ""
+                    summary.append(
+                        f"Added weekly: {event.title} {days} {_fmt_clock(event.start)}{until}, "
+                        f"leave by {_fmt_clock(leave_by)} ({made} on the calendar)"
+                    )
+                else:
+                    store.add(event)
+                    summary.append(
+                        f"Added event: {event.title} {_fmt_event_start(event.start)}, "
+                        f"leave by {_fmt_clock(leave_by)}"
+                    )
                 changed_schedule = True
 
             elif action.name == "update_event":
@@ -470,8 +482,12 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
 
             elif action.name == "delete_event":
                 event = store.get_event(args["file"])
-                store.delete(args["file"])
-                summary.append(f"Deleted event: {event.title}")
+                if args["file"].startswith("schedule/series/"):
+                    n = store.delete_series(args["file"], now)
+                    summary.append(f"Removed weekly: {event.title} ({n} upcoming cleared)")
+                else:
+                    store.delete(args["file"])
+                    summary.append(f"Deleted event: {event.title}")
                 changed_schedule = True
 
             elif action.name == "add_goal":

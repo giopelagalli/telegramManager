@@ -104,6 +104,11 @@ class Engine:
 
     async def _prune(self, now: datetime, sent: list[Outbound]) -> None:
         self.state.prune(now)
+        key = f"materialize:{now.date()}"
+        if key not in self.state.fired:
+            self.state.fired.add(key)
+            if self.store.materialize(now):
+                self.store.commit("schedule: materialize weekly events")
 
     async def _reminders(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await due_reminders(now, self.store, self.state, self.maps):

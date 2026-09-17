@@ -212,3 +212,21 @@ def test_non_ascii_survives_a_write_and_read_round_trip(store, monkeypatch):
     assert back.title == text and back.summary == text and back.body == text
     assert store.sources("cs101")[0].title == text
     assert (store.root / path).read_bytes().decode("utf-8").count(text) == 3
+
+
+def test_weekly_series_materializes_two_weeks_and_is_idempotent(store):
+    from datetime import date, datetime, timedelta
+    from zoneinfo import ZoneInfo
+    NY = ZoneInfo("America/New_York")
+    now = datetime(2026, 9, 21, 8, 0, tzinfo=NY)  # a Monday
+    tpl = Event(path="", title="Data Structures", start=datetime(2026, 9, 22, 10, 0, tzinfo=NY),
+                travel_minutes=20, repeat_days=["TU", "TH"], repeat_until=date(2026, 9, 30))
+    path = store.add_series(tpl)
+    assert path.startswith("schedule/series/") and store.get_event(path).repeat_days == ["TU", "TH"]
+    assert store.materialize(now) == 3  # Tue 22, Thu 24, Tue 29; Oct 1 is past repeat_until
+    starts = sorted(e.start.date() for e in store.events())
+    assert starts == [date(2026, 9, 22), date(2026, 9, 24), date(2026, 9, 29)]
+    assert store.materialize(now) == 0
+    assert all(e.series == path and e.travel_minutes == 20 for e in store.events())
+    removed = store.delete_series(path, now)
+    assert removed == len(starts) and store.events() == [] and store.series() == []

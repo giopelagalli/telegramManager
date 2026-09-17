@@ -325,6 +325,9 @@ class Event:
     course: str | None = None
     kind: str | None = None
     topics: list[str] = field(default_factory=list)
+    repeat_days: list[str] = field(default_factory=list)  # MO..SU on a series template
+    repeat_until: date | None = None
+    series: str | None = None  # path of the series this occurrence was made from
     timestamp: datetime | None = None
     body: str = ""
 
@@ -355,6 +358,12 @@ class Event:
             meta["kind"] = self.kind
         if self.topics:
             meta["topics"] = self.topics
+        if self.repeat_days:
+            meta["repeat_days"] = self.repeat_days
+        if self.repeat_until is not None:
+            meta["repeat_until"] = self.repeat_until
+        if self.series is not None:
+            meta["series"] = self.series
         if self.timestamp is not None:
             meta["timestamp"] = self.timestamp
         return dump_frontmatter(meta, self.body)
@@ -380,6 +389,9 @@ class Event:
             course=meta.get("course"),
             kind=meta.get("kind"),
             topics=list(meta.get("topics", [])),
+            repeat_days=list(meta.get("repeat_days", [])),
+            repeat_until=_parse_date(meta.get("repeat_until"), "repeat_until") if meta.get("repeat_until") else None,
+            series=meta.get("series"),
             timestamp=_parse_datetime(timestamp, "timestamp") if timestamp is not None else None,
             body=body,
         )
