@@ -285,12 +285,11 @@ def test_command_menu_is_the_minimal_set():
     assert menu_names == {"todo", "now", "today", "week", "brief", "pause", "help"}
 
 
-async def test_help_lists_the_rest_under_more(rig):
+async def test_help_lists_only_the_menu_commands(rig):
     r, *_ = rig
     text = (await r.command("help", ""))[0].text
-    assert "<b>Commands</b>" in text and "<b>More</b>" in text
-    assert "/todo" in text and "/backlog" in text
-    assert text.index("/todo") < text.index("<b>More</b>") < text.index("/backlog")
+    assert "/todo" in text and "/now" in text and "/backlog" not in text and "/bind" not in text
+    assert "just say it" in text
 
 
 def _rig_with_hard(tmp_path, hard):

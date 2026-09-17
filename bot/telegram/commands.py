@@ -58,10 +58,9 @@ COMMANDS: list[tuple[str, str, bool]] = [
 _MAIN_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if menu]
 _MORE_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if not menu]
 HELP_TEXT = (
-    "<b>Commands</b>\n"
-    + "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MAIN_COMMANDS)
-    + "\n\n<b>More</b>\n"
-    + "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MORE_COMMANDS)
+    "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MAIN_COMMANDS)
+    + "\n\nEverything else, just say it: what you need to do, where you need to be, "
+    "what you're working on. Drop files into a course topic to study them."
 )
 
 _DURATION_RE = re.compile(r"^(\d+)\s*([hm]?)$", re.IGNORECASE)

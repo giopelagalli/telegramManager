@@ -82,7 +82,7 @@ def _text_update(chat_id=42, chat_type="private", thread_id=None):
 async def test_text_reacts_seen_then_captured_and_types():
     handlers, bot, sender, _ = _rig()
     await handlers.on_text(_text_update(), None)
-    assert [emoji for _, _, emoji in bot.reactions] == ["👀", "✅"]
+    assert bot.reactions == []  # no receipt reactions; only ❌ on an unparsed message
     assert bot.actions == [(42, "typing")]
     assert len(sender.sent) == 1
 
@@ -188,7 +188,7 @@ async def test_document_is_downloaded_and_routed_with_its_channel():
     assert router.documents == [
         (b"%PDF", "ch4.pdf", "application/pdf", "chapter 4", Channel(-100, 45, "course", "cs101"))
     ]
-    assert [emoji for _, _, emoji in bot.reactions] == ["👀", "✅"]
+    assert bot.reactions == []  # no receipt reactions; only ❌ on an unparsed message
     assert bot.actions == [(-100, "typing")]
     assert len(sender.sent) == 1
 

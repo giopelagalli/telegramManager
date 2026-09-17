@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 LOW_CONFIDENCE = -0.8
 # What a bot may download through the Telegram API.
 FILE_LIMIT_BYTES = 20 * 1024 * 1024
-SEEN = "👀"
-OUTCOME_EMOJI = {"captured": "✅", "handled": "✅", "inbox": "❌"}
+NOT_UNDERSTOOD = "❌"
 
 
 class Handlers:
@@ -45,7 +44,9 @@ class Handlers:
             logger.debug("typing action failed", exc_info=True)
 
     async def _outcome(self, message) -> None:
-        await self._react(message, OUTCOME_EMOJI[self.router.last_outcome])
+        # Only mark the one case worth knowing about: the message went to the inbox unparsed.
+        if self.router.last_outcome == "inbox":
+            await self._react(message, NOT_UNDERSTOOD)
 
     def _channel(self, update) -> Channel | None:
         """Where this update came from: the DM is life, a group topic is what it's bound to."""
@@ -68,7 +69,6 @@ class Handlers:
 
     async def on_text(self, update, context) -> None:
         message = update.effective_message
-        await self._react(message, SEEN)
         await self._typing(message)
         outs = await self.router.on_text(message.text, channel=self._channel(update))
         await self._outcome(message)
@@ -77,7 +77,6 @@ class Handlers:
     async def on_voice(self, update, context) -> None:
         message = update.effective_message
         channel = self._channel(update)
-        await self._react(message, SEEN)
         if self.transcriber is None:
             await self._send(await self.router.on_voice_unavailable(channel=channel))
             return
@@ -103,7 +102,6 @@ class Handlers:
 
     async def on_photo(self, update, context) -> None:
         message = update.effective_message
-        await self._react(message, SEEN)
         photo = message.photo[-1]
         if _too_large(getattr(photo, "file_size", None)):
             await self._send(await self.router.on_file_too_large(channel=self._channel(update)))
@@ -120,7 +118,6 @@ class Handlers:
         message = update.effective_message
         document = message.document
         channel = self._channel(update)
-        await self._react(message, SEEN)
         if channel is None or channel.kind != "course":
             # Only a course topic ingests files; nothing else reads the bytes.
             await self._send(await self.router.on_document(b"", "", "", None, channel=channel))
