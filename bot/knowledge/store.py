@@ -198,7 +198,7 @@ class KnowledgeStore:
         self.broken_files = broken
         return sorted(items, key=lambda m: (m.day, m.path))
 
-    STATE_DAYS = 14
+    STATE_DAYS = 30
 
     def add_memory(self, text: str, kind: str = "fact") -> str:
         (self.root / "memories").mkdir(exist_ok=True)

@@ -286,7 +286,7 @@ TOOL_SCHEMAS: list[dict] = [
         "function": {
             "name": "remember",
             "description": "Remember something. kind=fact: durable (people, places, preferences, habits). "
-            "kind=state: what's affecting their focus now (a distraction, a worry); fades after two weeks.",
+            "kind=state: what's affecting their focus now (a distraction, a worry); fades after a month.",
             "parameters": {
                 "type": "object",
                 "properties": {

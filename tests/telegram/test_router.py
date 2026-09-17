@@ -728,7 +728,7 @@ async def test_state_memory_expires_and_echoes_softly(rig):
     outs = await router.on_text("this girl is taking up all my bandwidth")
     assert "I'll keep that in mind." in outs[0].text and "headspace" not in outs[0].text
     m = store.memories()[0]
-    assert m.kind == "state" and m.expires == NOW.date() + __import__("datetime").timedelta(days=14)
+    assert m.kind == "state" and m.expires == NOW.date() + __import__("datetime").timedelta(days=30)
     client.responses.append(R(("reply", {"text": "Ok."})))
     await router.on_text("ok")
     ctx = client.calls[-1]["messages"][1]["content"]
