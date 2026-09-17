@@ -8,6 +8,7 @@ from pathlib import Path
 from bot.agent.agent import Agent
 from bot.agent.client import FallbackModelClient, ModelClient, OpenAIModelClient
 from bot.config import Settings
+from bot.memory.index import Embedder, VectorIndex
 from bot.search import BraveSearch
 from bot.scheduler import briefings
 from bot.weather import MorningWeather
@@ -130,7 +131,11 @@ def main() -> None:
         settings.data_dir / "tmp",
         resolve=channel_resolver(store, settings.telegram_user_id),
     )
-    router = Router(store, agent, state, clock, maps, search=search)
+    index = None
+    if settings.embed_model and settings.fallback_base_url and settings.fallback_api_key:
+        index = VectorIndex(settings.data_dir / "index.json",
+                            Embedder(settings.fallback_base_url, settings.fallback_api_key, settings.embed_model))
+    router = Router(store, agent, state, clock, maps, search=search, index=index)
     engine = Engine(store, agent, state, state_path, clock, sender, maps)
 
     application = build_application(settings, router, sender, _transcriber(settings))

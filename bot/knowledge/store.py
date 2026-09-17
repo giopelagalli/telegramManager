@@ -208,6 +208,17 @@ class KnowledgeStore:
         self.log("add", path)
         return path
 
+    def recall_corpus(self) -> list[str]:
+        """Every line recall may return, for the vector index."""
+        lines = [f"({m.day}) {m.text}" for m in self.memories()]
+        log = self.root / "log.md"
+        if log.exists():
+            lines += [l[2:] for l in log.read_text(encoding="utf-8").splitlines() if l.startswith("- ")]
+        lines += [f"source: {s.title} ({s.course}) — {s.summary[:200]}" for s in self.sources()]
+        lines += [f"todo: {t.title} [{t.status}]" for t in self.todos()]
+        lines += [f"event: {e.title} {e.start:%Y-%m-%d %H:%M}" for e in self.events()]
+        return lines
+
     def recall(self, query: str, limit: int = 12) -> list[str]:
         """Lines from memories, the change log, and source titles that share words with the query."""
         words = {w.lower() for w in re.findall(r"[a-zA-Z0-9]{3,}", query)}

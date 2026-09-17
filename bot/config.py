@@ -9,6 +9,7 @@ from typing import Mapping
 FIREWORKS_URL = "https://api.fireworks.ai/inference/v1"
 FIREWORKS_MODEL_DEFAULT = "accounts/fireworks/models/deepseek-v4p1-flash"
 FIREWORKS_STT_DEFAULT = "whisper-v3"
+FIREWORKS_EMBED_DEFAULT = "nomic-ai/nomic-embed-text-v1.5"
 SPARK_MODEL_DEFAULT = "qwen3.8-flash-next"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -40,6 +41,7 @@ def _derive(e: Mapping[str, str]) -> dict[str, str]:
         default("CHAT_MODEL", fw_model)
         default("VISION_BASE_URL", FIREWORKS_URL); default("VISION_MODEL", fw_model)
     if key:
+        default("EMBED_MODEL", FIREWORKS_EMBED_DEFAULT)
         default("FALLBACK_BASE_URL", FIREWORKS_URL); default("FALLBACK_API_KEY", key)
         default("HARD_MODEL", fw_model)
         if "STT_PROVIDER" not in d:
@@ -84,6 +86,7 @@ class Settings:
     stt_model: str | None
     kokoro_model_dir: Path
     brave_api_key: str | None
+    embed_model: str | None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -153,6 +156,7 @@ class Settings:
             stt_model=stt_model,
             kokoro_model_dir=Path(req("KOKORO_MODEL_DIR")),
             brave_api_key=opt("BRAVE_API_KEY"),
+            embed_model=opt("EMBED_MODEL"),
         )
 
 

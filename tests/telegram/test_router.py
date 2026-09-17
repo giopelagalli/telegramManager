@@ -709,3 +709,13 @@ async def test_remember_then_recall(rig):
     capture_ctx = client.calls[-2]["messages"][1]["content"]   # the capture that chose `recall`
     assert "Things I know about them:" in capture_ctx and "Sam is his lab partner" in capture_ctx
     assert "Sam is his lab partner" in client.calls[-1]["messages"][1]["content"]  # the recall answer context
+
+
+async def test_recall_merges_semantic_hits(rig, tmp_path):
+    from bot.memory.index import VectorIndex
+    from tests.test_index import FakeEmbedder
+    router, store, client, state, _ = rig
+    store.add_memory("His dentist is Dr. Patel on Peachtree."); store.commit("m")
+    router.index = VectorIndex(tmp_path / "idx.json", FakeEmbedder())
+    hits = await router._recall("His dentist is Dr. Patel")
+    assert any("Dr. Patel" in h for h in hits)

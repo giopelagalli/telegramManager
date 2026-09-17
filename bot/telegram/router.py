@@ -104,13 +104,14 @@ def _stored_reply(source: Source, course: Course) -> str:
 class Router:
     """Turns a user action into a list of outbound messages. No telegram types here."""
 
-    def __init__(self, store, agent, state, clock, maps, search=None):
+    def __init__(self, store, agent, state, clock, maps, search=None, index=None):
         self.store = store
         self.agent = agent
         self.state = state
         self.clock = clock
         self.maps = maps
         self.search = search
+        self.index = index
         self.last_outcome = "handled"
         self._warned_threads: set[str] = set()
 
@@ -473,6 +474,20 @@ class Router:
             lines.append("\n".join(x for x in (head, body, advice) if x))
         return lines
 
+    async def _recall(self, query: str) -> list[str]:
+        """Keyword hits plus, when an index exists, semantic hits over the same corpus."""
+        hits = self.store.recall(query)
+        if self.index is None:
+            return hits
+        try:
+            await self.index.sync(self.store.recall_corpus())
+            for score, line in await self.index.search(query, k=8):
+                if line not in hits:
+                    hits.append(line)
+        except Exception:
+            logger.exception("semantic recall failed; keyword hits only")
+        return hits[:16]
+
     async def _search(self, query: str, question: str, via_voice: bool) -> list[Outbound]:
         results = await self.search.search(query)
         if results is None:
@@ -624,7 +639,7 @@ class Router:
 
         recall = next((a for a in result.actions if a.name == "recall"), None)
         if recall is not None:
-            hits = self.store.recall(str(recall.arguments.get("query", text)))
+            hits = await self._recall(str(recall.arguments.get("query", text)))
             context = "What I have on that:\n" + ("\n".join(f"- {h}" for h in hits) if hits else "- nothing")
             answer = await self.agent.answer(text, context)
             return [Outbound(md_to_html(answer) if answer else esc(context), voice=self._voice_reply(via_voice), kind="reply")]
