@@ -1,4 +1,4 @@
-"""A small local vector index over everything Dex has kept: memories, log lines, sources.
+"""A small local vector index over everything JD has kept: memories, log lines, sources.
 
 Vectors come from an OpenAI-compatible /embeddings endpoint (Fireworks on the same key). The
 index is one JSON file in data/; only new or changed texts are embedded, keyed by content hash.
