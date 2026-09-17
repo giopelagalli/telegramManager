@@ -663,3 +663,24 @@ async def test_undo_in_plain_words(rig):
     client.responses.append(R(("undo", {}), ("reply", {"text": "Undone."})))
     outs = await router.on_text("undo that")
     assert outs[0].text.startswith("Reverted:") and not [t for t in store.todos() if t.title == "Oops"]
+
+
+async def test_new_exam_gets_a_plan_and_daily_study_todos(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    store.add_source(Source(path="", title="Lecture 3", course="cs101", kind="slides", topics=["stacks"],
+                            summary="Stacks and queues.", pages=40, body="x")); store.commit("s")
+    exam_start = NOW.replace(day=6, hour=10, minute=0)  # three days out
+    client.responses.append(R(("add_event", {"title": "CS101 Midterm", "start": exam_start.isoformat(),
+                                             "kind": "exam", "course": "cs101", "topics": ["stacks"]}),
+                              ("reply", {"text": "Got it."})))
+    client.responses.append(ModelResponse(
+        '{"days": [{"date": "2026-09-04", "minutes": 60, "task": "Read Lecture 3 slides 1-20"},'
+        ' {"date": "2026-09-05", "minutes": 45, "task": "Practice stack problems"}],'
+        ' "advice": "Doable at an hour a day."}', []))
+    outs = await router.on_text("big exam on the 6th for cs101 on stacks, haven't learned any of it")
+    text = outs[0].text
+    assert "Plan for CS101 Midterm" in text and "3 days" in text and "Read Lecture 3" in text and "Doable" in text
+    study = [t for t in store.todos() if t.kind == "study"]
+    assert sorted(t.due for t in study) == [date(2026, 9, 4), date(2026, 9, 5)] and all(t.course == "cs101" for t in study)
+    assert "Days left: 3" in client.calls[-1]["messages"][1]["content"]

@@ -6,6 +6,9 @@ CAPTURE_SYSTEM = """You are {assistant}, {name}'s assistant. Convert the user's 
 One message may need many calls. Use `reply` exactly once with a short, human reply.
 Assign `priority` using the active goals in the context.
 Never invent times: if a time is missing, ask for it in `reply` and add nothing else.
+If a date doesn't exist (e.g. September 31) ask which date they meant and add nothing.
+An exam or quiz is `add_event` with kind "exam"/"quiz", the course, and `topics` when given;
+the study plan is made automatically afterwards, so just confirm in `reply`.
 When the user says "not now", "stop", or "later", call `snooze` (120 minutes unless they say
 how long). When they say "I'm back", "resume", or "unpause", call `snooze` with minutes 0.
 When the user answers a pending question (see "Awaiting answer" in the context),
@@ -38,6 +41,14 @@ Read the start of a document and answer with strict JSON, nothing else:
 `course` is the exact title of the existing course this belongs to, or a short new course
 name (like "Bio 201") if none fits. `kind` is one of: {kinds}. `topics` is at most 10 short
 topic names. `summary` is 3 to 6 sentences describing what the document covers."""
+
+PLAN_SYSTEM = """You plan study for a student who says they have not learned the material yet.
+Given the exam, the days left, the daily minute budget, and the course sources with page counts
+and summaries, answer with strict JSON only:
+{{"days": [{{"date": "YYYY-MM-DD", "minutes": 60, "task": "Read Lecture 3 slides 1-20, notes on stacks"}}],
+ "advice": "two or three sentences: is the budget realistic, what to prioritise"}}
+One entry per day from tomorrow to the day before the exam, front-load new material, keep the
+last two days for review and practice. Reference sources by their titles."""
 
 OCR_PROMPT = "Transcribe all text in this image verbatim, preserving line breaks."
 

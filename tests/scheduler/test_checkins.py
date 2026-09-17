@@ -41,7 +41,6 @@ async def test_due_checkin_fires_once_and_opens_chain(store):
     assert await due_checkin(due - timedelta(minutes=1), store, s, FakeAgent()) is None
     out = await due_checkin(due, store, s, FakeAgent())
     assert out and out.kind == "checkin" and out.voice and "Call dentist" in out.text
-    assert out.silent
     assert out.buttons[0][1].startswith("done:") and out.buttons[0][0] == "✅ Done"
     assert [d for _, d in out.buttons[1:]] == [f"sprint:{out.buttons[0][1].split(':', 1)[1]}", "ack:still"]
     assert s.chain and s.chain.kind == "checkin" and s.chain.item == "Call dentist"

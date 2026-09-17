@@ -456,6 +456,7 @@ class Profile:
     tutor_context_chars_fallback: int = 40000
     assignment_lead_days: int = 3
     exam_review_offsets_days: list[int] = field(default_factory=lambda: [7, 3, 1])
+    study_daily_minutes: int = 60          # default daily budget when planning for an exam
     cards_per_topic: int = 8
     review_time: str = "18:00"
     review_daily_cap: int = 8
@@ -508,6 +509,7 @@ class Profile:
             "tutor_context_chars_fallback": self.tutor_context_chars_fallback,
             "assignment_lead_days": self.assignment_lead_days,
             "exam_review_offsets_days": self.exam_review_offsets_days,
+            "study_daily_minutes": self.study_daily_minutes,
             "cards_per_topic": self.cards_per_topic,
             "review_time": self.review_time,
             "review_daily_cap": self.review_daily_cap,

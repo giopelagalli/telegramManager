@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
 from bot.agent.prompts import build_context
-from bot.knowledge.models import UNBOUND, Channel, Course, Source, channel_key, slugify
+from bot.knowledge.models import Todo, UNBOUND, Channel, Course, Source, channel_key, slugify
 from bot.knowledge.views import esc
 from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
@@ -409,6 +409,39 @@ class Router:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
         return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
 
+    async def _plan_new_exams(self, actions: list[ToolCall], now) -> list[str]:
+        """A new exam gets a day-by-day plan and one study todo per day."""
+        lines: list[str] = []
+        for action in actions:
+            if action.name != "add_event" or action.arguments.get("kind") not in ("exam", "quiz"):
+                continue
+            exam = self._event_of(action)
+            if exam is None:
+                continue
+            days_left = (exam.start.date() - now.date()).days
+            if days_left < 1:
+                continue
+            profile = self.store.profile()
+            sources = self.store.sources(exam.course) if exam.course else self.store.sources()
+            plan = await self.agent.plan_exam(exam, sources, days_left, profile.study_daily_minutes)
+            if plan is None or not plan["days"]:
+                lines.append(esc(f"{days_left} days until {exam.title}. Couldn't draft a plan right now; ask me again in a bit."))
+                continue
+            total = 0
+            for d in plan["days"]:
+                if d["date"] < now.date() or d["date"] >= exam.start.date():
+                    continue
+                self.store.add(Todo(path="", title=f"Study: {d['task'][:80]}", priority=1, due=d["date"],
+                                    course=exam.course, kind="study"))
+                total += d["minutes"]
+            self.store.commit(f"plan: {exam.title}")
+            per_day = round(total / max(1, len(plan["days"])))
+            head = f"<b>Plan for {esc(exam.title)}</b> — {days_left} days, about {per_day} min/day"
+            body = "\n".join(f"{d['date']:%a %b %d}: {esc(d['task'])} ({d['minutes']} min)" for d in plan["days"])
+            advice = md_to_html(plan["advice"]) if plan["advice"] else ""
+            lines.append("\n".join(x for x in (head, body, advice) if x))
+        return lines
+
     async def _search(self, query: str, question: str, via_voice: bool) -> list[Outbound]:
         results = await self.search.search(query)
         if results is None:
@@ -548,6 +581,7 @@ class Router:
 
         await self._geocode_home(result.actions)
         await self._geocode_events(result.actions, applied)
+        plan_lines = await self._plan_new_exams(result.actions, now)
 
         search = next((a for a in result.actions if a.name == "search"), None)
         if search is not None and self.search is not None:
@@ -559,7 +593,7 @@ class Router:
                 str(study.arguments.get("question", text)), study.arguments.get("course"), via_voice
             )
 
-        lines = [md_to_html(result.reply)] + [esc(s) for s in applied.summary]
+        lines = [md_to_html(result.reply)] + [esc(s) for s in applied.summary] + plan_lines
         for a in result.actions:
             if a.name == "directions":
                 url = directions_url(str(a.arguments.get("destination", "")))

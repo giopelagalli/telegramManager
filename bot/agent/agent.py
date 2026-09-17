@@ -10,6 +10,7 @@ from typing import Callable
 
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
+    PLAN_SYSTEM,
     DESCRIBE_SOURCE_ANY_SYSTEM,
     ANSWER_SYSTEM,
     CAPTURE_SYSTEM,
@@ -212,6 +213,40 @@ class Agent:
             "topics": [],
             "summary": "",
         }
+
+    async def plan_exam(self, exam, sources: list, days_left: int, minutes: int) -> dict | None:
+        """Day-by-day plan from the hard model when there is one; None when unparseable/offline."""
+        listing = "\n".join(
+            f"- {s.title} ({s.kind}{', ' + str(s.pages) + ' pages' if s.pages else ''}): {s.summary[:200]}"
+            for s in sources
+        ) or "- no sources stored yet"
+        user = (
+            f"Exam: {exam.title} on {exam.start:%A %b %d}. Topics: {', '.join(exam.topics) or 'unspecified'}.\n"
+            f"Days left: {days_left}. Daily budget: {minutes} minutes. Today: {self.clock():%Y-%m-%d}.\n"
+            f"Sources:\n{listing}"
+        )
+        messages = [{"role": "system", "content": PLAN_SYSTEM}, {"role": "user", "content": user}]
+        response = await self._chat_or_none(messages, None, 0.3, client=self.hard or None)
+        if response is None:
+            return None
+        match = re.search(r"\{.*\}", response.text or "", re.DOTALL)
+        if match is None:
+            return None
+        try:
+            data = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+        days = data.get("days")
+        if not isinstance(days, list):
+            return None
+        clean = []
+        for d in days:
+            try:
+                clean.append({"date": date.fromisoformat(str(d["date"])), "minutes": int(d.get("minutes", minutes)),
+                              "task": str(d["task"]).strip()})
+            except (KeyError, ValueError, TypeError):
+                continue
+        return {"days": clean, "advice": str(data.get("advice", "")).strip()}
 
     async def ocr(self, image: bytes) -> str | None:
         if self.vision is None:
@@ -438,6 +473,9 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                     importance=args.get("importance", "normal"),
                     repeat_days=list(args.get("repeat_days") or []),
                     repeat_until=date.fromisoformat(args["repeat_until"]) if args.get("repeat_until") else None,
+                    kind=args.get("kind"),
+                    course=args.get("course"),
+                    topics=list(args.get("topics") or []),
                 )
                 profile = store.profile()
                 leave_by = event.times(profile).leave_by

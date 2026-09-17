@@ -81,7 +81,7 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
                 return None
             state.fired.add(empty_key)
             return Outbound(
-                EMPTY_DAY_PROMPT, voice=profile.voice_on_proactive, silent=True, kind="checkin"
+                EMPTY_DAY_PROMPT, voice=profile.voice_on_proactive, kind="checkin"
             )
 
         parts = []
@@ -101,7 +101,7 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
         buttons = [("✅ Done", f"done:{top1.path}"), ("🔥 Do it now", f"sprint:{top1.path}")] if top1 else []
         buttons += [("⏳ Still on it", "ack:still")]
         return Outbound(
-            text, voice=profile.voice_on_proactive, buttons=buttons, silent=True, kind="checkin"
+            text, voice=profile.voice_on_proactive, buttons=buttons, kind="checkin"
         )
 
     return None
