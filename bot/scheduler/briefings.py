@@ -140,7 +140,7 @@ async def _weather_line(profile) -> str | None:
         return None
 
 
-async def _morning_outbound(store: KnowledgeStore, now: datetime, agent, note: str | None = None) -> Outbound:
+async def morning_outbound(store: KnowledgeStore, now: datetime, agent, note: str | None = None) -> Outbound:
     prose = await _compose_prose(store, now, agent)
     text = morning_text(store, now).replace("{prose}", md_to_html(prose))
     weather = await _weather_line(store.profile())
@@ -155,13 +155,20 @@ async def _morning_outbound(store: KnowledgeStore, now: datetime, agent, note: s
     return Outbound(text, voice=profile.voice_on_proactive, buttons=buttons, kind="briefing")
 
 
+async def evening_outbound(store: KnowledgeStore, now: datetime, agent) -> Outbound:
+    body, buttons = evening_text(store, now)
+    prose = await _compose_prose(store, now, agent)
+    text = f"{body}\n\n{md_to_html(prose)}"
+    return Outbound(text, voice=store.profile().voice_on_proactive, buttons=buttons, kind="briefing")
+
+
 async def send_morning(
     now: datetime, store: KnowledgeStore, state: RuntimeState, agent, note: str | None = None
 ) -> Outbound:
     day = now.date()
     state.fired.add(f"morning:{day}")
 
-    outbound = await _morning_outbound(store, now, agent, note)
+    outbound = await morning_outbound(store, now, agent, note)
     state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[outbound.text])
     return outbound
 
@@ -177,17 +184,15 @@ async def due_briefings(now: datetime, store: KnowledgeStore, state: RuntimeStat
         if profile.wake_time:
             state.fired.discard(morning_key)
         else:
-            outbound = await _morning_outbound(store, now, agent)
+            outbound = await morning_outbound(store, now, agent)
             out.append(outbound)
             state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[outbound.text])
 
     evening_key = f"evening:{day}"
     evening_at = briefing_time(profile, state, day, "evening")
     if is_due(evening_key, evening_at, now, state):
-        body, buttons = evening_text(store, now)
-        prose = await _compose_prose(store, now, agent)
-        text = f"{body}\n\n{md_to_html(prose)}"
-        out.append(Outbound(text, voice=profile.voice_on_proactive, buttons=buttons, kind="briefing"))
-        state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[text])
+        outbound = await evening_outbound(store, now, agent)
+        out.append(outbound)
+        state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[outbound.text])
 
     return out

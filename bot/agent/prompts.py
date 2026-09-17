@@ -57,6 +57,8 @@ call `study` with the question and the course when it is clear, instead of `repl
 "Move that to <course>" after a file was stored means `move_source`.
 When the message contains a pasted conversation with someone (their texts and the user's), or
 asks what to text someone, call `coach` with the thread and what they're asking.
+"What's my briefing", "send the morning briefing again", "what's my day look like" is `briefing`
+morning; "evening briefing", "how did today go" is `briefing` evening. It is sent for you, so `reply` briefly.
 When answering needs outside or current information, call `search` (only if it is listed).
 "My apartment is <address>" means `save_place`; "I'm at the apartment now" means `set_base`.
 "Wake me at 7:30" is `set_profile` wake_time "07:30" (24h; "" turns the alarm off). "Wake-up photo

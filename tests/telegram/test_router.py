@@ -805,3 +805,19 @@ async def test_event_with_location_but_no_home_asks_for_the_address(rig):
     out = await router.on_text("gym tomorrow 6pm at Equinox")
     assert "Tell me your home address" in out[0].text
     assert router.maps.travel_calls == []
+
+
+async def test_asking_for_the_briefing_sends_it_with_voice_without_marking_it_fired(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("briefing", {"which": "morning"}), ("reply", {"text": "Here."})))
+    client.responses.append(ModelResponse("Quiet day. Start with the reading.", []))
+    outs = await router.on_text("what's my day look like")
+    assert outs[0].kind == "briefing" and outs[0].voice is True
+    assert "Quiet day" in outs[0].text
+    assert not any(k.startswith("morning:") for k in state.fired)
+    assert state.chain is None
+
+    client.responses.append(R(("briefing", {"which": "evening"}), ("reply", {"text": "Here."})))
+    client.responses.append(ModelResponse("Nothing closed today.", []))
+    outs = await router.on_text("evening briefing")
+    assert outs[0].kind == "briefing" and outs[0].voice is True

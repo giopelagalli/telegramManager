@@ -11,6 +11,7 @@ from bot.knowledge.models import Todo, UNBOUND, Channel, Course, Source, channel
 from bot.knowledge.views import esc
 from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
+from bot.scheduler.briefings import evening_outbound, morning_outbound
 from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_message, wake_on_photo, wake_spot
 from bot.scheduler import review
 from bot.scheduler.outbound import Outbound
@@ -643,6 +644,11 @@ class Router:
         await self._geocode_home(result.actions)
         travel_lines = await self._geocode_events(result.actions, applied)
         plan_lines = await self._plan_new_exams(result.actions, now)
+
+        briefing = next((a for a in result.actions if a.name == "briefing"), None)
+        if briefing is not None:
+            build = evening_outbound if briefing.arguments.get("which") == "evening" else morning_outbound
+            return [await build(self.store, now, self.agent)]
 
         coach = next((a for a in result.actions if a.name == "coach"), None)
         if coach is not None:

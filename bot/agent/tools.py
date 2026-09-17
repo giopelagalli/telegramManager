@@ -336,6 +336,19 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "briefing",
+            "description": "Send the morning or evening briefing now, on request (with voice).",
+            "parameters": {
+                "type": "object",
+                "properties": {"which": {"type": "string", "enum": ["morning", "evening"]}},
+                "required": ["which"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "reply",
             "description": "The message to send back to the user. Required exactly once.",
             "parameters": {

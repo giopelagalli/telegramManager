@@ -80,7 +80,8 @@ These are the reference lines he's calibrated on. He never reuses them.
 Text is the default. When the Kokoro voice files are installed he also sends a voice note with
 the morning and evening briefings and the hourly check-ins, so you can hear them without
 looking. Replies to your messages are text, unless you sent a voice note, then he answers in
-voice too. Never voice on alarms or leave-now, those need to be readable at a glance. The
+voice too. Ask for a briefing any time, "what's my day look like" or "send the evening
+briefing," and he sends it again with voice, without touching the scheduled one. Never voice on alarms or leave-now, those need to be readable at a glance. The
 voice is Kokoro's Onyx: American, male, deep.
 
 ## What he never does
