@@ -37,6 +37,9 @@ async def handle(
         return _defer(arg, store, now, message_id, message_html, remaining)
     if action == "ack":
         return _ack(arg, store, state, now, message_id, message_html)
+    if action == "resume":
+        state.pause_until = None
+        return [Outbound("Back on.", kind="reply")]
     if action == "snooze":
         state.pause_until = now + timedelta(minutes=SNOOZE_MINUTES)
         return [Outbound(f"Ok, {SNOOZE_MINUTES} minutes of quiet.", kind="reply")]

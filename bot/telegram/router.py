@@ -519,7 +519,9 @@ class Router:
         applied = apply_actions(self.store, result.actions, now)
 
         if applied.snooze_minutes is not None:
-            self.state.pause_until = now + timedelta(minutes=applied.snooze_minutes)
+            self.state.pause_until = (
+                None if applied.snooze_minutes <= 0 else now + timedelta(minutes=applied.snooze_minutes)
+            )
 
         await self._geocode_home(result.actions)
         await self._geocode_events(result.actions, applied)

@@ -607,3 +607,18 @@ def test_topic_named_renames_between_kinds(rig):
     out = router.on_topic_named(-100, 70, "Exams")
     assert out[0].text == "Renamed: this topic is now Exams."
     assert store.channels().by_key("-100:70").kind == "exams"
+
+
+async def test_im_back_clears_the_pause(rig):
+    router, store, client, state, _ = rig
+    state.pause_until = NOW.replace(hour=20)
+    client.responses.append(R(("snooze", {"minutes": 0}), ("reply", {"text": "Welcome back."})))
+    await router.on_text("I'm back")
+    assert state.pause_until is None
+
+
+async def test_resume_button_clears_the_pause(rig):
+    router, store, client, state, _ = rig
+    state.pause_until = NOW.replace(hour=20)
+    outs = await router.on_callback("resume")
+    assert state.pause_until is None and outs[0].text == "Back on."

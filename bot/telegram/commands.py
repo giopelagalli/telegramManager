@@ -123,12 +123,16 @@ async def handle(
         if minutes is None:
             return [Outbound("I don't understand that duration. Try /pause 2h.", kind="reply")]
         state.pause_until = now + timedelta(minutes=minutes)
-        return [Outbound(f"Paused for {_label(minutes)}. Reminders and critical alerts still come through.", kind="reply")]
+        return [Outbound(
+            f"Paused for {_label(minutes)}. Reminders and critical alerts still come through.",
+            buttons=[("▶️ Resume", "resume")],
+            kind="reply",
+        )]
 
     if name == "quiet":
         _, end = store.profile().waking_window(today)
         state.pause_until = end
-        return [Outbound(f"Quiet until {fmt_time(end)}.", kind="reply")]
+        return [Outbound(f"Quiet until {fmt_time(end)}.", buttons=[("▶️ Resume", "resume")], kind="reply")]
 
     if name == "resume":
         state.pause_until = None
