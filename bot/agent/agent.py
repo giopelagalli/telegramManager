@@ -10,6 +10,8 @@ from typing import Callable
 
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
+    CLASSIFY_PHOTO_SYSTEM,
+    COACH_SYSTEM,
     VOICE,
     CARDS_SYSTEM,
     DIGEST_SYSTEM,
@@ -296,6 +298,24 @@ class Agent:
         messages = [{"role": "system", "content": DIGEST_SYSTEM}, {"role": "user", "content": listing}]
         response = await self._chat_or_none(messages, None, 0.6)
         return (response.text or "").strip() or None if response else None
+
+    async def coach(self, thread: str, ask: str, recent: list | None = None) -> str | None:
+        """What to text next. Reasoning model when there is one; None when unreachable."""
+        profile = self.store.profile()
+        messages = [
+            {"role": "system", "content": COACH_SYSTEM.format(assistant=profile.assistant_name, voice=VOICE)},
+            *[{"role": r, "content": b} for r, b in (recent or [])],
+            {"role": "user", "content": f"Thread:\n{thread}\n\nAsk: {ask or 'what do I send?'}"},
+        ]
+        response = await self._chat_or_none(messages, None, 0.5, client=self.hard or None)
+        return (response.text or "").strip() or None if response else None
+
+    async def classify_photo(self, text: str) -> str:
+        """'chat' or 'material' for OCR'd text; material when unsure."""
+        messages = [{"role": "system", "content": CLASSIFY_PHOTO_SYSTEM}, {"role": "user", "content": text[:3000]}]
+        response = await self._chat_or_none(messages, None, 0.0)
+        word = (response.text or "").strip().lower() if response else ""
+        return "chat" if word.startswith("chat") else "material"
 
     async def ocr(self, image: bytes) -> str | None:
         if self.vision is None:
@@ -628,7 +648,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 kind = args.get("kind", "fact")
                 store.add_memory(str(args["fact"]), kind=kind)
                 summary.append("I'll keep that in mind." if kind == "state" else f"Remembered: {str(args['fact']).strip()}")
-            elif action.name in ("study", "directions", "search", "undo", "recall"):
+            elif action.name in ("study", "directions", "search", "undo", "recall", "coach"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":
                 target = _resolve_course(store, str(args.get("course", "")))

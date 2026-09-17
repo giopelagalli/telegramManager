@@ -314,6 +314,20 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "coach",
+            "description": "The user pasted a conversation with someone (or asks what to text them). "
+            "Pass the thread and what they want.",
+            "parameters": {
+                "type": "object",
+                "properties": {"thread": {"type": "string"}, "ask": {"type": "string"}},
+                "required": ["thread"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "undo",
             "description": "Revert the last change: \"undo that\", \"no, put it back\".",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},

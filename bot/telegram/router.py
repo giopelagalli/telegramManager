@@ -333,6 +333,13 @@ class Router:
         self._touch()
         text = await self.agent.ocr(image)
         body = text if text else (caption or "")
+        if text and not _is_course(channel) and await self.agent.classify_photo(text) == "chat":
+            advice = await self.agent.coach(text, caption or "", recent=list(self.state.recent))
+            if advice is None:
+                return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
+            self._remember("user", f"[screenshot of a conversation] {caption or ''}".strip())
+            self._remember("assistant", advice)
+            return [Outbound(md_to_html(advice), kind="reply")]
         if body.strip():
             course, described = await self._describe_and_file(body, "photo.jpg", channel)
         else:
@@ -636,6 +643,15 @@ class Router:
         await self._geocode_home(result.actions)
         await self._geocode_events(result.actions, applied)
         plan_lines = await self._plan_new_exams(result.actions, now)
+
+        coach = next((a for a in result.actions if a.name == "coach"), None)
+        if coach is not None:
+            advice = await self.agent.coach(str(coach.arguments.get("thread", text)),
+                                            str(coach.arguments.get("ask", "")), recent=list(self.state.recent))
+            if advice is None:
+                return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
+            self._remember("assistant", advice)
+            return [Outbound(md_to_html(advice), voice=self._voice_reply(via_voice), kind="reply")]
 
         recall = next((a for a in result.actions if a.name == "recall"), None)
         if recall is not None:

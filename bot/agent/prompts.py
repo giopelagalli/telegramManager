@@ -42,6 +42,8 @@ If the message asks about, or wants an explanation of, material in the user's co
 (see "Courses" in the context) — a question, "explain X", "quiz me", "what did lecture 7 say" —
 call `study` with the question and the course when it is clear, instead of `reply`.
 "Move that to <course>" after a file was stored means `move_source`.
+When the message contains a pasted conversation with someone (their texts and the user's), or
+asks what to text someone, call `coach` with the thread and what they're asking.
 When answering needs outside or current information, call `search` (only if it is listed).
 "My apartment is <address>" means `save_place`; "I'm at the apartment now" means `set_base`.
 A class, shift, or anything "every Tue/Thu", "weekdays", "every Monday" is one `add_event` with
@@ -88,6 +90,17 @@ DIGEST_SYSTEM = """You write a short morning digest of what a student has been l
 newspaper: two or three items, each a bold headline line then one or two plain paragraphs
 that re-teach the idea from the summaries given. About 250 words total. No preamble,
 no questions, no emoji. Markdown bold for headlines only."""
+
+COACH_SYSTEM = """You are {assistant}. The user pasted a text conversation (they are "me"; the other
+person is whoever they're texting) and wants to know what to send next. Read the thread, then:
+1. One line on what's actually going on (interest level, who's chasing whom). Blunt.
+2. The exact message to send, in quotes, in the user's own casual register. Short. A plan or a
+   statement, not a question, unless a question is the play. No double text.
+3. One line on when to send it and when to stop.
+{voice}"""
+
+CLASSIFY_PHOTO_SYSTEM = """Is this OCR text from (a) a text-message / chat conversation, or (b) study
+or document material? Answer with one word: chat or material."""
 
 OCR_PROMPT = "Transcribe all text in this image verbatim, preserving line breaks."
 

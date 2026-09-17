@@ -733,3 +733,26 @@ async def test_state_memory_expires_and_echoes_softly(rig):
     await router.on_text("ok")
     ctx = client.calls[-1]["messages"][1]["content"]
     assert "On their mind lately:" in ctx and "headspace" in ctx and "Things I know about them:" not in ctx
+
+
+async def test_pasted_conversation_goes_to_the_coach(rig):
+    router, store, client, state, _ = rig
+    thread = "her: haha maybe, busy week tho\nme: no worries"
+    client.responses.append(R(("coach", {"thread": thread, "ask": "what now"}), ("reply", {"text": "..."})))
+    client.responses.append(ModelResponse("Soft yes w/ an exit. Send: \"Thursday 4, the place on Bond. If not, next week.\" Then nothing.", []))
+    outs = await router.on_text(f"she said: haha maybe, busy week tho. i said no worries. what now")
+    assert "Thursday 4" in outs[0].text
+    assert "Thread:\nher: haha maybe" in client.calls[-1]["messages"][-1]["content"]
+    assert state.recent[-1][0] == "assistant" and "Thursday 4" in state.recent[-1][1]
+
+
+async def test_chat_screenshot_in_dm_is_coached_not_filed(rig):
+    router, store, client, state, _ = rig
+    class Vision:
+        async def chat(self, messages, tools=None, temperature=0.2):
+            return ModelResponse("Her: busy week tho\nMe: cool", [])
+    router.agent.vision = Vision()
+    client.responses.append(ModelResponse("chat", []))
+    client.responses.append(ModelResponse("She's lukewarm. Send: \"Tuesday 4.\"", []))
+    outs = await router.on_photo(b"img")
+    assert "Tuesday 4" in outs[0].text and store.sources() == []
