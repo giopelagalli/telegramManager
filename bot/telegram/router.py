@@ -11,7 +11,7 @@ from bot.knowledge.models import Todo, UNBOUND, Channel, Course, Source, channel
 from bot.knowledge.views import esc
 from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
-from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_message, wake_on_photo
+from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_message, wake_on_photo, wake_spot
 from bot.scheduler import review
 from bot.scheduler.outbound import Outbound
 from bot.study.extract import (
@@ -277,7 +277,7 @@ class Router:
 
         if self._wake_active() and self.state.wake.phase == "challenge":
             close_chain(self.state)
-            spot = self.store.profile().wake_photo_spot
+            spot = wake_spot(self.store.profile(), self.state.wake.day)
             ok, reason = await self.agent.check_photo(
                 image, f"a fresh photo of a {spot}, not a screenshot"
             )

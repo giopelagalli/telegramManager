@@ -157,3 +157,16 @@ def test_deleted_event_stands_down(store):
     s = gone()
     o = C.leave_on_text(s, store)
     assert "That event is gone" in o.text and s.critical is None
+
+
+def test_wake_spot_rotates_over_listed_spots_and_is_fixed_per_day():
+    from bot.knowledge.models import Profile
+    from bot.scheduler.critical import wake_spot
+
+    p = Profile(); p.wake_photo_spot = "sink, front door, toothbrush"
+    days = [f"2026-09-{d:02d}" for d in range(1, 31)]
+    picks = {wake_spot(p, d) for d in days}
+    assert picks == {"sink", "front door", "toothbrush"}
+    assert wake_spot(p, "2026-09-17") == wake_spot(p, "2026-09-17")
+    p.wake_photo_spot = ""
+    assert wake_spot(p, "2026-09-17") == "kitchen sink"

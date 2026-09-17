@@ -147,6 +147,12 @@ def wake_due(now: datetime, state: RuntimeState, store: KnowledgeStore) -> bool:
     return is_due(f"wake:{day}", when, now, state)
 
 
+def wake_spot(profile, day: str) -> str:
+    """Today's proof spot: one of the comma-separated `wake_photo_spot` entries, fixed for the day."""
+    spots = [x.strip() for x in profile.wake_photo_spot.split(",") if x.strip()] or ["kitchen sink"]
+    return spots[sum(map(ord, day)) % len(spots)]
+
+
 def wake_start(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Outbound:
     profile = store.profile()
     day = now.date().isoformat()
@@ -200,10 +206,10 @@ def wake_on_message(now: datetime, state: RuntimeState, store: KnowledgeStore, t
     if w.phase == "alarm":
         w.phase = "challenge"
         w.last_reply_at = now
-        return Outbound(text=f"Send me a photo of the {profile.wake_photo_spot}.", kind="wake")
+        return Outbound(text=f"Send me a photo of the {wake_spot(profile, w.day)}.", kind="wake")
 
     if w.phase == "challenge":
-        return Outbound(text=f"Photo, not words. The {profile.wake_photo_spot}.", kind="wake")
+        return Outbound(text=f"Photo, not words. The {wake_spot(profile, w.day)}.", kind="wake")
 
     if w.phase == "engage":
         substantive = (
@@ -254,7 +260,7 @@ def wake_on_photo(
         w.last_reply_at = now
         return Outbound(text="Not convinced, but moving on. What's the first thing you're doing today?", kind="wake")
 
-    return Outbound(text=f"Doesn't look like the {profile.wake_photo_spot}: {reason}. Try again.", kind="wake")
+    return Outbound(text=f"Doesn't look like the {wake_spot(profile, w.day)}: {reason}. Try again.", kind="wake")
 
 
 def _dirs(ev) -> str:

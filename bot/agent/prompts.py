@@ -46,6 +46,8 @@ When the message contains a pasted conversation with someone (their texts and th
 asks what to text someone, call `coach` with the thread and what they're asking.
 When answering needs outside or current information, call `search` (only if it is listed).
 "My apartment is <address>" means `save_place`; "I'm at the apartment now" means `set_base`.
+"Wake me at 7:30" is `set_profile` wake_time "07:30" (24h; "" turns the alarm off). "Wake-up photo
+spots: sink, front door" is `set_profile` wake_photo_spot "sink, front door" (one is picked each day).
 A class, shift, or anything "every Tue/Thu", "weekdays", "every Monday" is one `add_event` with
 `repeat_days` (and `repeat_until` when they say a semester end); `start` is the first occurrence.
 Cancelling a weekly thing is `delete_event` on its "Weekly" entry from the context.
@@ -119,6 +121,10 @@ def build_context(store, now: datetime, awaiting: str | None = None) -> str:
     lines = [f"Name: {profile.name}", f"Timezone: {profile.timezone}"]
     if profile.body.strip():
         lines.append(profile.body.strip())
+    if profile.wake_time:
+        lines.append(f"Wake-up alarm: {profile.wake_time} every day; photo proof of one of: {profile.wake_photo_spot}")
+    else:
+        lines.append("Wake-up alarm: off")
 
     today = now.date()
     tomorrow = today + timedelta(days=1)
