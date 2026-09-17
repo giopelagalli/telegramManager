@@ -178,3 +178,8 @@ def test_inline_comments_are_ignored():
 def test_brave_key_optional():
     assert Settings.from_env(MIN).brave_api_key is None
     assert Settings.from_env(dict(MIN, BRAVE_API_KEY="b")).brave_api_key == "b"
+
+
+def test_chat_extra_body():
+    assert Settings.from_env(MIN).chat_extra_body is None
+    assert Settings.from_env(dict(MIN, CHAT_EXTRA_BODY='{"thinking": {"type": "disabled"}}')).chat_extra_body == {"thinking": {"type": "disabled"}}

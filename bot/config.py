@@ -68,6 +68,7 @@ class Settings:
     vision_model: str | None
     fallback_vision_model: str | None
     hard_model: str | None
+    chat_extra_body: dict | None
     fallback_extra_body: dict | None
     hard_extra_body: dict | None
     fallback_vision_extra_body: dict | None
@@ -136,6 +137,7 @@ class Settings:
             vision_model=opt("VISION_MODEL"),
             fallback_vision_model=fallback_vision_model,
             hard_model=hard_model,
+            chat_extra_body=json_obj("CHAT_EXTRA_BODY"),
             fallback_extra_body=json_obj("FALLBACK_EXTRA_BODY"),
             hard_extra_body=json_obj("HARD_EXTRA_BODY"),
             fallback_vision_extra_body=json_obj("FALLBACK_VISION_EXTRA_BODY"),
