@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Mapping
 
 FIREWORKS_URL = "https://api.fireworks.ai/inference/v1"
+FIREWORKS_AUDIO_URL = "https://audio-prod.us-virginia-1.direct.fireworks.ai/v1"
 FIREWORKS_MODEL_DEFAULT = "accounts/fireworks/models/deepseek-v4p1-flash"
 FIREWORKS_STT_DEFAULT = "whisper-v3"
 FIREWORKS_EMBED_DEFAULT = "nomic-ai/nomic-embed-text-v1.5"
@@ -46,7 +47,7 @@ def _derive(e: Mapping[str, str]) -> dict[str, str]:
         default("HARD_MODEL", fw_model)
         if "STT_PROVIDER" not in d:
             d["STT_PROVIDER"] = "api"
-            default("STT_BASE_URL", FIREWORKS_URL); default("STT_API_KEY", key)
+            default("STT_BASE_URL", FIREWORKS_AUDIO_URL); default("STT_API_KEY", key)
             default("STT_MODEL", d.get("FIREWORKS_STT_MODEL", "").strip() or FIREWORKS_STT_DEFAULT)
     default("KNOWLEDGE_DIR", str(REPO_ROOT / "knowledge"))
     default("DATA_DIR", str(REPO_ROOT / "data"))

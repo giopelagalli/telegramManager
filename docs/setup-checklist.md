@@ -35,7 +35,7 @@ on the Spark" at the bottom.
    right) → **API Keys** → create a key and copy it once; it isn't shown
    again. → `FALLBACK_API_KEY` (with
    `FALLBACK_BASE_URL=https://api.fireworks.ai/inference/v1`) and
-   `STT_API_KEY` (with `STT_BASE_URL=https://api.fireworks.ai/inference/v1`)
+   `STT_API_KEY` (with `STT_BASE_URL=https://audio-prod.us-virginia-1.direct.fireworks.ai/v1`)
    — the same key works for both.
 
 5. **Fireworks model ids.** At

@@ -96,7 +96,7 @@ chmod 600 .env
 | `DATA_DIR` | `/home/<droplet-user>/telegramManager/data` |
 | `WHISPER_MODEL` | Unused on this path (`STT_PROVIDER=api` below) — leave blank. |
 | `STT_PROVIDER` | `api` — the droplet transcribes voice notes through an OpenAI-compatible endpoint instead of running faster-whisper locally. |
-| `STT_BASE_URL` / `STT_API_KEY` / `STT_MODEL` | `https://api.fireworks.ai/inference/v1` / your Fireworks key / a Whisper model id, e.g. `whisper-v3` — see app.fireworks.ai/models. All three are required when `STT_PROVIDER=api`. |
+| `STT_BASE_URL` / `STT_API_KEY` / `STT_MODEL` | `https://audio-prod.us-virginia-1.direct.fireworks.ai/v1` (Fireworks serves audio on its own host) / your Fireworks key / a Whisper model id, e.g. `whisper-v3` — see app.fireworks.ai/models. All three are required when `STT_PROVIDER=api`. |
 | `KOKORO_MODEL_DIR` | `/home/<droplet-user>/telegramManager/models` |
 
 The token in `.env` is a live credential — keep the file at mode `600`
@@ -135,7 +135,7 @@ KNOWLEDGE_REMOTES=<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>
 DATA_DIR=/home/<droplet-user>/telegramManager/data
 WHISPER_MODEL=
 STT_PROVIDER=api
-STT_BASE_URL=https://api.fireworks.ai/inference/v1
+STT_BASE_URL=https://audio-prod.us-virginia-1.direct.fireworks.ai/v1
 STT_API_KEY=
 STT_MODEL=whisper-v3
 KOKORO_MODEL_DIR=/home/<droplet-user>/telegramManager/models
