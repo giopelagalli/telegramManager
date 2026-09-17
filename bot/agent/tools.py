@@ -234,6 +234,20 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "search",
+            "description": "Look something up on the web when the answer needs current or outside "
+            "information (facts, places, prices, news). Not for the user's own notes.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "reply",
             "description": "The message to send back to the user. Required exactly once.",
             "parameters": {

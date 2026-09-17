@@ -622,3 +622,17 @@ async def test_resume_button_clears_the_pause(rig):
     state.pause_until = NOW.replace(hour=20)
     outs = await router.on_callback("resume")
     assert state.pause_until is None and outs[0].text == "Back on."
+
+
+async def test_search_tool_answers_from_web_results(rig):
+    router, store, client, state, _ = rig
+    class FakeSearch:
+        def __init__(self): self.queries = []
+        async def search(self, q):
+            self.queries.append(q); return "- Klaus building\n  https://gatech.edu/klaus\n  Open 7am-11pm"
+    router.search = FakeSearch()
+    client.responses.append(R(("search", {"query": "Klaus building hours"}), ("reply", {"text": "..."})))
+    client.responses.append(ModelResponse("Open 7am to 11pm (https://gatech.edu/klaus).", []))
+    outs = await router.on_text("when does klaus close?")
+    assert router.search.queries == ["Klaus building hours"] and "7am to 11pm" in outs[0].text
+    assert "gatech.edu/klaus" in client.calls[-1]["messages"][1]["content"]

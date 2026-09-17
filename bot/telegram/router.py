@@ -103,12 +103,13 @@ def _stored_reply(source: Source, course: Course) -> str:
 class Router:
     """Turns a user action into a list of outbound messages. No telegram types here."""
 
-    def __init__(self, store, agent, state, clock, maps):
+    def __init__(self, store, agent, state, clock, maps, search=None):
         self.store = store
         self.agent = agent
         self.state = state
         self.clock = clock
         self.maps = maps
+        self.search = search
         self.last_outcome = "handled"
         self._warned_threads: set[str] = set()
 
@@ -402,6 +403,17 @@ class Router:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
         return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
 
+    async def _search(self, query: str, question: str, via_voice: bool) -> list[Outbound]:
+        results = await self.search.search(query)
+        if results is None:
+            return [Outbound("Search isn't answering right now.", kind="reply")]
+        answer = await self.agent.answer(
+            question, f"Web search results for \"{query}\":\n{results}\nCite the URL you used."
+        )
+        if answer is None:
+            return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
+        return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
+
     async def _study(self, question: str, course_slug: str | None, via_voice: bool) -> list[Outbound]:
         """Tutor from the DM: one course when the model named it, otherwise everything stored."""
         course: Course | None = None
@@ -525,6 +537,10 @@ class Router:
 
         await self._geocode_home(result.actions)
         await self._geocode_events(result.actions, applied)
+
+        search = next((a for a in result.actions if a.name == "search"), None)
+        if search is not None and self.search is not None:
+            return await self._search(str(search.arguments.get("query", text)), text, via_voice)
 
         study = next((a for a in result.actions if a.name == "study"), None)
         if study is not None:

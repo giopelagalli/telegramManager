@@ -8,6 +8,7 @@ from pathlib import Path
 from bot.agent.agent import Agent
 from bot.agent.client import FallbackModelClient, ModelClient, OpenAIModelClient
 from bot.config import Settings
+from bot.search import BraveSearch
 from bot.knowledge.store import KnowledgeStore
 from bot.maps.client import MapsClient
 from bot.scheduler.clock import SystemClock
@@ -114,7 +115,8 @@ def main() -> None:
             extra_body=settings.hard_extra_body,
             timeout=300,
         )
-    agent = Agent(client, vision, store, clock.now, hard=hard)
+    search = BraveSearch(settings.brave_api_key) if settings.brave_api_key else None
+    agent = Agent(client, vision, store, clock.now, hard=hard, search=search is not None)
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 
     sender = Sender(
@@ -124,7 +126,7 @@ def main() -> None:
         settings.data_dir / "tmp",
         resolve=channel_resolver(store, settings.telegram_user_id),
     )
-    router = Router(store, agent, state, clock, maps)
+    router = Router(store, agent, state, clock, maps, search=search)
     engine = Engine(store, agent, state, state_path, clock, sender, maps)
 
     application = build_application(settings, router, sender, _transcriber(settings))

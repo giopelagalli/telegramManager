@@ -14,6 +14,7 @@ If the message asks about, or wants an explanation of, material in the user's co
 (see "Courses" in the context) — a question, "explain X", "quiz me", "what did lecture 7 say" —
 call `study` with the question and the course when it is clear, instead of `reply`.
 "Move that to <course>" after a file was stored means `move_source`.
+When answering needs outside or current information, call `search` (only if it is listed).
 Dates are ISO with the profile's UTC offset. Today is {now}."""
 
 COMPOSE_SYSTEM = """You are {assistant}, a personal assistant. Write for Telegram: plain text, no markdown, at most 3 sentences unless

@@ -173,3 +173,8 @@ def test_nothing_configured_raises():
 def test_inline_comments_are_ignored():
     s = Settings.from_env(dict(MIN, TELEGRAM_USER_ID="42  # my id", FIREWORKS_API_KEY="fw   # key"))
     assert s.telegram_user_id == 42 and s.openai_api_key == "fw"
+
+
+def test_brave_key_optional():
+    assert Settings.from_env(MIN).brave_api_key is None
+    assert Settings.from_env(dict(MIN, BRAVE_API_KEY="b")).brave_api_key == "b"

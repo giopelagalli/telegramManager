@@ -51,7 +51,9 @@ class Agent:
         store: KnowledgeStore,
         clock: Callable[[], datetime],
         hard: ModelClient | None = None,
+        search: bool = False,
     ):
+        self.tools = TOOL_SCHEMAS if search else [t for t in TOOL_SCHEMAS if t["function"]["name"] != "search"]
         self.client = client
         self.vision = vision
         self.store = store
@@ -69,7 +71,7 @@ class Agent:
             {"role": "user", "content": text},
         ]
 
-        response = await self._chat_or_none(messages, TOOL_SCHEMAS, 0.1)
+        response = await self._chat_or_none(messages, self.tools, 0.1)
         if response is None:
             return self._to_inbox(text, "The model is offline; saved your message to the inbox.")
 
@@ -84,7 +86,7 @@ class Agent:
                     + ". Resend ALL tool calls, fixed, and include exactly one reply call.",
                 },
             ]
-            response = await self._chat_or_none(retry_messages, TOOL_SCHEMAS, 0.1)
+            response = await self._chat_or_none(retry_messages, self.tools, 0.1)
             if response is None:
                 return self._to_inbox(text, "The model is offline; saved your message to the inbox.")
             errors = self._check(response.tool_calls)
@@ -496,7 +498,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 summary.append(f"Set {field_name} = {coerced}")
                 changed_schedule = True
 
-            elif action.name in ("study", "directions"):
+            elif action.name in ("study", "directions", "search"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":
                 target = _resolve_course(store, str(args.get("course", "")))

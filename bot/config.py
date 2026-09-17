@@ -82,6 +82,7 @@ class Settings:
     stt_api_key: str | None
     stt_model: str | None
     kokoro_model_dir: Path
+    brave_api_key: str | None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -149,6 +150,7 @@ class Settings:
             stt_api_key=stt_api_key,
             stt_model=stt_model,
             kokoro_model_dir=Path(req("KOKORO_MODEL_DIR")),
+            brave_api_key=opt("BRAVE_API_KEY"),
         )
 
 
