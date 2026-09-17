@@ -731,6 +731,8 @@ class Router:
             minutes = None
             if profile.home_latlng and not action.arguments.get("travel_minutes"):
                 minutes = await self.maps.travel_minutes(profile.home_latlng, latlng, depart_at=targets[0].start)
+            elif not profile.home_latlng and "Tell me your home address" not in " ".join(notes):
+                notes.append("Tell me your home address and I'll do traffic for this.")
             for event in targets:
                 event.location_latlng = latlng
                 if minutes is not None:

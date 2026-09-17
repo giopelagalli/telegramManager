@@ -75,6 +75,14 @@ These are the reference lines he's calibrated on. He never reuses them.
   exam and he builds a day-by-day plan and the study todos, then checks whether you did them.
 - **Memory**: facts about you stay forever. Things on your mind fade after a month.
 
+## Voice
+
+Text is the default. When the Kokoro voice files are installed he also sends a voice note with
+the morning and evening briefings and the hourly check-ins, so you can hear them without
+looking. Replies to your messages are text, unless you sent a voice note, then he answers in
+voice too. Never voice on alarms or leave-now, those need to be readable at a glance. The
+voice is Kokoro's Onyx: American, male, deep.
+
 ## What he never does
 
 - Sends silent notifications.

@@ -26,7 +26,7 @@ def available(model_path: Path, voices_path: Path) -> bool:
 
 
 class Synthesizer:
-    def __init__(self, model_path: Path, voices_path: Path, voice: str = "af_heart"):
+    def __init__(self, model_path: Path, voices_path: Path, voice: str = "am_onyx"):
         self._model_path = model_path
         self._voices_path = voices_path
         self._voice = voice

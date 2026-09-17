@@ -793,3 +793,15 @@ async def test_single_event_travel_time_is_estimated_when_home_is_known(rig):
     out = await router.on_text("gym tomorrow 6pm at Equinox")
     assert store.events()[0].travel_minutes == 12
     assert "leave by 5:48 PM" in out[0].text
+
+
+async def test_event_with_location_but_no_home_asks_for_the_address(rig):
+    router, store, client, state, _ = rig
+    router.maps = FakeMaps({"Equinox": (40.75, -73.99)}, travel=12)
+    client.responses.append(R(
+        ("add_event", {"title": "Gym", "start": "2026-09-04T18:00:00-04:00", "location": "Equinox"}),
+        ("reply", {"text": "Ok."}),
+    ))
+    out = await router.on_text("gym tomorrow 6pm at Equinox")
+    assert "Tell me your home address" in out[0].text
+    assert router.maps.travel_calls == []
