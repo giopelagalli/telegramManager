@@ -101,6 +101,11 @@ def evening_text(store: KnowledgeStore, now: datetime) -> tuple[str, list[tuple[
         for e in missed_today:
             lines.append(f"• {esc(e.title)}")
 
+    starving = _starving_goals(store.goals(), todos, today)
+    if starving:
+        lines.append("")
+        lines.append(f"Nothing toward {esc(starving)} yet. Tomorrow?")
+
     tomorrow_events = [e for e in events if e.start.date() == tomorrow]
     if tomorrow_events:
         e = tomorrow_events[0]
@@ -112,6 +117,18 @@ def evening_text(store: KnowledgeStore, now: datetime) -> tuple[str, list[tuple[
         )
 
     return "\n".join(lines), buttons
+
+
+def _starving_goals(goals, todos, today: date) -> str:
+    """This week's and this month's goals with nothing done toward them, as one phrase."""
+    iso = today.isocalendar()
+    periods = {f"{iso[0]}-W{iso[1]:02d}": "this week", f"{today:%Y-%m}": "this month"}
+    names = [
+        f"{g.title} {periods[g.period]}"
+        for g in goals
+        if g.status == "active" and g.period in periods and goal_progress(g, todos)[0] == 0
+    ]
+    return ", ".join(names[:2]) if names else ""
 
 
 def _chain_item(store: KnowledgeStore, day: date) -> str:

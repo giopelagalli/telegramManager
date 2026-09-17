@@ -29,11 +29,11 @@ HARD_OFFLINE_REPLY = "The hard model didn't answer; try again."
 COMMANDS: list[tuple[str, str, bool]] = [
     ("todo", "Top 5", True),
     ("backlog", "Parked todos, not on the list", False),
-    ("goals", "Your goals and where you stand", False),
     ("today", "Today", True),
     ("week", "This week", True),
     ("now", "Do this next", True),
     ("brief", "Briefing", True),
+    ("goals", "Your goals and where you stand", True),
     ("pause", "Quiet for 2h", True),
     ("undo", "Take back the last thing he changed", False),
     ("hard", "Ask the bigger model, for hard questions (/hard …)", False),

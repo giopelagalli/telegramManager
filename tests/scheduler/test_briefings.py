@@ -108,3 +108,19 @@ async def test_morning_includes_weather_line_when_home_is_set(store, monkeypatch
     s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
     out = await B.send_morning(T(8), store, s, Agent(FakeModelClient([]), None, store, lambda: T(8)))
     assert "72° and clear, high 80, UV high." in out.text.splitlines()[1]
+
+
+def test_evening_names_goals_with_nothing_done_toward_them(store):
+    # Sept 3 2026 is week 36; "Health week" has no todos at all, so it is starving.
+    text, _ = evening_text(store, T(21))
+    assert "Nothing toward Health week this week yet. Tomorrow?" in text
+
+    goal = store.goals()[0]
+    store.add(Todo(path="", title="Run", status="done", done_at=T(12), goal=goal.path))
+    store.add(Goal(path="", title="Read 2 books", period="2026-09"))
+    store.add(Goal(path="", title="Ship", period="2026"))
+    store.commit("progress")
+    text, _ = evening_text(store, T(21))
+    assert "Health week" not in text.split("Nothing toward")[-1]
+    assert "Nothing toward Read 2 books this month yet. Tomorrow?" in text
+    assert "Ship" not in text
