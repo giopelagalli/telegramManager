@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from typing import Protocol
 
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.views import fmt_time
+from bot.knowledge.views import esc, fmt_time
+from bot.maps.client import directions_url
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.state import CriticalLeaveState, RuntimeState
 
@@ -49,7 +50,7 @@ async def due_reminders(
                     times = ev.times(profile)
             out.append(
                 Outbound(
-                    text=f"Get ready for {ev.title}. Leave by {fmt_time(times.leave_by)}.",
+                    text=f"Get ready for {esc(ev.title)}. Leave by {fmt_time(times.leave_by)}.",
                     kind="reminder",
                 )
             )
@@ -61,7 +62,8 @@ async def due_reminders(
             else:
                 out.append(
                     Outbound(
-                        text=f"Leave in the next {profile.leave_lead_minutes} minutes for {ev.title}.",
+                        text=f"Leave in the next {profile.leave_lead_minutes} minutes for {esc(ev.title)}."
+                        + _directions_suffix(ev),
                         kind="reminder",
                     )
                 )
@@ -74,3 +76,8 @@ async def due_reminders(
             store.commit("event missed")
 
     return out
+
+
+def _directions_suffix(ev) -> str:
+    url = directions_url(ev.location, ev.location_latlng)
+    return f' <a href="{url}">Directions</a>' if url else ""

@@ -57,7 +57,7 @@ async def test_maps_refresh_shifts_leave(store):
     s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
     out = await due_reminders(T(17, 25), store, s, Maps())
     # refresh moved leave_by to 5:30 and leave_at to 5:25, so both fire in this same call
-    assert [o.text for o in out] == ["Get ready for Gym. Leave by 5:30pm.", "Leave in the next 5 minutes for Gym."]
+    assert [o.text.split(" <a")[0] for o in out] == ["Get ready for Gym. Leave by 5:30pm.", "Leave in the next 5 minutes for Gym."]
     assert store.get_event(p).travel_minutes == 30
     assert await due_reminders(T(17, 26), store, s, Maps()) == []
 
@@ -72,3 +72,12 @@ async def test_dst_arithmetic():
     t = e.times(Profile())
     assert t.leave_by.utcoffset() != t.leave_by.replace(hour=4).utcoffset() or True   # documents DST crossing runs
     assert (e.start - t.leave_by) == timedelta(minutes=90)
+
+
+async def test_leave_reminder_links_directions_when_there_is_a_place(store):
+    p = store.add(Event(path="", title="Gym", start=T(18), travel_minutes=20, location="Equinox Bond St"))
+    store.commit("e")
+    s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
+    out = await due_reminders(T(17, 35), store, s, None)
+    leave = [o for o in out if o.text.startswith("Leave")][0]
+    assert 'href="https://www.google.com/maps/dir/?api=1&destination=Equinox%20Bond%20St&travelmode=driving"' in leave.text

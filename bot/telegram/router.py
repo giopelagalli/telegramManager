@@ -9,7 +9,7 @@ from bot.agent.client import ToolCall
 from bot.agent.prompts import build_context
 from bot.knowledge.models import UNBOUND, Channel, Course, Source, channel_key, slugify
 from bot.knowledge.views import esc
-from bot.maps.client import distance_m
+from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
 from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_message, wake_on_photo
 from bot.scheduler.outbound import Outbound
@@ -533,6 +533,11 @@ class Router:
             )
 
         lines = [md_to_html(result.reply)] + [esc(s) for s in applied.summary]
+        for a in result.actions:
+            if a.name == "directions":
+                url = directions_url(str(a.arguments.get("destination", "")))
+                if url:
+                    lines.append(f'<a href="{url}">Directions to {esc(str(a.arguments["destination"]))}</a>')
         return [
             Outbound(
                 "\n".join(line for line in lines if line),

@@ -14,6 +14,18 @@ DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"
 logger = logging.getLogger(__name__)
 
 
+def directions_url(destination: str | None, latlng: tuple[float, float] | None = None) -> str | None:
+    """A Google Maps navigation link; opens turn-by-turn on a phone. No API key needed."""
+    from urllib.parse import quote
+    if latlng is not None:
+        target = f"{latlng[0]},{latlng[1]}"
+    elif destination:
+        target = quote(destination)
+    else:
+        return None
+    return f"https://www.google.com/maps/dir/?api=1&destination={target}&travelmode=driving"
+
+
 def distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
     lat1, lng1 = math.radians(a[0]), math.radians(a[1])
     lat2, lng2 = math.radians(b[0]), math.radians(b[1])

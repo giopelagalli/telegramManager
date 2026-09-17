@@ -221,6 +221,19 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "directions",
+            "description": "Send a navigation link to a place, e.g. \"directions to the gym\".",
+            "parameters": {
+                "type": "object",
+                "properties": {"destination": {"type": "string"}},
+                "required": ["destination"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "reply",
             "description": "The message to send back to the user. Required exactly once.",
             "parameters": {

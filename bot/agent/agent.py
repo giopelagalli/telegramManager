@@ -496,7 +496,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 summary.append(f"Set {field_name} = {coerced}")
                 changed_schedule = True
 
-            elif action.name == "study":
+            elif action.name in ("study", "directions"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":
                 target = _resolve_course(store, str(args.get("course", "")))

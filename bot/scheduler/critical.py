@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.views import fmt_time
-from bot.maps.client import distance_m
+from bot.maps.client import directions_url, distance_m
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import is_due
 from bot.scheduler.state import RuntimeState, WakeState
@@ -43,7 +43,7 @@ def leave_tick(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Out
             return Outbound(
                 text=(
                     f"{profile.name}, you need to leave now for {ev.title}. "
-                    f"You will be late after {fmt_time(leave_by)}. Confirm you have left."
+                    f"You will be late after {fmt_time(leave_by)}. Confirm you have left." + _dirs(ev)
                 ),
                 location_button=True,
                 critical=True,
@@ -255,3 +255,8 @@ def wake_on_photo(
         return Outbound(text="Not convinced, but moving on. What's the first thing you're doing today?", kind="wake")
 
     return Outbound(text=f"Doesn't look like the {profile.wake_photo_spot}: {reason}. Try again.", kind="wake")
+
+
+def _dirs(ev) -> str:
+    url = directions_url(ev.location, ev.location_latlng)
+    return f' <a href="{url}">Directions</a>' if url else ""
