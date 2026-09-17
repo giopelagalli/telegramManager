@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -12,9 +13,15 @@ SPARK_MODEL_DEFAULT = "qwen3.8-flash-next"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _strip_comment(v: str) -> str:
+    return re.sub(r"\s+#.*$", "", v).strip()
+
+
 def _derive(e: Mapping[str, str]) -> dict[str, str]:
     """Fill the advanced variables from the four simple ones unless set explicitly."""
-    d = {k: v for k, v in e.items() if str(v).strip()}
+    # systemd's EnvironmentFile keeps inline "# comments" in the value; strip them here
+    d = {k: _strip_comment(str(v)) for k, v in e.items()}
+    d = {k: v for k, v in d.items() if v}
     def default(k: str, v: str | None) -> None:
         if v and k not in d:
             d[k] = v

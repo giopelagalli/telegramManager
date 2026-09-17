@@ -168,3 +168,8 @@ def test_explicit_advanced_vars_win():
 def test_nothing_configured_raises():
     with pytest.raises(ValueError, match="FIREWORKS_API_KEY"):
         Settings.from_env({"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_USER_ID": "1"})
+
+
+def test_inline_comments_are_ignored():
+    s = Settings.from_env(dict(MIN, TELEGRAM_USER_ID="42  # my id", FIREWORKS_API_KEY="fw   # key"))
+    assert s.telegram_user_id == 42 and s.openai_api_key == "fw"
