@@ -6,7 +6,7 @@ from datetime import date, datetime
 from bot.knowledge.models import Profile
 
 PROFILE_SETTABLE: frozenset[str] = frozenset(
-    f.name for f in _dc_fields(Profile) if f.name not in ("home_latlng", "body")
+    f.name for f in _dc_fields(Profile) if f.name not in ("home_latlng", "body", "places", "places_latlng")
 )
 
 TOOL_SCHEMAS: list[dict] = [
@@ -214,6 +214,33 @@ TOOL_SCHEMAS: list[dict] = [
                 "type": "object",
                 "properties": {"course": {"type": "string", "description": "course title or slug"}},
                 "required": ["course"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_place",
+            "description": "Remember a named place: \"my apartment is 123 Peachtree St\".",
+            "parameters": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "address": {"type": "string"}},
+                "required": ["name", "address"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_base",
+            "description": "Switch which saved place counts as home right now: \"I'm at the apartment "
+            "this semester\", \"at my parents' this weekend\".",
+            "parameters": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"],
                 "additionalProperties": False,
             },
         },

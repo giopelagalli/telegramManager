@@ -636,3 +636,22 @@ async def test_search_tool_answers_from_web_results(rig):
     outs = await router.on_text("when does klaus close?")
     assert router.search.queries == ["Klaus building hours"] and "7am to 11pm" in outs[0].text
     assert "gatech.edu/klaus" in client.calls[-1]["messages"][1]["content"]
+
+
+async def test_named_places_switch_home(rig):
+    router, store, client, state, _ = rig
+    router.maps = FakeMaps({"123 Peachtree St": (33.77, -84.39), "45 Oak Lane": (33.90, -84.30)})
+    client.responses.append(R(("save_place", {"name": "apartment", "address": "123 Peachtree St"}),
+                              ("save_place", {"name": "parents", "address": "45 Oak Lane"}),
+                              ("reply", {"text": "Saved."})))
+    await router.on_text("my apartment is 123 Peachtree St and my parents' place is 45 Oak Lane")
+    p = store.profile()
+    assert p.base == "apartment" and p.home_address == "123 Peachtree St" and p.home_latlng is not None
+    assert set(p.places) == {"apartment", "parents"}
+    client.responses.append(R(("set_base", {"name": "parents"}), ("reply", {"text": "Ok."})))
+    outs = await router.on_text("I'm at my parents' this weekend")
+    p = store.profile()
+    assert p.base == "parents" and p.home_address == "45 Oak Lane" and "Home is now: parents" in outs[0].text
+    client.responses.append(R(("set_base", {"name": "the beach house"}), ("reply", {"text": "Ok."})))
+    outs = await router.on_text("I'm at the beach house")
+    assert "Couldn't apply set_base" in outs[0].text and store.profile().base == "parents"

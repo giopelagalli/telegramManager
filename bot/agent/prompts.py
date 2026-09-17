@@ -14,6 +14,7 @@ If the message asks about, or wants an explanation of, material in the user's co
 (see "Courses" in the context) — a question, "explain X", "quiz me", "what did lecture 7 say" —
 call `study` with the question and the course when it is clear, instead of `reply`.
 "Move that to <course>" after a file was stored means `move_source`.
+"My apartment is <address>" means `save_place`; "I'm at the apartment now" means `set_base`.
 When answering needs outside or current information, call `search` (only if it is listed).
 Dates are ISO with the profile's UTC offset. Today is {now}."""
 
@@ -79,6 +80,10 @@ def build_context(store, now: datetime, awaiting: str | None = None) -> str:
             lines.append(f"- {g.title} ({g.period})")
     else:
         lines.append("- none")
+
+    if profile.places:
+        lines.append("Places: " + "; ".join(f"{k} ({v})" for k, v in profile.places.items())
+                     + f". Home right now: {profile.base or 'unset'}")
 
     courses = store.courses()
     if courses:

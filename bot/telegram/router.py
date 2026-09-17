@@ -563,23 +563,28 @@ class Router:
         ]
 
     async def _geocode_home(self, actions: list[ToolCall]) -> None:
+        """Coordinates for a new home address or saved place; home follows the current base."""
         if self.maps is None:
             return
-        addresses = [
-            a.arguments.get("value")
-            for a in actions
-            if a.name == "set_profile" and a.arguments.get("field") == "home_address"
-        ]
-        addresses = [a for a in addresses if a is not None]
-        if not addresses:
-            return
-        latlng = await self.maps.geocode(addresses[-1])
-        if latlng is None:
-            return
         profile = self.store.profile()
-        profile.home_latlng = latlng
-        self.store.save_profile(profile)
-        self.store.commit("profile: geocoded home address")
+        changed = False
+        for a in actions:
+            if a.name == "set_profile" and a.arguments.get("field") == "home_address":
+                latlng = await self.maps.geocode(str(a.arguments.get("value") or ""))
+                if latlng is not None:
+                    profile.home_latlng = latlng
+                    changed = True
+            elif a.name == "save_place":
+                name = " ".join(str(a.arguments["name"]).lower().replace("'", "").split())
+                latlng = await self.maps.geocode(str(a.arguments["address"]))
+                if latlng is not None:
+                    profile.places_latlng[name] = [latlng[0], latlng[1]]
+                    if profile.base == name:
+                        profile.home_latlng = latlng
+                    changed = True
+        if changed:
+            self.store.save_profile(profile)
+            self.store.commit("profile: geocoded places")
 
     async def _geocode_events(self, actions: list[ToolCall], applied) -> None:
         """Events need coordinates for the traffic refresh and arrival detection."""

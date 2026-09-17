@@ -422,6 +422,9 @@ class Profile:
     waking_hours: list[str] = field(default_factory=lambda: ["08:00", "22:00"])
     home_address: str = ""
     home_latlng: tuple[float, float] | None = None
+    base: str = ""                                  # name of the place currently acting as home
+    places: dict = field(default_factory=dict)      # name -> address
+    places_latlng: dict = field(default_factory=dict)  # name -> [lat, lng]
     morning_briefing: str = "08:00"
     evening_briefing: str = "21:00"
     wake_time: str = ""
@@ -471,6 +474,9 @@ class Profile:
             "waking_hours": self.waking_hours,
             "home_address": self.home_address,
             "home_latlng": self.home_latlng,
+            "base": self.base,
+            "places": dict(self.places),
+            "places_latlng": {k: list(v) for k, v in self.places_latlng.items()},
             "morning_briefing": self.morning_briefing,
             "evening_briefing": self.evening_briefing,
             "wake_time": self.wake_time,

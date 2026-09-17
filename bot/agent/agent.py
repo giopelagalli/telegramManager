@@ -498,6 +498,29 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 summary.append(f"Set {field_name} = {coerced}")
                 changed_schedule = True
 
+            elif action.name == "save_place":
+                profile = store.profile()
+                name = _place_key(args["name"])
+                profile.places[name] = str(args["address"]).strip()
+                if not profile.base:  # the first place you tell it about is home until you say otherwise
+                    profile.base = name
+                    profile.home_address = profile.places[name]
+                    profile.home_latlng = None
+                store.save_profile(profile)
+                summary.append(f"Saved place: {name} = {profile.places[name]}")
+                changed_schedule = True
+            elif action.name == "set_base":
+                profile = store.profile()
+                name = _match_place(profile, str(args["name"]))
+                if name is None:
+                    raise KeyError(f"no saved place like {args['name']}; tell me its address first")
+                profile.base = name
+                profile.home_address = profile.places[name]
+                ll = profile.places_latlng.get(name)
+                profile.home_latlng = (ll[0], ll[1]) if ll else None
+                store.save_profile(profile)
+                summary.append(f"Home is now: {name}")
+                changed_schedule = True
             elif action.name in ("study", "directions", "search"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":
@@ -544,3 +567,16 @@ def _latest_source(store):
     if not sources:
         return None
     return max(sources, key=lambda s: (s.timestamp.timestamp() if s.timestamp else 0.0, s.path))
+
+
+def _place_key(name: str) -> str:
+    return " ".join(name.lower().replace("'", "").split())
+
+
+def _match_place(profile, name: str) -> str | None:
+    """Saved place whose name contains (or is contained by) what the user said."""
+    wanted = _place_key(name)
+    for key in profile.places:
+        if key == wanted or wanted in key or key in wanted:
+            return key
+    return None
