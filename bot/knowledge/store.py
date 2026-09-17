@@ -63,6 +63,9 @@ def _split_body(body: str, limit: int) -> list[str]:
     return chunks
 
 
+_WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+
+
 class KnowledgeStore:
     def __init__(self, root: Path, clock: Callable[[], datetime], remotes: list[str] | None = None):
         self.root = Path(root)
