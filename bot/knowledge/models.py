@@ -390,7 +390,7 @@ class Event:
             kind=meta.get("kind"),
             topics=list(meta.get("topics", [])),
             repeat_days=list(meta.get("repeat_days", [])),
-            repeat_until=_parse_date(meta.get("repeat_until"), "repeat_until") if meta.get("repeat_until") else None,
+            repeat_until=_parse_date(meta.get("repeat_until")) if meta.get("repeat_until") else None,
             series=meta.get("series"),
             timestamp=_parse_datetime(timestamp, "timestamp") if timestamp is not None else None,
             body=body,
