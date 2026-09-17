@@ -19,13 +19,19 @@ def R(*calls):
 
 
 class FakeMaps:
-    def __init__(self, mapping):
+    def __init__(self, mapping, travel=None):
         self.mapping = mapping
+        self.travel = travel
         self.calls = []
+        self.travel_calls = []
 
     async def geocode(self, address):
         self.calls.append(address)
         return self.mapping.get(address)
+
+    async def travel_minutes(self, origin, dest, depart_at):
+        self.travel_calls.append((origin, dest, depart_at))
+        return self.travel
 
 
 @pytest.fixture
@@ -756,3 +762,34 @@ async def test_chat_screenshot_in_dm_is_coached_not_filed(rig):
     client.responses.append(ModelResponse("She's lukewarm. Send: \"Tuesday 4.\"", []))
     outs = await router.on_photo(b"img")
     assert "Tuesday 4" in outs[0].text and store.sources() == []
+
+
+async def test_weekly_class_gets_coordinates_and_travel_time_on_every_occurrence(rig):
+    router, store, client, state, _ = rig
+    p = store.profile(); p.home_latlng = (33.77, -84.39); store.save_profile(p)
+    router.maps = FakeMaps({"Klaus Building": (33.78, -84.40)}, travel=25)
+    client.responses.append(R(
+        ("add_event", {"title": "CS 1332", "start": "2026-09-08T10:00:00-04:00", "location": "Klaus Building",
+                       "repeat_days": ["TU", "TH"]}),
+        ("reply", {"text": "Ok."}),
+    ))
+    out = await router.on_text("CS 1332 every Tue/Thu 10am at Klaus Building")
+    tpl = store.series()[0]
+    occurrences = [e for e in store.events() if e.series == tpl.path]
+    assert tpl.location_latlng == (33.78, -84.40) and tpl.travel_minutes == 25
+    assert occurrences and all(e.location_latlng == (33.78, -84.40) and e.travel_minutes == 25 for e in occurrences)
+    assert router.maps.calls == ["Klaus Building"] and len(router.maps.travel_calls) == 1
+    assert "Traffic from home 25 min, so leave by 9:35 AM." in out[0].text
+
+
+async def test_single_event_travel_time_is_estimated_when_home_is_known(rig):
+    router, store, client, state, _ = rig
+    p = store.profile(); p.home_latlng = (33.77, -84.39); store.save_profile(p)
+    router.maps = FakeMaps({"Equinox": (40.75, -73.99)}, travel=12)
+    client.responses.append(R(
+        ("add_event", {"title": "Gym", "start": "2026-09-04T18:00:00-04:00", "location": "Equinox"}),
+        ("reply", {"text": "Ok."}),
+    ))
+    out = await router.on_text("gym tomorrow 6pm at Equinox")
+    assert store.events()[0].travel_minutes == 12
+    assert "leave by 5:48 PM" in out[0].text

@@ -641,7 +641,7 @@ class Router:
             )
 
         await self._geocode_home(result.actions)
-        await self._geocode_events(result.actions, applied)
+        travel_lines = await self._geocode_events(result.actions, applied)
         plan_lines = await self._plan_new_exams(result.actions, now)
 
         coach = next((a for a in result.actions if a.name == "coach"), None)
@@ -670,7 +670,7 @@ class Router:
                 str(study.arguments.get("question", text)), study.arguments.get("course"), via_voice
             )
 
-        lines = [md_to_html(result.reply)] + [esc(s) for s in applied.summary] + plan_lines
+        lines = [md_to_html(result.reply)] + [esc(s) for s in applied.summary] + travel_lines + plan_lines
         for a in result.actions:
             if a.name == "directions":
                 url = directions_url(str(a.arguments.get("destination", "")))
@@ -708,27 +708,57 @@ class Router:
             self.store.save_profile(profile)
             self.store.commit("profile: geocoded places")
 
-    async def _geocode_events(self, actions: list[ToolCall], applied) -> None:
-        """Events need coordinates for the traffic refresh and arrival detection."""
+    async def _geocode_events(self, actions: list[ToolCall], applied) -> list[str]:
+        """Events need coordinates for the traffic refresh and arrival detection; a weekly series
+        gets them on the template and every occurrence. Travel time from home is estimated right
+        away so the first leave-by reminder is not computed from zero. Returns lines for the reply."""
         if self.maps is None or not applied.changed_schedule:
-            return
+            return []
+        profile = self.store.profile()
         geocoded: list[str] = []
+        notes: list[str] = []
         for action in actions:
             location = action.arguments.get("location")
             if not location:
                 continue
-            event = self._event_of(action)
-            if event is None:
+            targets = self._events_of(action)
+            if not targets:
                 continue
             latlng = await self.maps.geocode(location)
             if latlng is None:
                 logger.warning("could not geocode event location: %s", location)
                 continue
-            event.location_latlng = latlng
-            self.store.save(event)
-            geocoded.append(event.title)
+            minutes = None
+            if profile.home_latlng and not action.arguments.get("travel_minutes"):
+                minutes = await self.maps.travel_minutes(profile.home_latlng, latlng, depart_at=targets[0].start)
+            for event in targets:
+                event.location_latlng = latlng
+                if minutes is not None:
+                    event.travel_minutes = minutes
+                self.store.save(event)
+            geocoded.append(targets[0].title)
+            if minutes is not None:
+                leave_by = targets[0].times(profile).leave_by
+                notes.append(f"Traffic from home {minutes} min, so leave by {leave_by:%-I:%M %p}.")
         if geocoded:
             self.store.commit(f"geocode: {geocoded[0]}")
+        return notes
+
+    def _events_of(self, action: ToolCall) -> list:
+        """The event(s) an add/update touched: one event, or a series template plus its occurrences."""
+        args = action.arguments
+        try:
+            if action.name == "add_event" and args.get("repeat_days"):
+                start = datetime.fromisoformat(args["start"])
+                tpl = next((t for t in self.store.series() if t.title == args["title"] and t.start == start), None)
+                if tpl is None:
+                    return []
+                return [tpl] + [e for e in self.store.events() if e.series == tpl.path]
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.warning("could not resolve series for %s: %s", action.name, exc)
+            return []
+        event = self._event_of(action)
+        return [event] if event is not None else []
 
     def _event_of(self, action: ToolCall):
         args = action.arguments
