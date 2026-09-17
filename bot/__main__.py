@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -25,8 +24,8 @@ KOKORO_MODEL = "kokoro-v1.0.onnx"
 KOKORO_VOICES = "voices-v1.0.bin"
 
 
-def _synthesizer() -> tts.Synthesizer | None:
-    model_dir = Path(os.environ.get("KOKORO_MODEL_DIR", "models"))
+def _synthesizer(settings: Settings) -> tts.Synthesizer | None:
+    model_dir = settings.kokoro_model_dir
     model_path = model_dir / KOKORO_MODEL
     voices_path = model_dir / KOKORO_VOICES
     if not tts.available(model_path, voices_path):
@@ -72,7 +71,7 @@ def main() -> None:
         settings.chat_model,
         enable_thinking=True if profile.thinking else settings.chat_enable_thinking,
     )
-    if settings.fallback_base_url:
+    if settings.fallback_model:
         client = FallbackModelClient(
             client,
             OpenAIModelClient(
@@ -120,7 +119,7 @@ def main() -> None:
     sender = Sender(
         None,
         settings.telegram_user_id,
-        _synthesizer(),
+        _synthesizer(settings),
         settings.data_dir / "tmp",
         resolve=channel_resolver(store, settings.telegram_user_id),
     )

@@ -31,7 +31,7 @@ def test_missing_required_raises_with_name():
         Settings.from_env(env)
 
 def test_fallback_partial_raises():
-    env = dict(BASE, FALLBACK_BASE_URL="http://f/v1")
+    env = dict(BASE, FALLBACK_MODEL="m2")  # model without URL/key
     with pytest.raises(ValueError, match="must be set together"):
         Settings.from_env(env)
 
@@ -142,3 +142,29 @@ def test_stt_provider_api_missing_fields_raises():
     env = dict(BASE, STT_PROVIDER="api", STT_BASE_URL="http://s/v1")
     with pytest.raises(ValueError, match="STT_PROVIDER=api requires STT_BASE_URL, STT_API_KEY and STT_MODEL"):
         Settings.from_env(env)
+
+
+MIN = {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_USER_ID": "1", "FIREWORKS_API_KEY": "fw"}
+
+def test_minimal_fireworks_only_derives_everything():
+    s = Settings.from_env(MIN)
+    assert s.openai_base_url.startswith("https://api.fireworks.ai") and s.openai_api_key == "fw"
+    assert s.chat_model.endswith("deepseek-v4p1-flash") and s.chat_enable_thinking is None
+    assert s.vision_model == s.chat_model and s.fallback_model is None
+    assert s.hard_model == s.chat_model and s.fallback_base_url and s.fallback_api_key == "fw"
+    assert s.stt_provider == "api" and s.stt_model == "whisper-v3"
+    assert s.knowledge_dir.name == "knowledge" and s.data_dir.name == "data" and s.kokoro_model_dir.name == "models"
+
+def test_spark_plus_fireworks_derives_fallback():
+    s = Settings.from_env(dict(MIN, SPARK_URL="http://spark:8888/v1"))
+    assert s.openai_base_url == "http://spark:8888/v1" and s.chat_model == "qwen3.8-flash-next"
+    assert s.chat_enable_thinking is False and s.vision_base_url == "http://spark:8888/v1"
+    assert s.fallback_model.endswith("deepseek-v4p1-flash") and s.fallback_vision_model == s.fallback_model
+
+def test_explicit_advanced_vars_win():
+    s = Settings.from_env(dict(MIN, SPARK_URL="http://spark:8888/v1", OPENAI_BASE_URL="http://other/v1", STT_PROVIDER="local"))
+    assert s.openai_base_url == "http://other/v1" and s.stt_provider == "local"
+
+def test_nothing_configured_raises():
+    with pytest.raises(ValueError, match="FIREWORKS_API_KEY"):
+        Settings.from_env({"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_USER_ID": "1"})
