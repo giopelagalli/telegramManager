@@ -624,8 +624,9 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 summary.append(f"Home is now: {name}")
                 changed_schedule = True
             elif action.name == "remember":
-                store.add_memory(str(args["fact"]))
-                summary.append(f"Remembered: {str(args['fact']).strip()}")
+                kind = args.get("kind", "fact")
+                store.add_memory(str(args["fact"]), kind=kind)
+                summary.append("I'll keep that in mind." if kind == "state" else f"Remembered: {str(args['fact']).strip()}")
             elif action.name in ("study", "directions", "search", "undo", "recall"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":

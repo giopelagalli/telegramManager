@@ -285,10 +285,14 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "remember",
-            "description": "Store a durable fact: people, places, preferences, habits. Never moods or events.",
+            "description": "Remember something. kind=fact: durable (people, places, preferences, habits). "
+            "kind=state: what's affecting their focus now (a distraction, a worry); fades after two weeks.",
             "parameters": {
                 "type": "object",
-                "properties": {"fact": {"type": "string", "description": "one sentence, second person: 'Your lab partner is Sam'"}},
+                "properties": {
+                    "fact": {"type": "string", "description": "one sentence, second person"},
+                    "kind": {"type": "string", "enum": ["fact", "state"]},
+                },
                 "required": ["fact"],
                 "additionalProperties": False,
             },

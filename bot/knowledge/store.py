@@ -198,13 +198,16 @@ class KnowledgeStore:
         self.broken_files = broken
         return sorted(items, key=lambda m: (m.day, m.path))
 
-    def add_memory(self, text: str) -> str:
+    STATE_DAYS = 14
+
+    def add_memory(self, text: str, kind: str = "fact") -> str:
         (self.root / "memories").mkdir(exist_ok=True)
         now = self.clock()
         stem = f"{now:%Y-%m-%d}-{slugify(text)[:40] or 'note'}"
         path = self._avoid_collision("memories", stem)
-        Memory(path=path, text=text.strip(), day=now.date(), timestamp=now)
-        (self.root / path).write_text(Memory(path, text.strip(), now.date(), now).to_markdown(), encoding="utf-8")
+        expires = now.date() + timedelta(days=self.STATE_DAYS) if kind == "state" else None
+        memory = Memory(path=path, text=text.strip(), day=now.date(), kind=kind, expires=expires, timestamp=now)
+        (self.root / path).write_text(memory.to_markdown(), encoding="utf-8")
         self.log("add", path)
         return path
 

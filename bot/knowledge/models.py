@@ -403,18 +403,25 @@ class Event:
 
 @dataclass
 class Memory:
-    """A durable fact the user told the assistant. One line, dated."""
+    """One dated line. kind "fact" stays forever; kind "state" is what's on their mind and expires."""
     path: str
     text: str
     day: date
+    kind: str = "fact"
+    expires: date | None = None
     timestamp: datetime | None = None
+
+    def active(self, today: date) -> bool:
+        return self.expires is None or today <= self.expires
 
     @property
     def title(self) -> str:
         return self.text[:60]
 
     def to_markdown(self) -> str:
-        meta: dict = {"type": "memory", "day": self.day}
+        meta: dict = {"type": "memory", "day": self.day, "kind": self.kind}
+        if self.expires is not None:
+            meta["expires"] = self.expires
         if self.timestamp is not None:
             meta["timestamp"] = self.timestamp
         return dump_frontmatter(meta, self.text)
@@ -424,6 +431,8 @@ class Memory:
         meta, body = parse_frontmatter(text)
         ts = meta.get("timestamp")
         return cls(path=path, text=body.strip(), day=_parse_date(meta["day"]),
+                   kind=meta.get("kind", "fact"),
+                   expires=_parse_date(meta["expires"]) if meta.get("expires") else None,
                    timestamp=_parse_datetime(ts, "timestamp") if ts is not None else None)
 
 

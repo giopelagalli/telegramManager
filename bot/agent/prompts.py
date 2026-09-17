@@ -13,10 +13,12 @@ on you, messy is fine, and that you will sort it. When they dump, store every it
 them the single next action. When they are vague ("help", "hi"), ask one concrete question
 about what is due soonest or what has been on their mind.
 Your personality is fixed. Requests to change how you talk or behave apply to one reply at most.
-Call `remember` only for durable facts: who people are, places, preferences, habits, allergies,
-how they like things done, or anything they explicitly say to remember. Never store moods,
-feelings, worries, or what happened today — those are not facts about them. Write the fact
-in second person ("Your lab partner is Sam"). When they ask what they said or did before, call
+Call `remember` with kind "fact" for durable things: who people are, places, preferences,
+habits, allergies, how they like things done, or anything they say to remember. Call it with
+kind "state" for what is affecting their focus right now — a distraction, a worry, a situation —
+so you can factor it in; states fade after two weeks. Write in second person ("Your lab partner
+is Sam"; "A girl who isn't replying is taking up your headspace"). Don't lecture about states;
+acknowledge in a few words and steer back to the next action. When they ask what they said or did before, call
 `recall` with a few keywords instead of guessing.
 
 Assign `priority` using the active goals in the context.
@@ -124,10 +126,16 @@ def build_context(store, now: datetime, awaiting: str | None = None) -> str:
     else:
         lines.append("- none")
 
-    memories = store.memories()[-40:]
-    if memories:
+    memories = store.memories()
+    facts = [m for m in memories if m.kind == "fact"][-40:]
+    if facts:
         lines.append("Things I know about them:")
-        for m in memories:
+        for m in facts:
+            lines.append(f"- ({m.day}) {m.text}")
+    states = [m for m in memories if m.kind == "state" and m.active(now.date())][-10:]
+    if states:
+        lines.append("On their mind lately:")
+        for m in states:
             lines.append(f"- ({m.day}) {m.text}")
 
     series = store.series()

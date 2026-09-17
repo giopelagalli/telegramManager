@@ -719,3 +719,17 @@ async def test_recall_merges_semantic_hits(rig, tmp_path):
     router.index = VectorIndex(tmp_path / "idx.json", FakeEmbedder())
     hits = await router._recall("His dentist is Dr. Patel")
     assert any("Dr. Patel" in h for h in hits)
+
+
+async def test_state_memory_expires_and_echoes_softly(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("remember", {"fact": "A girl who isn't replying is taking up your headspace.", "kind": "state"}),
+                              ("reply", {"text": "Park it. What's due this week?"})))
+    outs = await router.on_text("this girl is taking up all my bandwidth")
+    assert "I'll keep that in mind." in outs[0].text and "headspace" not in outs[0].text
+    m = store.memories()[0]
+    assert m.kind == "state" and m.expires == NOW.date() + __import__("datetime").timedelta(days=14)
+    client.responses.append(R(("reply", {"text": "Ok."})))
+    await router.on_text("ok")
+    ctx = client.calls[-1]["messages"][1]["content"]
+    assert "On their mind lately:" in ctx and "headspace" in ctx and "Things I know about them:" not in ctx
