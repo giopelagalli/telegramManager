@@ -28,16 +28,16 @@ HARD_OFFLINE_REPLY = "The hard model didn't answer; try again."
 
 COMMANDS: list[tuple[str, str, bool]] = [
     ("todo", "Top 5", True),
-    ("backlog", "Everything parked in the backlog", False),
-    ("goals", "Active goals and progress", False),
+    ("backlog", "Parked todos, not on the list", False),
+    ("goals", "Your goals and where you stand", False),
     ("today", "Today", True),
     ("week", "This week", True),
     ("now", "Do this next", True),
     ("brief", "Briefing", True),
     ("pause", "Quiet for 2h", True),
-    ("undo", "Revert the last change", False),
-    ("hard", "Ask the big cloud model (/hard why does X happen?)", False),
-    ("think", "Model thinking on/off for the Spark model (/think on)", False),
+    ("undo", "Take back the last thing he changed", False),
+    ("hard", "Ask the bigger model, for hard questions (/hard …)", False),
+    ("think", "Slower, more careful answers on/off (/think on)", False),
     ("help", "List commands", False),
 ]
 
@@ -46,7 +46,8 @@ _MORE_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if not menu]
 HELP_TEXT = (
     "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MAIN_COMMANDS)
     + "\n\nEverything else, just say it: what you need to do, where you need to be, "
-    "what you're working on. Drop in files to study them. Also: /backlog, /goals, /undo, /hard."
+    "what you're working on. Drop in files to study them.\n\nAlso:\n"
+    + "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MORE_COMMANDS if name not in ("help", "think"))
 )
 
 _DURATION_RE = re.compile(r"^(\d+)\s*([hm]?)$", re.IGNORECASE)
