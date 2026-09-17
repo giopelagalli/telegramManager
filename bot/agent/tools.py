@@ -275,6 +275,14 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "undo",
+            "description": "Revert the last change: \"undo that\", \"no, put it back\".",
+            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "reply",
             "description": "The message to send back to the user. Required exactly once.",
             "parameters": {

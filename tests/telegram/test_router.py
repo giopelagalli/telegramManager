@@ -479,7 +479,6 @@ async def test_ingest_merges_its_topics_into_the_course(rig, monkeypatch):
 
     await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None, channel=COURSE)
     assert store.get_course("cs101").topics == ["pointers", "stack"]
-    assert "2 topics" in (await router.command("courses", ""))[0].text
     assert _subject(store) == "ingest: Chapter 4"
 
 
@@ -655,3 +654,12 @@ async def test_named_places_switch_home(rig):
     client.responses.append(R(("set_base", {"name": "the beach house"}), ("reply", {"text": "Ok."})))
     outs = await router.on_text("I'm at the beach house")
     assert "Couldn't apply set_base" in outs[0].text and store.profile().base == "parents"
+
+
+async def test_undo_in_plain_words(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("add_todo", {"title": "Oops", "priority": 3}), ("reply", {"text": "Added."})))
+    await router.on_text("add oops")
+    client.responses.append(R(("undo", {}), ("reply", {"text": "Undone."})))
+    outs = await router.on_text("undo that")
+    assert outs[0].text.startswith("Reverted:") and not [t for t in store.todos() if t.title == "Oops"]

@@ -4,7 +4,7 @@ import re
 from datetime import datetime, time, timedelta
 
 from bot.agent.prompts import build_context
-from bot.knowledge.models import Channel, Course, slugify
+from bot.knowledge.models import Channel
 from bot.knowledge.ranking import top
 from bot.knowledge.views import (
     esc,
@@ -22,14 +22,9 @@ from bot.study.select import select_sources
 from bot.telegram.markdown import md_to_html
 
 DEFAULT_PAUSE_MINUTES = 120
-BIND_KINDS = ("assignments", "exams", "review")
-BIND_USAGE = "Usage: /bind course <CODE> <title>, /bind assignments, /bind exams or /bind review."
-BIND_IN_DM = "Bind topics inside your group, not here."
-MOVE_USAGE = "Usage: /move <slug> — the course slug from /courses."
 NOW_LEAD_MINUTES = 90
 HARD_UNCONFIGURED_REPLY = "No hard model configured. Set HARD_MODEL in .env."
 HARD_OFFLINE_REPLY = "The hard model didn't answer; try again."
-HARD_COURSE_GONE_REPLY = "This topic's course file is gone; /bind again."
 
 COMMANDS: list[tuple[str, str, bool]] = [
     ("todo", "Top 5", True),
@@ -39,16 +34,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("week", "This week", True),
     ("now", "Do this next", True),
     ("brief", "Briefing", True),
-    ("courses", "Courses and their topic counts", False),
-    ("sources", "Course material stored here", False),
-    ("summary", "Summary of a source from the last /sources (/summary 2)", False),
-    ("move", "Move the last ingested source to another course (/move cs101)", False),
-    ("channels", "Which topic is bound to what", False),
-    ("bind", "Bind this topic (/bind course CS101 Intro to CS)", False),
-    ("unbind", "Unbind this topic", False),
     ("pause", "Quiet for 2h", True),
-    ("quiet", "Quiet until the end of the day", False),
-    ("resume", "Cancel the pause", False),
     ("undo", "Revert the last change", False),
     ("hard", "Ask the big cloud model (/hard why does X happen?)", False),
     ("think", "Model thinking on/off for the Spark model (/think on)", False),
@@ -97,26 +83,12 @@ async def handle(
     if name == "brief":
         return await _brief(arg, store, agent, state, now)
 
-    if name == "sources":
-        return [Outbound(_render_sources(store, state, channel), kind="reply")]
 
-    if name == "summary":
-        return [Outbound(_render_summary(arg, store, state), kind="reply")]
 
-    if name == "move":
-        return _move(arg, store, channel)
 
-    if name == "courses":
-        return [Outbound(_render_courses(store.courses()), kind="reply")]
 
-    if name == "channels":
-        return [Outbound(_render_channels(store), kind="reply")]
 
-    if name == "bind":
-        return _bind(arg, store, channel)
 
-    if name == "unbind":
-        return _unbind(store, channel)
 
     if name == "pause":
         minutes = _parse_duration(arg)
@@ -129,14 +101,7 @@ async def handle(
             kind="reply",
         )]
 
-    if name == "quiet":
-        _, end = store.profile().waking_window(today)
-        state.pause_until = end
-        return [Outbound(f"Quiet until {fmt_time(end)}.", buttons=[("▶️ Resume", "resume")], kind="reply")]
 
-    if name == "resume":
-        state.pause_until = None
-        return [Outbound("Back on.", kind="reply")]
 
     if name == "undo":
         subject = store.undo()
@@ -177,7 +142,7 @@ async def _hard(text: str, store, agent, now: datetime, channel: Channel | None)
         try:
             course = store.get_course(channel.course)
         except KeyError:
-            return [Outbound(esc(HARD_COURSE_GONE_REPLY), kind="reply")]
+            return [Outbound("This topic's course file is gone.", kind="reply")]
         sources = select_sources(text, store.sources(channel.course), store.profile().tutor_context_chars)
         answer, _note = await agent.tutor(text, course, sources, notes_tool=False, client=agent.hard)
     else:
@@ -224,141 +189,7 @@ def _render_now(store, now: datetime) -> str:
         todo = ranked[0]
         due = f" (due {fmt_day(todo.due)})" if todo.due else ""
         return f"Do this: {esc(todo.title)}{due}"
-    return "Nothing urgent. Pick something from /backlog or rest."
-
-
-def _render_sources(store, state, channel: Channel | None) -> str:
-    slug = channel.course if channel is not None and channel.kind == "course" else None
-    sources = store.sources(slug)
-    if not sources:
-        return "No sources yet. Drop a PDF, slides or a photo in a course topic."
-
-    state.last_sources_listing = [s.path for s in sources]
-    titles = {c.slug: c.title for c in store.courses()}
-    lines: list[str] = []
-    if slug is not None:
-        lines.append(f"<b>Sources — {esc(titles.get(slug, slug))}</b>")
-    current = None
-    for i, source in enumerate(sources, 1):
-        if slug is None and source.course != current:
-            current = source.course
-            lines.append(f"<b>{esc(titles.get(current, current))}</b>")
-        pages = f", {source.pages} pages" if source.pages else ""
-        lines.append(f"{i}. {esc(source.title)} ({esc(source.kind)}{pages})")
-    return "\n".join(lines)
-
-
-def _render_summary(arg: str, store, state) -> str:
-    if not state.last_sources_listing:
-        return "Run /sources first, then /summary 2."
-    try:
-        index = int(arg)
-    except ValueError:
-        return "Which one? Try /summary 2."
-    if not 1 <= index <= len(state.last_sources_listing):
-        return f"There's no {index} in the last /sources list."
-    try:
-        source = store.get_source(state.last_sources_listing[index - 1])
-    except KeyError:
-        return "That source is gone. Run /sources again."
-    summary = source.summary.strip() or "No summary was written for this one."
-    return f"<b>{esc(source.title)}</b>\n{esc(summary)}"
-
-
-def _move(arg: str, store, channel: Channel | None) -> list[Outbound]:
-    slug = slugify(arg)
-    if not slug:
-        return [Outbound(esc(MOVE_USAGE), kind="reply")]
-    try:
-        course = store.get_course(slug)
-    except KeyError:
-        return [Outbound(f"No course {esc(slug)}. Run /courses to see them.", kind="reply")]
-
-    in_course = channel is not None and channel.kind == "course"
-    sources = store.sources(channel.course) if in_course else store.sources()
-    if not sources:
-        return [Outbound("Nothing to move yet.", kind="reply")]
-    latest = max(sources, key=lambda s: (s.timestamp.timestamp() if s.timestamp else 0.0, s.path))
-    store.move_source(latest.path, slug)
-    store.commit(f"move: {latest.title} -> {slug}")
-    return [Outbound(f"Moved {esc(latest.title)} to {esc(course.title)}.", kind="reply")]
-
-
-def _render_courses(courses) -> str:
-    if not courses:
-        return "No courses yet. Drop in slides, a PDF, or notes and one gets created."
-    lines = ["<b>Courses</b>"]
-    for course in courses:
-        lines.append(f"- {esc(course.title)} ({esc(course.slug)}) — {len(course.topics)} topics")
-    return "\n".join(lines)
-
-
-def _render_channels(store) -> str:
-    bindings = store.channels().bindings
-    if not bindings:
-        return "Nothing bound yet. Run /bind inside a topic."
-    titles = {c.slug: c.title for c in store.courses()}
-    lines = ["<b>Channels</b>"]
-    for channel in bindings.values():
-        label = channel.name
-        if channel.kind == "course":
-            label = f"{label} — {titles.get(channel.course, channel.course)}"
-        lines.append(f"- {esc(label)}")
-    return "\n".join(lines)
-
-
-def _bind(arg: str, store, channel: Channel | None) -> list[Outbound]:
-    if channel is None or channel.kind == "life":
-        return [Outbound(BIND_IN_DM, kind="reply")]
-    kind, _, rest = arg.partition(" ")
-    kind = kind.lower()
-    if kind in BIND_KINDS:
-        bound = Channel(channel.chat_id, channel.thread_id, kind)
-        _save_binding(store, bound, f"bind: {kind}")
-        return [Outbound(f"Bound this topic to {kind}.", kind="reply", channel=bound.name)]
-    if kind == "course":
-        return _bind_course(rest.strip(), store, channel)
-    return [Outbound(esc(BIND_USAGE), kind="reply", target=_here(channel))]
-
-
-def _bind_course(rest: str, store, channel: Channel) -> list[Outbound]:
-    code, _, title = rest.partition(" ")
-    slug = slugify(code)
-    if not slug:
-        return [Outbound(esc(BIND_USAGE), kind="reply", target=_here(channel))]
-    try:
-        course = store.get_course(slug)
-    except KeyError:
-        # New course and its binding land in one commit, so /undo takes both.
-        course = Course(path=f"courses/{slug}.md", title=title.strip() or code)
-        store.add_course(course)
-    bound = Channel(channel.chat_id, channel.thread_id, "course", slug)
-    _save_binding(store, bound, f"bind: course {slug}")
-    text = f"Bound this topic to {esc(code)} ({esc(course.title)})."
-    return [Outbound(text, kind="reply", channel=bound.name)]
-
-
-def _unbind(store, channel: Channel | None) -> list[Outbound]:
-    channels = store.channels()
-    existing = channels.by_key(channel.key) if channel is not None else None
-    if existing is None:
-        return [Outbound("Nothing is bound here.", kind="reply", target=_here(channel))]
-    channels.unbind(channel.key)
-    store.save_channels(channels)
-    store.commit(f"bind: removed {existing.name}")
-    return [Outbound(f"Unbound this topic from {esc(existing.name)}.", kind="reply")]
-
-
-def _here(channel: Channel | None) -> tuple[int, int | None] | None:
-    """Answer in the topic that asked, which no channel name maps to yet."""
-    return None if channel is None else (channel.chat_id, channel.thread_id)
-
-
-def _save_binding(store, bound: Channel, message: str) -> None:
-    channels = store.channels()
-    channels.bind(bound)
-    store.save_channels(channels)
-    store.commit(message)
+    return "Nothing urgent. Rest, or pick something from /backlog."
 
 
 def _parse_duration(arg: str) -> int | None:

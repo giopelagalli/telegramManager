@@ -206,7 +206,7 @@ class Router:
             if existing is not None and existing.kind == kind:
                 return []
             bound = Channel(chat_id, thread_id, kind)
-            commands._save_binding(self.store, bound, f"bind: {name}")
+            self._save_binding(bound, f"bind: {name}")
             if renamed:
                 return [Outbound(f"Renamed: this topic is now {kind.capitalize()}.", kind="reply", target=target)]
             return [Outbound(f"Got it — this is your {kind} topic.", kind="reply", target=target)]
@@ -233,7 +233,7 @@ class Router:
             self.store.commit(f"course: {title}")
 
         bound = Channel(chat_id, thread_id, "course", slug)
-        commands._save_binding(self.store, bound, f"bind: {name}")
+        self._save_binding(bound, f"bind: {name}")
         if renamed:
             return [Outbound(f"Renamed: this topic is now {title}.", kind="reply", target=target)]
         return [Outbound(f"Got it — this topic is {title}.", kind="reply", target=target)]
@@ -364,6 +364,12 @@ class Router:
         course = self._course_named(described.get("course") or "General")
         described["filed"] = True
         return course, described
+
+    def _save_binding(self, bound: Channel, message: str) -> None:
+        channels = self.store.channels()
+        channels.bind(bound)
+        self.store.save_channels(channels)
+        self.store.commit(message)
 
     def _course_named(self, name: str) -> Course:
         """Existing course by title or slug, else a new one."""
@@ -528,6 +534,9 @@ class Router:
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now) -> list[Outbound]:
         result = await self.agent.capture(text, awaiting=awaiting)
         self.last_outcome = "captured" if result.parsed else "inbox"
+        if any(a.name == "undo" for a in result.actions):
+            subject = self.store.undo()
+            return [Outbound("Nothing to undo." if subject is None else f"Reverted: {esc(subject)}", kind="reply")]
         applied = apply_actions(self.store, result.actions, now)
 
         if applied.snooze_minutes is not None:

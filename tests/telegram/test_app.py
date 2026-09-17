@@ -152,12 +152,12 @@ def test_group_topic_messages_reach_the_handlers():
     assert sum(1 for h in message_handlers if h.check_update(mine)) == 1
     assert not any(h.check_update(_group_update(FOREIGN, 45, text="hi")) for h in message_handlers)
 
-    # /bind@BotName in a group is unwrapped by CommandHandler itself; the owner filter
+    # /todo@BotName in a group is unwrapped by CommandHandler itself; the owner filter
     # is what this build has to get right.
     command_handlers = [h for h in app.handlers[0] if isinstance(h, CommandHandler)]
-    bind = next(h for h in command_handlers if "bind" in h.commands)
-    assert bind.filters.check_update(_group_update(MINE, 45, text="/bind assignments"))
-    assert not bind.filters.check_update(_group_update(FOREIGN, 45, text="/bind assignments"))
+    todo = next(h for h in command_handlers if "todo" in h.commands)
+    assert todo.filters.check_update(_group_update(MINE, 45, text="/todo"))
+    assert not todo.filters.check_update(_group_update(FOREIGN, 45, text="/todo"))
 
 
 def test_forum_topic_created_reaches_the_handler_owner_only():

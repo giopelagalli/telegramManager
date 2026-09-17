@@ -521,7 +521,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 store.save_profile(profile)
                 summary.append(f"Home is now: {name}")
                 changed_schedule = True
-            elif action.name in ("study", "directions", "search"):
+            elif action.name in ("study", "directions", "search", "undo"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":
                 target = _resolve_course(store, str(args.get("course", "")))
