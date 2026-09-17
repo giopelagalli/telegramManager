@@ -597,8 +597,16 @@ class Router:
         mode = self.store.profile().voice_reply_mode
         return via_voice if mode == "on_voice" else mode == "always"
 
+    RECENT_LIMIT = 8  # exchanges kept as short-term memory; bounded, so the context never grows
+
+    def _remember(self, role: str, text: str) -> None:
+        self.state.recent.append([role, text[:600]])
+        del self.state.recent[: -self.RECENT_LIMIT * 2]
+
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now) -> list[Outbound]:
-        result = await self.agent.capture(text, awaiting=awaiting)
+        result = await self.agent.capture(text, awaiting=awaiting, recent=list(self.state.recent))
+        self._remember("user", text)
+        self._remember("assistant", result.reply or "")
         self.last_outcome = "captured" if result.parsed else "inbox"
         if any(a.name == "undo" for a in result.actions):
             subject = self.store.undo()

@@ -182,6 +182,7 @@ class RuntimeState:
     last_sources_listing: list[str] = field(default_factory=list)
     sprint: dict | None = None  # {"path": todo path, "title": str, "ends_at": ISO}
     review: dict | None = None  # an open recall session: queue, current, right, again
+    recent: list = field(default_factory=list)  # last few [role, text] exchanges, capped
 
     def save(self, path: Path) -> None:
         path = Path(path)
@@ -199,6 +200,7 @@ class RuntimeState:
             "last_sources_listing": list(self.last_sources_listing),
             "sprint": self.sprint,
             "review": self.review,
+            "recent": [list(x) for x in self.recent],
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -222,6 +224,7 @@ class RuntimeState:
                 last_sources_listing=list(data.get("last_sources_listing", [])),
                 sprint=data.get("sprint"),
                 review=data.get("review"),
+                recent=[list(x) for x in data.get("recent", [])],
             )
         except Exception as exc:
             logger.warning("failed to load state from %s: %s", path, exc)

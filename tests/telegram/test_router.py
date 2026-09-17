@@ -685,3 +685,13 @@ async def test_new_exam_gets_a_plan_and_daily_study_todos(rig):
     assert sorted(t.due for t in study) == [date(2026, 9, 4), date(2026, 9, 5)] and all(t.course == "cs101" for t in study)
     assert any("Days left: 3" in c["messages"][1]["content"] for c in client.calls)
 
+
+async def test_recent_exchanges_are_passed_and_capped(rig):
+    router, store, client, state, _ = rig
+    for i in range(10):
+        client.responses.append(R(("reply", {"text": f"ok {i}"})))
+        await router.on_text(f"msg {i}")
+    msgs = client.calls[-1]["messages"]
+    assert msgs[2]["content"] == "msg 1" and msgs[2]["role"] == "user"  # window starts 8 exchanges back
+    assert msgs[-2]["content"] == "ok 8" and msgs[-1]["content"] == "msg 9"
+    assert len(state.recent) == 16

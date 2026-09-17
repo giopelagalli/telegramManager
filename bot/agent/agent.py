@@ -64,7 +64,7 @@ class Agent:
         self.clock = clock
         self.hard = hard
 
-    async def capture(self, text: str, awaiting: str | None = None) -> CaptureResult:
+    async def capture(self, text: str, awaiting: str | None = None, recent: list | None = None) -> CaptureResult:
         now = self.clock()
         profile = self.store.profile()
         system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat())
@@ -72,6 +72,7 @@ class Agent:
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": context},
+            *[{"role": role, "content": body} for role, body in (recent or [])],
             {"role": "user", "content": text},
         ]
 
