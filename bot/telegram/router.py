@@ -87,14 +87,17 @@ def _extract(data: bytes, kind: str, filename: str) -> list[tuple[int, str]] | N
     return None
 
 
-def _stored_reply(source: Source) -> str:
+def _stored_reply(source: Source, course: Course) -> str:
     parts = [source.kind]
     if source.pages:
         parts.append(f"{source.pages} pages")
     if source.topics:
         parts.append("topics: " + ", ".join(source.topics))
     note = " OCR unavailable." if source.ocr == "unavailable" else ""
-    return f"Stored: {source.title} ({', '.join(parts)}).{note} Wrong course? /move <slug>."
+    return (
+        f"Stored: {source.title} ({', '.join(parts)}) under {course.title}.{note} "
+        f"Wrong course? Say \"move that to <course>\"."
+    )
 
 
 class Router:
@@ -256,8 +259,6 @@ class Router:
         ignored = self._ignore_unbound(channel)
         if ignored is not None:
             return ignored
-        if not _is_course(channel):
-            return []
         return self._tag(await self._ingest_document(data, filename, mime, caption, channel), channel)
 
     async def on_file_too_large(self, *, channel: Channel | None = None) -> list[Outbound]:
@@ -285,7 +286,7 @@ class Router:
         if pending is not None and pending.kind == "photo":
             return [await self._verify_photo(pending, image)]
 
-        return [Outbound("Got a photo, but nothing waiting for one.", kind="reply")]
+        return await self._ingest_photo(image, None, None)
 
     # -- study ingest and tutoring ---------------------------------------
 
@@ -304,18 +305,17 @@ class Router:
             marker = SLIDE_MARKER if kind == "slides" else PART_MARKER if kind == "notes" else PAGE_MARKER
             body = render_pages(pages, marker) if pages else ""
         if not body.strip():
-            self.store.keep_raw(channel.course, filename, data)
+            self.store.keep_raw(channel.course if _is_course(channel) else "unsorted", filename, data)
             self.store.commit(f"ingest: {filename}")
             return [Outbound(esc(UNREADABLE_REPLY), kind="reply")]
 
-        course = self._course(channel)
+        course, described = await self._describe_and_file(body, filename, channel)
         if course is None:
             return [Outbound(esc(COURSE_GONE_REPLY), kind="reply")]
-        described = await self.agent.describe_source(body, filename, course.title)
         source = Source(
             path="",
             title=described["title"],
-            course=channel.course,
+            course=course.slug,
             kind=described["kind"],
             topics=described["topics"],
             summary=described["summary"],
@@ -328,19 +328,19 @@ class Router:
         self, image: bytes, caption: str | None, channel: Channel
     ) -> list[Outbound]:
         self._touch()
-        course = self._course(channel)
-        if course is None:
-            return [Outbound(esc(COURSE_GONE_REPLY), kind="reply")]
         text = await self.agent.ocr(image)
         body = text if text else (caption or "")
         if body.strip():
-            described = await self.agent.describe_source(body, "photo.jpg", course.title)
+            course, described = await self._describe_and_file(body, "photo.jpg", channel)
         else:
+            course = self._course(channel) if _is_course(channel) else self._course_named("General")
             described = {"title": "Photo", "topics": [], "summary": ""}
+        if course is None:
+            return [Outbound(esc(COURSE_GONE_REPLY), kind="reply")]
         source = Source(
             path="",
             title=described["title"],
-            course=channel.course,
+            course=course.slug,
             kind="photo",
             topics=described["topics"],
             summary=described["summary"],
@@ -349,11 +349,37 @@ class Router:
         )
         return [self._store_source(source, course)]
 
+    async def _describe_and_file(
+        self, body: str, filename: str, channel: Channel | None
+    ) -> tuple[Course | None, dict]:
+        """In a course topic the course is known; elsewhere the model picks it from the content."""
+        if _is_course(channel):
+            course = self._course(channel)
+            if course is None:
+                return None, {}
+            return course, await self.agent.describe_source(body, filename, course.title)
+        titles = [c.title for c in self.store.courses()]
+        described = await self.agent.describe_source(body, filename, None, titles)
+        course = self._course_named(described.get("course") or "General")
+        described["filed"] = True
+        return course, described
+
+    def _course_named(self, name: str) -> Course:
+        """Existing course by title or slug, else a new one."""
+        wanted = name.strip()
+        slug = slugify(wanted) or "general"
+        for course in self.store.courses():
+            if course.slug == slug or course.title.lower() == wanted.lower():
+                return course
+        course = Course(path=f"courses/{slug}.md", title=wanted or "General")
+        self.store.add_course(course)
+        return course
+
     def _store_source(self, source: Source, course: Course) -> Outbound:
         self.store.add_source(source)
         self._merge_topics(course, source.topics)
         self.store.commit(f"ingest: {source.title}")
-        return Outbound(esc(_stored_reply(source)), kind="reply")
+        return Outbound(esc(_stored_reply(source, course)), kind="reply")
 
     def _merge_topics(self, course: Course, topics: list[str]) -> None:
         """The course keeps what its sources are about, in first-seen order."""
@@ -372,6 +398,24 @@ class Router:
 
         if note is not None:
             return [self._save_note(note, channel)]
+        if answer is None:
+            return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
+        return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
+
+    async def _study(self, question: str, course_slug: str | None, via_voice: bool) -> list[Outbound]:
+        """Tutor from the DM: one course when the model named it, otherwise everything stored."""
+        course: Course | None = None
+        if course_slug:
+            try:
+                course = self.store.get_course(slugify(course_slug))
+            except KeyError:
+                course = None
+        sources = self.store.sources(course.slug if course else None)
+        if not sources:
+            return [Outbound("Nothing stored to study from yet. Drop in slides, a PDF, or notes.", kind="reply")]
+        scope = course or Course(path="", title="your notes")
+        selected = select_sources(question, sources, self._tutor_budget())
+        answer, _ = await self.agent.tutor(question, scope, selected, notes_tool=False)
         if answer is None:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
         return [Outbound(md_to_html(answer), voice=self._voice_reply(via_voice), kind="reply")]
@@ -479,6 +523,12 @@ class Router:
 
         await self._geocode_home(result.actions)
         await self._geocode_events(result.actions, applied)
+
+        study = next((a for a in result.actions if a.name == "study"), None)
+        if study is not None:
+            return await self._study(
+                str(study.arguments.get("question", text)), study.arguments.get("course"), via_voice
+            )
 
         lines = [md_to_html(result.reply)] + [esc(s) for s in applied.summary]
         return [

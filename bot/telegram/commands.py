@@ -262,8 +262,6 @@ def _render_summary(arg: str, store, state) -> str:
 
 
 def _move(arg: str, store, channel: Channel | None) -> list[Outbound]:
-    if channel is None or channel.kind != "course":
-        return [Outbound("Run /move inside a course topic.", kind="reply")]
     slug = slugify(arg)
     if not slug:
         return [Outbound(esc(MOVE_USAGE), kind="reply")]
@@ -272,9 +270,10 @@ def _move(arg: str, store, channel: Channel | None) -> list[Outbound]:
     except KeyError:
         return [Outbound(f"No course {esc(slug)}. Run /courses to see them.", kind="reply")]
 
-    sources = store.sources(channel.course)
+    in_course = channel is not None and channel.kind == "course"
+    sources = store.sources(channel.course) if in_course else store.sources()
     if not sources:
-        return [Outbound("Nothing to move here.", kind="reply")]
+        return [Outbound("Nothing to move yet.", kind="reply")]
     latest = max(sources, key=lambda s: (s.timestamp.timestamp() if s.timestamp else 0.0, s.path))
     store.move_source(latest.path, slug)
     store.commit(f"move: {latest.title} -> {slug}")
@@ -283,7 +282,7 @@ def _move(arg: str, store, channel: Channel | None) -> list[Outbound]:
 
 def _render_courses(courses) -> str:
     if not courses:
-        return "No courses yet. Run /bind course CS101 Intro to CS inside a topic."
+        return "No courses yet. Drop in slides, a PDF, or notes and one gets created."
     lines = ["<b>Courses</b>"]
     for course in courses:
         lines.append(f"- {esc(course.title)} ({esc(course.slug)}) — {len(course.topics)} topics")

@@ -244,10 +244,10 @@ async def test_move_sends_the_last_source_to_another_course(rig):
 async def test_move_refuses_outside_a_course_or_without_a_target(rig):
     r, store, _ = rig
     store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
-    assert (await r.command("move", "phys1", channel=DM))[0].text == "Run /move inside a course topic."
+    assert "No course phys1" in (await r.command("move", "phys1", channel=DM))[0].text
     assert "&lt;slug&gt;" in (await r.command("move", "", channel=CS101))[0].text
     assert "No course phys9" in (await r.command("move", "phys9", channel=CS101))[0].text
-    assert (await r.command("move", "cs101", channel=CS101))[0].text == "Nothing to move here."
+    assert (await r.command("move", "cs101", channel=CS101))[0].text == "Nothing to move yet."
 
 
 async def test_move_takes_every_part_of_a_split_source(rig):

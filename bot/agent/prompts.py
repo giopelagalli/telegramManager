@@ -9,6 +9,10 @@ Never invent times: if a time is missing, ask for it in `reply` and add nothing 
 When the user says "not now", "stop", or "later", call `snooze`.
 When the user answers a pending question (see "Awaiting answer" in the context),
 treat "yes", "yeah", or "done" as `update_todo` with `status="done"` for that item.
+If the message asks about, or wants an explanation of, material in the user's courses
+(see "Courses" in the context) — a question, "explain X", "quiz me", "what did lecture 7 say" —
+call `study` with the question and the course when it is clear, instead of `reply`.
+"Move that to <course>" after a file was stored means `move_source`.
 Dates are ISO with the profile's UTC offset. Today is {now}."""
 
 COMPOSE_SYSTEM = """Write for Telegram: plain text, no markdown, at most 3 sentences unless
@@ -20,6 +24,14 @@ Read the start of a document and answer with strict JSON, nothing else:
 {{"title": "...", "kind": "...", "topics": ["...", "..."], "summary": "..."}}
 `kind` is one of: {kinds}. `topics` is at most 10 short topic names.
 `summary` is 3 to 6 sentences describing what the document covers."""
+
+DESCRIBE_SOURCE_ANY_SYSTEM = """You catalogue a student's course material.
+Existing courses: {courses}.
+Read the start of a document and answer with strict JSON, nothing else:
+{{"course": "...", "title": "...", "kind": "...", "topics": ["...", "..."], "summary": "..."}}
+`course` is the exact title of the existing course this belongs to, or a short new course
+name (like "Bio 201") if none fits. `kind` is one of: {kinds}. `topics` is at most 10 short
+topic names. `summary` is 3 to 6 sentences describing what the document covers."""
 
 OCR_PROMPT = "Transcribe all text in this image verbatim, preserving line breaks."
 
@@ -65,6 +77,12 @@ def build_context(store, now: datetime, awaiting: str | None = None) -> str:
             lines.append(f"- {g.title} ({g.period})")
     else:
         lines.append("- none")
+
+    courses = store.courses()
+    if courses:
+        lines.append("Courses:")
+        for c in courses:
+            lines.append(f"- {c.title} [{c.slug}] — {len(store.sources(c.slug))} sources")
 
     lines.append(f"Now: {now.isoformat()}")
     if awaiting:

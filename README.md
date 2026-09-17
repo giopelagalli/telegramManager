@@ -379,57 +379,9 @@ Spark.
 
 ## 7. Study
 
-School runs in a **private Telegram group with Topics turned on**, with the
-bot added as an admin (setup checklist step 3) — add the bot **before**
-creating any topics, so it sees each one get created. Your DM stays the life
-channel — briefings, check-ins, critical mode. Each topic in the group gets a
-job from its own name: create a topic and name it, and the bot binds itself
-and replies to confirm.
+Everything happens in the bot's DM. Drop a PDF, a slide deck, a Word doc, a text file, or a photo of a page and it is stored under the course it belongs to (it infers the course from the content, creating one if needed, and tells you where it filed it — say "move that to Bio 201" if it guessed wrong). Ask a question about anything you have stored and it answers from your material with page citations. `/hard` before a question sends it to the big model.
 
-```
-CS101                             # one topic per course, named after it
-Assignments                       # HW, projects, labs across courses
-Exams                             # quizzes, exams, study plans
-Review                            # daily quiz session and digest
-```
-
-A course topic's name becomes the course title, and the course file is
-created if it doesn't exist. Renaming a topic rebinds it — an empty course
-is renamed in place, otherwise a new one is created. A topic named `Life`,
-`General` or `Main` gets a reply pointing back at your DM instead.
-
-If the bot joined **after** a topic already existed, that topic never fired
-the naming event; run `/bind` inside it as a fallback (`/bind course CS101
-Intro to CS`, `/bind assignments`, `/bind exams`, `/bind review`). A topic
-that isn't bound gets one reply explaining `/bind`, then is ignored.
-
-**Dropping sources.** In a course topic, send a PDF, a `.pptx`, a `.docx`, a
-`.txt`/`.md` file, or a photo of the board. PDFs are extracted per page, slides per slide (with
-speaker notes), `.docx` files in ~40-paragraph parts, and `.txt`/`.md` files
-as the notes they already are, so answers can cite
-`[Lecture 7, p.12]`; photos go through the vision model's OCR — on the Spark,
-`VISION_BASE_URL`/`VISION_MODEL` can point at the same endpoint as chat,
-since `qwen3.8-flash-next` accepts images — or are stored with just their
-caption if no vision model is configured. Photo OCR falls back to Fireworks
-too when `FALLBACK_VISION_MODEL` is set. The model then writes a title,
-kind, topics and a short summary, and the bot replies with what it stored. A
-file it can't read is kept as-is under `sources/<course>/raw/` and it says
-so. Everything is one commit, so `/undo` works. Telegram caps bot downloads
-at **20 MB**: a bigger file is refused with a note asking you to split it.
-
-**Tutoring.** Plain text or a voice note in a course topic is answered from
-that course's sources, cited by page. If the message is study content rather
-than a question — notes, a definition you want kept — it's filed as a note
-source instead and the bot replies `Saved note: …`.
-
-**Looking at what's stored.** `/sources` lists the course's material in a
-course topic, or everything grouped by course anywhere else; `/summary 2`
-prints the summary of the second item in that listing. If something lands in
-the wrong course, `/move phys1` moves the most recent one across.
-
-**`/now`** works anywhere and needs no model: one line, either the event
-starting within 90 minutes (with the leave-by time), the top-ranked open
-todo, or "nothing urgent".
+Optional: if you want a separate chat per course, make a private group with Topics on, add the bot as admin, and name topics after courses ("CS101") or "Assignments", "Exams", "Review". Nothing requires this.
 
 ## 8. End-to-end checklist
 

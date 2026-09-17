@@ -10,6 +10,7 @@ from typing import Callable
 
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
+    DESCRIBE_SOURCE_ANY_SYSTEM,
     ANSWER_SYSTEM,
     CAPTURE_SYSTEM,
     COMPOSE_SYSTEM,
@@ -19,7 +20,7 @@ from bot.agent.prompts import (
     build_context,
 )
 from bot.agent.tools import TOOL_SCHEMAS, TUTOR_TOOLS, validate_call
-from bot.knowledge.models import SOURCE_KINDS, Course, Event, Goal, Source, Todo
+from bot.knowledge.models import slugify, SOURCE_KINDS, Course, Event, Goal, Source, Todo
 from bot.knowledge.store import KnowledgeStore
 from bot.study.extract import guess_kind
 
@@ -172,15 +173,25 @@ class Agent:
             return None, "could not parse vision response"
         return match.group(1).lower() == "true", text.strip()
 
-    async def describe_source(self, text_head: str, filename: str, course_title: str) -> dict:
-        """{title, kind, topics, summary} for an ingested file; falls back to the filename."""
+    async def describe_source(
+        self,
+        text_head: str,
+        filename: str,
+        course_title: str | None = None,
+        courses: list[str] | None = None,
+    ) -> dict:
+        """{title, kind, topics, summary[, course]} for an ingested file; falls back to the filename.
+
+        With `course_title` the course is known. Without it the model also picks `course`
+        from `courses` (existing titles) or proposes a new short name."""
+        if course_title is not None:
+            system = DESCRIBE_SOURCE_SYSTEM.format(course=course_title, kinds=", ".join(SOURCE_KINDS))
+        else:
+            system = DESCRIBE_SOURCE_ANY_SYSTEM.format(
+                courses=", ".join(courses or []) or "none yet", kinds=", ".join(SOURCE_KINDS)
+            )
         messages = [
-            {
-                "role": "system",
-                "content": DESCRIBE_SOURCE_SYSTEM.format(
-                    course=course_title, kinds=", ".join(SOURCE_KINDS)
-                ),
-            },
+            {"role": "system", "content": system},
             {
                 "role": "user",
                 "content": f"Filename: {filename}\n\n{text_head[:DESCRIBE_HEAD_CHARS]}",
@@ -285,12 +296,16 @@ def _parse_description(text: str) -> dict | None:
     topics = data.get("topics", [])
     if not isinstance(topics, list) or any(not isinstance(t, str) for t in topics):
         return None
-    return {
+    described = {
         "title": str(data.get("title", "")).strip(),
         "kind": data["kind"],
         "topics": [t.strip() for t in topics if t.strip()][:MAX_TOPICS],
         "summary": str(data.get("summary", "")).strip(),
     }
+    course = str(data.get("course", "")).strip()
+    if course:
+        described["course"] = course
+    return described
 
 
 def _note_args(call: ToolCall) -> dict | None:
@@ -481,6 +496,17 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 summary.append(f"Set {field_name} = {coerced}")
                 changed_schedule = True
 
+            elif action.name == "study":
+                pass  # the router answers it after applying the rest
+            elif action.name == "move_source":
+                target = _resolve_course(store, str(args.get("course", "")))
+                if target is None:
+                    raise KeyError(f"no course named {args.get('course')}")
+                latest = _latest_source(store)
+                if latest is None:
+                    raise KeyError("nothing stored yet")
+                store.move_source(latest.path, target.slug)
+                summary.append(f"Moved {latest.title} to {target.title}")
             elif action.name == "snooze":
                 snooze_minutes = args["minutes"]
 
@@ -498,3 +524,21 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
         store.commit(f"capture: {first_success}")
 
     return Applied(summary=summary, snooze_minutes=snooze_minutes, changed_schedule=changed_schedule)
+
+
+def _resolve_course(store, name: str):
+    """A course by slug or by title, case-insensitive; None when unknown."""
+    wanted = name.strip().lower()
+    if not wanted:
+        return None
+    for course in store.courses():
+        if wanted in (course.slug, course.title.lower(), slugify(name)):
+            return course
+    return None
+
+
+def _latest_source(store):
+    sources = store.sources()
+    if not sources:
+        return None
+    return max(sources, key=lambda s: (s.timestamp.timestamp() if s.timestamp else 0.0, s.path))

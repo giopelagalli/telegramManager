@@ -191,6 +191,36 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "study",
+            "description": "Answer from the user's stored course material (tutor). Use for questions "
+            "about, or explanations of, anything in their courses.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"},
+                    "course": {"type": "string", "description": "course slug from the context, if clear"},
+                },
+                "required": ["question"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_source",
+            "description": "Move the most recently stored file to another course.",
+            "parameters": {
+                "type": "object",
+                "properties": {"course": {"type": "string", "description": "course title or slug"}},
+                "required": ["course"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "reply",
             "description": "The message to send back to the user. Required exactly once.",
             "parameters": {

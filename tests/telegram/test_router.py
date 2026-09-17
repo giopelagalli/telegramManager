@@ -262,8 +262,8 @@ async def test_document_in_a_course_topic_is_ingested(rig, monkeypatch):
 
     outs = await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None, channel=COURSE)
     assert outs[0].text == (
-        "Stored: Chapter 4 (chapter, 3 pages, topics: pointers, stack). "
-        "Wrong course? /move &lt;slug&gt;."
+        "Stored: Chapter 4 (chapter, 3 pages, topics: pointers, stack) under Intro to CS. "
+        'Wrong course? Say "move that to &lt;course&gt;".'
     )
     assert outs[0].channel == "course:cs101"
 
@@ -309,11 +309,39 @@ async def test_unreadable_document_is_kept_raw(rig):
     assert _subject(store) == "ingest: data.zip"
 
 
-async def test_documents_outside_a_course_topic_are_ignored(rig):
+async def test_document_in_the_dm_is_filed_under_an_inferred_course(rig, monkeypatch):
     router, store, client, state, _ = rig
-    assert await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None) == []
-    assert await router.on_document(b"%PDF", "ch4.pdf", "application/pdf", None,
-                                    channel=Channel(-100, 46, "assignments")) == []
+    monkeypatch.setattr("bot.telegram.router._extract", lambda data, kind, name: [(1, "Cells and organelles")])
+    client.responses.append(ModelResponse(
+        '{"course": "Bio 201", "title": "Chapter 3", "kind": "chapter", "topics": ["cells"], "summary": "Cells."}', []
+    ))
+    outs = await router.on_document(b"%PDF", "ch3.pdf", "application/pdf", None)
+    assert "Stored: Chapter 3" in outs[0].text and "under Bio 201" in outs[0].text
+    assert [c.title for c in store.courses()] == ["Bio 201"]
+    assert store.sources("bio-201")[0].title == "Chapter 3"
+    assert "Existing courses: none yet" in client.calls[-1]["messages"][0]["content"]
+
+
+async def test_study_tool_routes_a_dm_question_to_the_tutor(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    store.add_source(Source(path="", title="Lecture 1", course="cs101", kind="slides", topics=["stacks"],
+                            summary="Stacks.", body="## slide 1\nA stack is LIFO.")); store.commit("s")
+    client.responses.append(R(("study", {"question": "what is a stack?", "course": "cs101"}), ("reply", {"text": "..."})))
+    client.responses.append(ModelResponse("A stack is last-in, first-out [Lecture 1, slide 1].", []))
+    outs = await router.on_text("what is a stack?")
+    assert "last-in, first-out" in outs[0].text
+    assert "A stack is LIFO" in client.calls[-1]["messages"][1]["content"]
+
+
+async def test_move_source_in_plain_words(rig):
+    router, store, client, state, _ = rig
+    store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
+    store.add_course(Course(path="courses/bio-201.md", title="Bio 201"))
+    store.add_source(Source(path="", title="Ch 3", course="cs101", kind="chapter", topics=[], summary="", body="x")); store.commit("s")
+    client.responses.append(R(("move_source", {"course": "Bio 201"}), ("reply", {"text": "Moved."})))
+    outs = await router.on_text("move that to bio 201")
+    assert "Moved Ch 3 to Bio 201" in outs[0].text and store.sources("bio-201")[0].title == "Ch 3"
 
 
 async def test_photo_in_a_course_topic_without_vision_keeps_the_caption(rig):
@@ -323,7 +351,7 @@ async def test_photo_in_a_course_topic_without_vision_keeps_the_caption(rig):
         '{"title": "Whiteboard", "kind": "notes", "topics": ["stack"], "summary": "A stack diagram."}', []))
 
     outs = await router.on_photo(b"img", "stack diagram from class", channel=COURSE)
-    assert "Stored: Whiteboard (photo, topics: stack). OCR unavailable." in outs[0].text
+    assert "Stored: Whiteboard (photo, topics: stack) under Intro to CS. OCR unavailable." in outs[0].text
     source = store.sources("cs101")[0]
     assert source.kind == "photo" and source.ocr == "unavailable"
     assert source.body == "stack diagram from class"
@@ -333,7 +361,7 @@ async def test_photo_with_no_vision_and_no_caption_needs_no_model(rig):
     router, store, client, state, _ = rig
     store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
     outs = await router.on_photo(b"img", None, channel=COURSE)
-    assert "Stored: Photo (photo). OCR unavailable." in outs[0].text
+    assert "Stored: Photo (photo) under Intro to CS. OCR unavailable." in outs[0].text
     assert client.calls == [] and store.sources("cs101")[0].body == ""
 
 
