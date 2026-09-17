@@ -54,7 +54,7 @@ def consume_checkin_slot(now: datetime, state: RuntimeState, profile: Profile) -
     return False
 
 
-EMPTY_DAY_PROMPT = "Nothing on your list. What's one thing you need to get done today?"
+EMPTY_DAY_PROMPT = "List's empty. Give me one thing for today."
 SPRINT_MINUTES = 25
 
 
@@ -89,7 +89,7 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
             parts.append(f"Next up: {next_event.title} at {fmt_time(next_event.start)}.")
         if top1:
             parts.append(f"Top todo: {top1.title}.")
-        parts.append("Done yet?")
+        parts.append("Done?")
         fallback = " ".join(parts)
 
         context = build_context(store, now)

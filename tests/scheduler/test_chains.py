@@ -37,11 +37,11 @@ async def test_briefing_chain_four_steps_then_closes(store):
     s = RuntimeState.load(Path("/nonexistent")); a = FakeAgent()
     s.chain = Chain("briefing", T(8), T(8), 0, "Call dentist", ["brief"])
     assert await due_followup(T(8, 14), store, s, a) is None
-    o1 = await due_followup(T(8, 15), store, s, a); assert "Giovanni" in o1.text and "Call dentist" in o1.text and o1.kind == "followup" and not o1.voice
+    o1 = await due_followup(T(8, 15), store, s, a); assert "Giovanni" not in o1.text and "Call dentist" in o1.text and o1.kind == "followup" and not o1.voice
     assert await due_followup(T(8, 30), store, s, a) is None
     o2 = await due_followup(T(8, 45), store, s, a); assert o2
     o3 = await due_followup(T(9, 45), store, s, a); assert "Ship app" in o3.text
-    o4 = await due_followup(T(11, 45), store, s, a); assert "last nudge" in o4.text
+    o4 = await due_followup(T(11, 45), store, s, a); assert "Last one" in o4.text
     assert s.chain is None and a.kinds == ["followup"] * 4
 
 async def test_checkin_chain_two_steps(store):

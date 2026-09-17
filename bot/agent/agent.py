@@ -10,6 +10,7 @@ from typing import Callable
 
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
+    VOICE,
     CARDS_SYSTEM,
     DIGEST_SYSTEM,
     GRADE_SYSTEM,
@@ -67,7 +68,7 @@ class Agent:
     async def capture(self, text: str, awaiting: str | None = None, recent: list | None = None) -> CaptureResult:
         now = self.clock()
         profile = self.store.profile()
-        system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat())
+        system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat(), voice=VOICE)
         context = build_context(self.store, now, awaiting)
         messages = [
             {"role": "system", "content": system},
@@ -140,7 +141,7 @@ class Agent:
         try:
             response = await self.client.chat(
                 [
-                    {"role": "system", "content": COMPOSE_SYSTEM.format(assistant=self.store.profile().assistant_name)},
+                    {"role": "system", "content": COMPOSE_SYSTEM.format(assistant=self.store.profile().assistant_name, voice=VOICE)},
                     {"role": "user", "content": f"Kind: {kind}\n{context}"},
                 ],
                 tools=None,
