@@ -11,9 +11,9 @@ from bot.telegram.markdown import md_to_html
 
 _FALLBACKS = [
     "{item}. Do it now.",
-    "{item} is still sitting there. Knock it out.",
+    "{item} is still on your list. I'll leave it there.",
     "You said {goal} mattered. {item} is how. Go.",
-    "Last one from me on {item}. I'll leave it on your list.",
+    "Last one from me on {item}.",
 ]
 
 
@@ -24,8 +24,8 @@ def close_chain(state: RuntimeState) -> None:
 def chain_gaps(profile: Profile, kind: str) -> list[int]:
     gaps = profile.followup_gaps_minutes
     if kind == "checkin":
-        return gaps[:2]
-    return gaps[:4]
+        return gaps[:1]
+    return gaps[:2]
 
 
 async def due_followup(now: datetime, store: KnowledgeStore, state: RuntimeState, agent) -> Outbound | None:

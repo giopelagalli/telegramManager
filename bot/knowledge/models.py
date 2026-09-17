@@ -533,7 +533,7 @@ class Profile:
     wake_photo_spot: str = "kitchen sink"
     checkin_interval_minutes: int = 60
     checkin_skip_if_active_minutes: int = 20
-    followup_gaps_minutes: list[int] = field(default_factory=lambda: [15, 30, 60, 120])
+    followup_gaps_minutes: list[int] = field(default_factory=lambda: [20, 90])
     proactive_budget_per_hour: int = 3
     default_prep_minutes: int = 15
     leave_lead_minutes: int = 5

@@ -66,7 +66,7 @@ def test_naive_datetime_rejected():
 def test_profile_defaults_and_window():
     p = Profile.from_markdown("---\ntype: profile\nname: Giovanni\n---\nLikes gym.\n")
     assert p.name == "Giovanni" and p.timezone == "America/New_York"
-    assert p.followup_gaps_minutes == [15, 30, 60, 120]
+    assert p.followup_gaps_minutes == [20, 90]
     start, end = p.waking_window(date(2026, 9, 3))
     assert start == datetime(2026, 9, 3, 8, 0, tzinfo=NY) and end == datetime(2026, 9, 3, 22, 0, tzinfo=NY)
     assert p.body.strip() == "Likes gym."
