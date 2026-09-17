@@ -284,6 +284,32 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "remember",
+            "description": "Store a durable fact about the user, their people, habits or preferences.",
+            "parameters": {
+                "type": "object",
+                "properties": {"fact": {"type": "string", "description": "one sentence, third person"}},
+                "required": ["fact"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall",
+            "description": "Search what the user said or did before (memories, change log, stored files).",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "undo",
             "description": "Revert the last change: \"undo that\", \"no, put it back\".",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},

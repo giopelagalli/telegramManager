@@ -695,3 +695,17 @@ async def test_recent_exchanges_are_passed_and_capped(rig):
     assert msgs[2]["content"] == "msg 1" and msgs[2]["role"] == "user"  # window starts 8 exchanges back
     assert msgs[-2]["content"] == "ok 8" and msgs[-1]["content"] == "msg 9"
     assert len(state.recent) == 16
+
+
+async def test_remember_then_recall(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("remember", {"fact": "Sam is his lab partner in CS101."}), ("reply", {"text": "Noted."})))
+    outs = await router.on_text("remember that sam is my lab partner in cs101")
+    assert "Noted: Sam is his lab partner" in outs[0].text and len(store.memories()) == 1
+    client.responses.append(R(("recall", {"query": "lab partner"}), ("reply", {"text": "..."})))
+    client.responses.append(ModelResponse("Sam is your lab partner.", []))
+    outs = await router.on_text("who did I say my lab partner was?")
+    assert "Sam is your lab partner" in outs[0].text
+    capture_ctx = client.calls[-2]["messages"][1]["content"]   # the capture that chose `recall`
+    assert "Things I know about them:" in capture_ctx and "Sam is his lab partner" in capture_ctx
+    assert "Sam is his lab partner" in client.calls[-1]["messages"][1]["content"]  # the recall answer context

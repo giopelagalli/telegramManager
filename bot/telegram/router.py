@@ -622,6 +622,13 @@ class Router:
         await self._geocode_events(result.actions, applied)
         plan_lines = await self._plan_new_exams(result.actions, now)
 
+        recall = next((a for a in result.actions if a.name == "recall"), None)
+        if recall is not None:
+            hits = self.store.recall(str(recall.arguments.get("query", text)))
+            context = "What I have on that:\n" + ("\n".join(f"- {h}" for h in hits) if hits else "- nothing")
+            answer = await self.agent.answer(text, context)
+            return [Outbound(md_to_html(answer) if answer else esc(context), voice=self._voice_reply(via_voice), kind="reply")]
+
         search = next((a for a in result.actions if a.name == "search"), None)
         if search is not None and self.search is not None:
             return await self._search(str(search.arguments.get("query", text)), text, via_voice)

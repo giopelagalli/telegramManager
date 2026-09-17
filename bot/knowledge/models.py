@@ -402,6 +402,32 @@ class Event:
 
 
 @dataclass
+class Memory:
+    """A durable fact the user told the assistant. One line, dated."""
+    path: str
+    text: str
+    day: date
+    timestamp: datetime | None = None
+
+    @property
+    def title(self) -> str:
+        return self.text[:60]
+
+    def to_markdown(self) -> str:
+        meta: dict = {"type": "memory", "day": self.day}
+        if self.timestamp is not None:
+            meta["timestamp"] = self.timestamp
+        return dump_frontmatter(meta, self.text)
+
+    @classmethod
+    def from_markdown(cls, path: str, text: str) -> "Memory":
+        meta, body = parse_frontmatter(text)
+        ts = meta.get("timestamp")
+        return cls(path=path, text=body.strip(), day=_parse_date(meta["day"]),
+                   timestamp=_parse_datetime(ts, "timestamp") if ts is not None else None)
+
+
+@dataclass
 class Card:
     """One recall question. SM-2 fields decide when it comes back."""
     path: str

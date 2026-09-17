@@ -11,6 +11,7 @@ from typing import Callable
 
 from bot.knowledge.models import (
     Card,
+    Memory,
     Channels,
     Course,
     Event,
@@ -189,6 +190,46 @@ class KnowledgeStore:
         items = self._load_folder("schedule", Event, broken)
         self.broken_files = broken
         return sorted(items, key=lambda e: e.start)
+
+    def memories(self) -> list[Memory]:
+        (self.root / "memories").mkdir(exist_ok=True)
+        broken: list[str] = []
+        items = self._load_folder("memories", Memory, broken)
+        self.broken_files = broken
+        return sorted(items, key=lambda m: (m.day, m.path))
+
+    def add_memory(self, text: str) -> str:
+        (self.root / "memories").mkdir(exist_ok=True)
+        now = self.clock()
+        stem = f"{now:%Y-%m-%d}-{slugify(text)[:40] or 'note'}"
+        path = self._avoid_collision("memories", stem)
+        Memory(path=path, text=text.strip(), day=now.date(), timestamp=now)
+        (self.root / path).write_text(Memory(path, text.strip(), now.date(), now).to_markdown(), encoding="utf-8")
+        self.log("add", path)
+        return path
+
+    def recall(self, query: str, limit: int = 12) -> list[str]:
+        """Lines from memories, the change log, and source titles that share words with the query."""
+        words = {w.lower() for w in re.findall(r"[a-zA-Z0-9]{3,}", query)}
+        if not words:
+            return []
+        hits: list[tuple[int, str]] = []
+        for m in self.memories():
+            score = sum(1 for w in words if w in m.text.lower())
+            if score:
+                hits.append((score, f"({m.day}) {m.text}"))
+        log = self.root / "log.md"
+        if log.exists():
+            for line in log.read_text(encoding="utf-8").splitlines():
+                score = sum(1 for w in words if w in line.lower())
+                if score and line.startswith("- "):
+                    hits.append((score, line[2:]))
+        for src in self.sources():
+            score = sum(1 for w in words if w in (src.title + " " + " ".join(src.topics)).lower())
+            if score:
+                hits.append((score, f"source: {src.title} ({src.course})"))
+        hits.sort(key=lambda h: -h[0])
+        return [h for _, h in hits[:limit]]
 
     def cards(self, course: str | None = None) -> list[Card]:
         root = self.root / "cards"
