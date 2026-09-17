@@ -701,7 +701,7 @@ async def test_remember_then_recall(rig):
     router, store, client, state, _ = rig
     client.responses.append(R(("remember", {"fact": "Sam is his lab partner in CS101."}), ("reply", {"text": "Noted."})))
     outs = await router.on_text("remember that sam is my lab partner in cs101")
-    assert "Noted: Sam is his lab partner" in outs[0].text and len(store.memories()) == 1
+    assert "Remembered: Sam is his lab partner" in outs[0].text and len(store.memories()) == 1
     client.responses.append(R(("recall", {"query": "lab partner"}), ("reply", {"text": "..."})))
     client.responses.append(ModelResponse("Sam is your lab partner.", []))
     outs = await router.on_text("who did I say my lab partner was?")
