@@ -9,6 +9,8 @@ from bot.agent.agent import Agent
 from bot.agent.client import FallbackModelClient, ModelClient, OpenAIModelClient
 from bot.config import Settings
 from bot.search import BraveSearch
+from bot.scheduler import briefings
+from bot.weather import MorningWeather
 from bot.knowledge.store import KnowledgeStore
 from bot.maps.client import MapsClient
 from bot.scheduler.clock import SystemClock
@@ -116,6 +118,7 @@ def main() -> None:
             timeout=300,
         )
     search = BraveSearch(settings.brave_api_key) if settings.brave_api_key else None
+    briefings.WEATHER = MorningWeather(settings.google_maps_api_key)
     agent = Agent(client, vision, store, clock.now, hard=hard, search=search is not None)
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 

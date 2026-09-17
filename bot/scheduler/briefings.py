@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date, datetime, timedelta
 
 from bot.agent.prompts import build_context
@@ -19,6 +21,8 @@ def briefing_time(profile: Profile, state: RuntimeState, day: date, which: str) 
     override = state.briefing_override.get(f"{which}:{day}")
     hm = override if override else (profile.morning_briefing if which == "morning" else profile.evening_briefing)
     return datetime.combine(day, hm_to_time(hm), tzinfo=profile.tz)
+
+logger = logging.getLogger(__name__)
 
 
 def morning_text(store: KnowledgeStore, now: datetime) -> str:
@@ -122,9 +126,27 @@ async def _compose_prose(store: KnowledgeStore, now: datetime, agent) -> str:
     return await agent.compose("briefing", context, _FALLBACK_PROSE)
 
 
+# Set by the entrypoint: an object with `async line(latlng) -> str | None` (see bot/weather.py).
+WEATHER = None
+
+
+async def _weather_line(profile) -> str | None:
+    if WEATHER is None or profile.home_latlng is None:
+        return None
+    try:
+        return await WEATHER.line(profile.home_latlng)
+    except Exception:  # a weather outage must never block the briefing
+        logger.exception("weather line failed")
+        return None
+
+
 async def _morning_outbound(store: KnowledgeStore, now: datetime, agent, note: str | None = None) -> Outbound:
     prose = await _compose_prose(store, now, agent)
     text = morning_text(store, now).replace("{prose}", md_to_html(prose))
+    weather = await _weather_line(store.profile())
+    if weather:
+        head, _, rest = text.partition("\n")
+        text = f"{head}\n{esc(weather)}\n{rest}"
     if note:
         text = f"{note}\n\n{text}"
     profile = store.profile()

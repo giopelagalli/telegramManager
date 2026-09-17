@@ -6,6 +6,8 @@ from bot.knowledge.models import Profile, Event, Todo, Goal
 from bot.knowledge.store import KnowledgeStore
 from bot.scheduler.state import RuntimeState
 from bot.scheduler.briefings import briefing_time, morning_text, evening_text, due_briefings
+from bot.agent.agent import Agent
+from bot.agent.client import FakeModelClient
 
 NY = ZoneInfo("America/New_York")
 def T(h, m=0, d=3): return datetime(2026, 9, d, h, m, tzinfo=NY)
@@ -95,3 +97,14 @@ async def test_composed_prose_markdown_bold(store):
     s = RuntimeState.load(Path("/nonexistent"))
     out = (await due_briefings(T(8), store, s, MdAgent()))[0]
     assert "<b>Nice work</b>" in out.text
+
+
+async def test_morning_includes_weather_line_when_home_is_set(store, monkeypatch):
+    from bot.scheduler import briefings as B
+    class W:
+        async def line(self, latlng): return "72° and clear, high 80, UV high."
+    monkeypatch.setattr(B, "WEATHER", W())
+    p = store.profile(); p.home_latlng = (33.7, -84.4); store.save_profile(p)
+    s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
+    out = await B.send_morning(T(8), store, s, Agent(FakeModelClient([]), None, store, lambda: T(8)))
+    assert "72° and clear, high 80, UV high." in out.text.splitlines()[1]
