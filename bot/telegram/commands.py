@@ -46,7 +46,12 @@ _MORE_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if not menu]
 HELP_TEXT = (
     "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MAIN_COMMANDS)
     + "\n\nEverything else, just say it: what you need to do, where you need to be, "
-    "what you're working on. Drop in files to study them.\n\nAlso:\n"
+    "what you're working on. Drop in files to study them. Like:\n"
+    "“wake me at 7:30” — alarm, then a photo to prove you're up\n"
+    "“directions to the gym” — Maps link with traffic\n"
+    "“look up …” — web search\n"
+    "“remember …” / “what did I say about …”\n"
+    "“don't text me for 2h”\n\nAlso:\n"
     + "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MORE_COMMANDS if name not in ("help", "think"))
 )
 
