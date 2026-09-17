@@ -31,7 +31,7 @@ async def test_capture_retries_then_inbox(store):
     client = FakeModelClient([R(("add_todo", {"priority": 1})), R(("add_todo", {"priority": 1}))])
     agent = Agent(client, None, store, lambda: NOW)
     res = await agent.capture("???")
-    assert not res.parsed and "inbox" in res.reply
+    assert not res.parsed and "Say it again" in res.reply
     assert len(client.calls) == 2 and "Tool call errors" in client.calls[1]["messages"][-1]["content"]
     assert list((store.root / "inbox").glob("*.md"))
     assert store.undo() == "inbox: saved unparsed message"
@@ -40,7 +40,7 @@ async def test_capture_model_offline_goes_to_inbox(store):
     class Boom:
         async def chat(self, *a, **k): raise ConnectionError("down")
     res = await Agent(Boom(), None, store, lambda: NOW).capture("hi")
-    assert not res.parsed and "offline" in res.reply
+    assert not res.parsed and "Model's down" in res.reply
     assert store.undo() == "inbox: saved unparsed message"
 
 async def test_compose_fallback_on_failure(store):
@@ -190,3 +190,19 @@ async def test_tutor_without_the_notes_tool(store):
     course = Course(path="courses/cs101.md", title="Intro to CS")
     await Agent(client, None, store, lambda: NOW).tutor("q", course, [], notes_tool=False)
     assert client.calls[0]["tools"] is None
+
+
+async def test_capture_keeps_a_prose_answer_instead_of_sending_it_to_the_inbox(store):
+    client = FakeModelClient([ModelResponse(text="Because it's due tonight.", tool_calls=[])])
+    agent = Agent(client, None, store, lambda: NOW)
+    res = await agent.capture("Why")
+    assert res.parsed and res.reply == "Because it's due tonight."
+    assert not list((store.root / "inbox").glob("*.md"))
+    assert len(client.calls) == 1
+
+
+async def test_capture_keeps_prose_alongside_tool_calls_without_a_reply_call(store):
+    client = FakeModelClient([R(("add_todo", {"title": "Call dentist", "priority": 2}), text="Added.")])
+    agent = Agent(client, None, store, lambda: NOW)
+    res = await agent.capture("call the dentist")
+    assert res.parsed and res.reply == "Added." and res.actions[0].name == "add_todo"

@@ -8,6 +8,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Callable
 
+import logging
+
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
     CLASSIFY_PHOTO_SYSTEM,
@@ -28,6 +30,8 @@ from bot.agent.prompts import (
 )
 from bot.agent.tools import TOOL_SCHEMAS, TUTOR_TOOLS, validate_call
 from bot.knowledge.models import slugify, SOURCE_KINDS, Course, Event, Goal, Source, Todo
+
+logger = logging.getLogger(__name__)
 from bot.knowledge.store import KnowledgeStore
 from bot.study.extract import guess_kind
 
@@ -81,8 +85,9 @@ class Agent:
 
         response = await self._chat_or_none(messages, self.tools, 0.1)
         if response is None:
-            return self._to_inbox(text, "The model is offline; saved your message to the inbox.")
+            return self._to_inbox(text, "Model's down. Saved it, say it again in a bit.")
 
+        self._adopt_text_as_reply(response)
         errors = self._check(response.tool_calls)
         if errors:
             retry_messages = messages + [
@@ -96,11 +101,13 @@ class Agent:
             ]
             response = await self._chat_or_none(retry_messages, self.tools, 0.1)
             if response is None:
-                return self._to_inbox(text, "The model is offline; saved your message to the inbox.")
+                return self._to_inbox(text, "Model's down. Saved it, say it again in a bit.")
+            self._adopt_text_as_reply(response)
             errors = self._check(response.tool_calls)
 
         if errors:
-            return self._to_inbox(text, "Saved that, but I couldn't parse it. It's in your inbox.")
+            logger.warning("capture unparsed after retry: %s | calls: %s", errors, self._raw_calls_repr(response.tool_calls))
+            return self._to_inbox(text, "Didn't catch that. Say it again, plainer.")
 
         reply_text = self._reply_text(response.tool_calls)
         return CaptureResult(response.tool_calls, reply_text, parsed=True)
@@ -127,6 +134,12 @@ class Agent:
         if reply_count != 1:
             errors.append(f"expected exactly one reply call, got {reply_count}")
         return errors
+
+    @staticmethod
+    def _adopt_text_as_reply(response) -> None:
+        """A model that answers in prose instead of calling `reply` still answered: keep it."""
+        if response.text and response.text.strip() and not any(c.name == "reply" for c in response.tool_calls):
+            response.tool_calls.append(ToolCall("reply", {"text": response.text.strip()}))
 
     @staticmethod
     def _raw_calls_repr(tool_calls: list[ToolCall]) -> str:
