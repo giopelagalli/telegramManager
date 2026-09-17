@@ -7,7 +7,7 @@ from bot.agent.prompts import build_context
 from bot.knowledge.models import Event, Profile
 from bot.knowledge.ranking import top
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.views import fmt_time
+from bot.knowledge.views import esc, fmt_time
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import is_due
 from bot.scheduler.state import Chain, RuntimeState
@@ -54,6 +54,10 @@ def consume_checkin_slot(now: datetime, state: RuntimeState, profile: Profile) -
     return False
 
 
+EMPTY_DAY_PROMPT = "Nothing on your list. What's one thing you need to get done today?"
+SPRINT_MINUTES = 25
+
+
 async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState, agent) -> Outbound | None:
     profile = store.profile()
     day = now.date()
@@ -70,6 +74,16 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
         top1 = todos[0] if todos else None
         next_event = next((e for e in events if e.status == "upcoming" and e.start >= now), None)
 
+        if top1 is None and next_event is None:
+            # Nothing to nag about. Ask once a day what the day is for, then stay quiet.
+            empty_key = f"checkin-empty:{day}"
+            if empty_key in state.fired:
+                return None
+            state.fired.add(empty_key)
+            return Outbound(
+                EMPTY_DAY_PROMPT, voice=profile.voice_on_proactive, silent=True, kind="checkin"
+            )
+
         parts = []
         if next_event:
             parts.append(f"Next up: {next_event.title} at {fmt_time(next_event.start)}.")
@@ -84,10 +98,28 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
         item = (top1.title if top1 else None) or (next_event.title if next_event else None) or ""
         state.chain = Chain("checkin", now, now, 0, item=item, history=[text])
 
-        buttons = [("✅ Done", f"done:{top1.path}")] if top1 else []
-        buttons += [("⏳ Still on it", "ack:still"), ("⏭ Skip today", "ack:skip")]
+        buttons = [("✅ Done", f"done:{top1.path}"), ("🔥 Do it now", f"sprint:{top1.path}")] if top1 else []
+        buttons += [("⏳ Still on it", "ack:still")]
         return Outbound(
             text, voice=profile.voice_on_proactive, buttons=buttons, silent=True, kind="checkin"
         )
 
     return None
+
+
+
+def due_sprint(now: datetime, state: RuntimeState) -> Outbound | None:
+    """The 25-minute focus sprint is up: ask, once, whether it got done."""
+    sprint = state.sprint
+    if sprint is None:
+        return None
+    ends_at = datetime.fromisoformat(sprint["ends_at"])
+    if now < ends_at:
+        return None
+    state.sprint = None
+    title = sprint["title"]
+    return Outbound(
+        f"{SPRINT_MINUTES} minutes. Did {esc(title)} get done?",
+        buttons=[("✅ Done", f"done:{sprint['path']}"), ("🔥 Another 25", f"sprint:{sprint['path']}")],
+        kind="checkin",
+    )

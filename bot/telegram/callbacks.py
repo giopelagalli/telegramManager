@@ -37,6 +37,8 @@ async def handle(
         return _defer(arg, store, now, message_id, message_html, remaining)
     if action == "ack":
         return _ack(arg, store, state, now, message_id, message_html)
+    if action == "sprint":
+        return _sprint(arg, store, state, now)
     if action == "resume":
         state.pause_until = None
         return [Outbound("Back on.", kind="reply")]
@@ -141,3 +143,22 @@ def _get(store, path: str):
         return store.get_todo(path)
     except KeyError:
         return None
+
+
+
+def _sprint(path: str, store, state, now) -> list[Outbound]:
+    from bot.scheduler.checkins import SPRINT_MINUTES
+    from bot.scheduler.chains import close_chain
+    todo = _get(store, path)
+    if todo is None:
+        return [Outbound("That item is gone.", kind="reply")]
+    close_chain(state)
+    ends_at = now + timedelta(minutes=SPRINT_MINUTES)
+    state.sprint = {"path": path, "title": todo.title, "ends_at": ends_at.isoformat()}
+    state.pause_until = max(state.pause_until or now, ends_at)  # no check-ins mid-sprint
+    return [Outbound(f"Go. {esc(todo.title)}, {SPRINT_MINUTES} minutes. I'll check back at {_hhmm(ends_at)}.", kind="reply")]
+
+
+def _hhmm(dt) -> str:
+    from bot.knowledge.views import fmt_time
+    return fmt_time(dt)

@@ -145,7 +145,7 @@ def test_command_menu_is_the_minimal_set():
 async def test_help_lists_only_the_menu_commands(rig):
     r, *_ = rig
     text = (await r.command("help", ""))[0].text
-    assert "/todo" in text and "/now" in text and "/backlog" not in text and "/bind" not in text
+    assert "/todo" in text and "/now" in text and "/bind" not in text and "/think" not in text
     assert "just say it" in text
 
 

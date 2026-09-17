@@ -180,6 +180,7 @@ class RuntimeState:
     pending_verify: PendingVerify | None = None
     # source paths in the order the last /sources listing numbered them, for /summary <n>
     last_sources_listing: list[str] = field(default_factory=list)
+    sprint: dict | None = None  # {"path": todo path, "title": str, "ends_at": ISO}
 
     def save(self, path: Path) -> None:
         path = Path(path)
@@ -195,6 +196,7 @@ class RuntimeState:
             "briefing_override": self.briefing_override,
             "pending_verify": _pv_to_json(self.pending_verify),
             "last_sources_listing": list(self.last_sources_listing),
+            "sprint": self.sprint,
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -216,6 +218,7 @@ class RuntimeState:
                 briefing_override=data.get("briefing_override", {}),
                 pending_verify=_pv_from_json(data.get("pending_verify")),
                 last_sources_listing=list(data.get("last_sources_listing", [])),
+                sprint=data.get("sprint"),
             )
         except Exception as exc:
             logger.warning("failed to load state from %s: %s", path, exc)

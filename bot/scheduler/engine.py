@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from bot.scheduler.checkins import due_sprint
 from bot.scheduler import briefings, chains, checkins, critical
 from bot.scheduler.budget import budget_ok, record_send
 from bot.scheduler.outbound import Outbound
@@ -52,6 +53,7 @@ class Engine:
         for step in (
             self._prune,
             self._reminders,
+            self._sprint,
             self._critical_leave,
             self._wake,
             self._briefings,
@@ -105,6 +107,11 @@ class Engine:
 
     async def _reminders(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await due_reminders(now, self.store, self.state, self.maps):
+            await self._send(out, now, sent)
+
+    async def _sprint(self, now: datetime, sent: list[Outbound]) -> None:
+        out = due_sprint(now, self.state)
+        if out is not None:
             await self._send(out, now, sent)
 
     async def _critical_leave(self, now: datetime, sent: list[Outbound]) -> None:

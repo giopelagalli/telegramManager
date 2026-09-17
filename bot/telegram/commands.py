@@ -46,7 +46,7 @@ _MORE_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if not menu]
 HELP_TEXT = (
     "\n".join(f"/{name} — {esc(desc)}" for name, desc in _MAIN_COMMANDS)
     + "\n\nEverything else, just say it: what you need to do, where you need to be, "
-    "what you're working on. Drop files into a course topic to study them."
+    "what you're working on. Drop in files to study them. Also: /backlog, /goals, /undo, /hard."
 )
 
 _DURATION_RE = re.compile(r"^(\d+)\s*([hm]?)$", re.IGNORECASE)
