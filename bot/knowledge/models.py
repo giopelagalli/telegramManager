@@ -417,6 +417,7 @@ class Goal:
 @dataclass
 class Profile:
     name: str = "Giovanni"
+    assistant_name: str = "Luna"
     timezone: str = "America/New_York"
     waking_hours: list[str] = field(default_factory=lambda: ["08:00", "22:00"])
     home_address: str = ""

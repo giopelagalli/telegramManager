@@ -61,7 +61,7 @@ class Agent:
     async def capture(self, text: str, awaiting: str | None = None) -> CaptureResult:
         now = self.clock()
         profile = self.store.profile()
-        system = CAPTURE_SYSTEM.format(name=profile.name, now=now.isoformat())
+        system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat())
         context = build_context(self.store, now, awaiting)
         messages = [
             {"role": "system", "content": system},
@@ -133,7 +133,7 @@ class Agent:
         try:
             response = await self.client.chat(
                 [
-                    {"role": "system", "content": COMPOSE_SYSTEM},
+                    {"role": "system", "content": COMPOSE_SYSTEM.format(assistant=self.store.profile().assistant_name)},
                     {"role": "user", "content": f"Kind: {kind}\n{context}"},
                 ],
                 tools=None,
@@ -243,7 +243,7 @@ class Agent:
         messages = [
             {
                 "role": "system",
-                "content": TUTOR_SYSTEM.format(name=profile.name, course=course.title),
+                "content": TUTOR_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, course=course.title),
             },
             {"role": "system", "content": _render_sources(sources)},
             {"role": "user", "content": question},

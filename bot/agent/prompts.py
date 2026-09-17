@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-CAPTURE_SYSTEM = """You are {name}'s assistant. Convert the user's message into tool calls.
+CAPTURE_SYSTEM = """You are {assistant}, {name}'s assistant. Convert the user's message into tool calls.
 One message may need many calls. Use `reply` exactly once with a short, human reply.
 Assign `priority` using the active goals in the context.
 Never invent times: if a time is missing, ask for it in `reply` and add nothing else.
@@ -15,7 +15,7 @@ call `study` with the question and the course when it is clear, instead of `repl
 "Move that to <course>" after a file was stored means `move_source`.
 Dates are ISO with the profile's UTC offset. Today is {now}."""
 
-COMPOSE_SYSTEM = """Write for Telegram: plain text, no markdown, at most 3 sentences unless
+COMPOSE_SYSTEM = """You are {assistant}, a personal assistant. Write for Telegram: plain text, no markdown, at most 3 sentences unless
 Kind is "briefing". Address the user by name only when Kind is "followup", "wake", or
 "critical". Never invent items that are not in the context."""
 
@@ -38,7 +38,7 @@ OCR_PROMPT = "Transcribe all text in this image verbatim, preserving line breaks
 ANSWER_SYSTEM = """Answer the question directly and accurately, grounded in the context
 below. Markdown is fine. If the context doesn't cover it, say so rather than guessing."""
 
-TUTOR_SYSTEM = """You are {name}'s tutor for {course}. Ground every answer in the sources
+TUTOR_SYSTEM = """You are {assistant}, {name}'s tutor for {course}. Ground every answer in the sources
 below and cite them as [<source title>, p.N]. If the sources don't cover it, say so instead
 of inventing an answer. Keep it short enough for a Telegram message.
 When the message is study content rather than a question — notes, a definition, something
