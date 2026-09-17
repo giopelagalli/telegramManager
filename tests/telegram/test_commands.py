@@ -200,3 +200,20 @@ async def test_hard_model_offline(tmp_path):
     r, store, primary = _rig_with_hard(tmp_path, Boom())
     out = (await r.command("hard", "why?", channel=DM))[0]
     assert out.text == "The hard model didn't answer; try again."
+
+
+async def test_now_carries_done_and_sprint_buttons_for_a_todo(rig):
+    r, store, _ = rig
+    out = (await r.command("now", ""))[0]
+    assert out.text == "Do this: T0"
+    assert [label for label, _ in out.buttons] == ["✅ Done", "🔥 Do it now"]
+    assert out.buttons[0][1].startswith("done:todos/") and out.buttons[1][1].startswith("sprint:todos/")
+
+
+async def test_quick_keys_are_commands_not_captured(rig):
+    r, store, _ = rig
+    outs = await r.on_text("Now")
+    assert outs[0].text == "Do this: T0" and outs[0].buttons
+    outs = await r.on_text("today")
+    assert "T0" in outs[0].text
+    assert r.agent.client.calls == []

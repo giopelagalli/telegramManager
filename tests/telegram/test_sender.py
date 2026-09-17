@@ -251,3 +251,11 @@ async def test_target_overrides_the_channel():
     await Sender(bot, 7, resolve=resolve).send(Outbound("hi", channel="review", target=(-100, 46)))
     _, kwargs = bot.calls[0]
     assert kwargs["chat_id"] == -100 and kwargs["message_thread_id"] == 46
+
+
+async def test_plain_send_carries_the_persistent_quick_keyboard():
+    bot = FakeBot()
+    await Sender(bot, 7).send(Outbound("hi"))
+    markup = bot.calls[0][1]["reply_markup"]
+    assert isinstance(markup, ReplyKeyboardMarkup) and markup.is_persistent
+    assert [b.text for b in markup.keyboard[0]] == ["Now", "Today"]

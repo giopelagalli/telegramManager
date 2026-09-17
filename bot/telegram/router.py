@@ -150,6 +150,9 @@ class Router:
         if pending is not None and pending.kind == "question":
             return [await self._verify_answer(pending, text)]
 
+        if text.strip().lower() in ("now", "today"):  # the persistent keyboard keys
+            return await commands.handle(text.strip().lower(), "", self.store, self.agent, self.state, now, None)
+
         return await self._capture(text, awaiting, via_voice, now)
 
     async def on_voice_unavailable(self, *, channel: Channel | None = None) -> list[Outbound]:

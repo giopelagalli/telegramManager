@@ -110,7 +110,7 @@ class Sender:
                     message_id=out.edit_message_id,
                     text=text,
                     parse_mode=parse_mode,
-                    reply_markup=_markup(out),
+                    reply_markup=_markup(out, edit=True),
                 )
             except BadRequest as exc:
                 if "message is not modified" not in str(exc).lower():
@@ -171,15 +171,22 @@ def _log_unparsable(text: str) -> None:
     logger.warning("telegram could not parse this message, resending it plain: %s", text[:200])
 
 
-def _markup(out: Outbound):
+QUICK_KEYS = ("Now", "Today")  # persistent keyboard under the message box; the router maps them to commands
+
+
+def _markup(out: Outbound, *, edit: bool = False):
     if out.buttons:
         return InlineKeyboardMarkup(
             [[InlineKeyboardButton(label, callback_data=data)] for label, data in out.buttons]
         )
+    if edit:
+        return None  # an edited message can only carry inline buttons
     if out.location_button:
         return ReplyKeyboardMarkup(
             [[KeyboardButton(LOCATION_BUTTON_TEXT, request_location=True)]],
             one_time_keyboard=True,
             resize_keyboard=True,
         )
-    return None
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(k) for k in QUICK_KEYS]], is_persistent=True, resize_keyboard=True
+    )

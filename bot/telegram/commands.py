@@ -78,7 +78,7 @@ async def handle(
         return [Outbound(render_week(store.events(), store.profile(), now), kind="reply")]
 
     if name == "now":
-        return [Outbound(_render_now(store, now), kind="reply")]
+        return [_render_now(store, now)]
 
     if name == "brief":
         return await _brief(arg, store, agent, state, now)
@@ -171,7 +171,7 @@ def _think(arg: str, store, agent) -> list[Outbound]:
     return [Outbound(text, kind="reply")]
 
 
-def _render_now(store, now: datetime) -> str:
+def _render_now(store, now: datetime) -> Outbound:
     """One deterministic line: the next thing, no model involved."""
     profile = store.profile()
     soon = [
@@ -182,14 +182,20 @@ def _render_now(store, now: datetime) -> str:
     if soon:
         event = min(soon, key=lambda e: e.start)
         leave_by = event.times(profile).leave_by
-        return f"Get ready: {esc(event.title)} at {fmt_time(event.start)}, leave by {fmt_time(leave_by)}."
+        return Outbound(
+            f"Get ready: {esc(event.title)} at {fmt_time(event.start)}, leave by {fmt_time(leave_by)}.", kind="reply"
+        )
 
     ranked = top(store.todos(), now.date(), 1)
     if ranked:
         todo = ranked[0]
         due = f" (due {fmt_day(todo.due)})" if todo.due else ""
-        return f"Do this: {esc(todo.title)}{due}"
-    return "Nothing urgent. Rest, or pick something from /backlog."
+        return Outbound(
+            f"Do this: {esc(todo.title)}{due}",
+            buttons=[("✅ Done", f"done:{todo.path}"), ("🔥 Do it now", f"sprint:{todo.path}")],
+            kind="reply",
+        )
+    return Outbound("Nothing urgent. Rest, or pick something from /backlog.", kind="reply")
 
 
 def _parse_duration(arg: str) -> int | None:
