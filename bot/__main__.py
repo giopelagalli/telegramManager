@@ -49,6 +49,7 @@ def main() -> None:
         stream=sys.stdout,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # request URLs contain the bot token
     settings = Settings.from_env()
 
     # The clock needs the profile's timezone, which lives in the store; the store
