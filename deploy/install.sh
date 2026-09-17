@@ -10,6 +10,10 @@ fi
 
 mkdir -p knowledge data models
 
+if ! command -v ffmpeg >/dev/null; then
+  echo "voice notes need ffmpeg: sudo apt install -y ffmpeg"
+fi
+
 if [[ ! -f .env ]]; then
   cp .env.example .env
   echo "edit .env"
