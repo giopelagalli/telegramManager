@@ -282,7 +282,7 @@ def test_command_menu_is_the_minimal_set():
     from bot.telegram.commands import COMMANDS
 
     menu_names = {name for name, _, menu in COMMANDS if menu}
-    assert menu_names == {"todo", "now", "today", "week", "brief", "pause", "help"}
+    assert menu_names == {"todo", "now", "today", "week", "brief", "pause"}
 
 
 async def test_help_lists_only_the_menu_commands(rig):

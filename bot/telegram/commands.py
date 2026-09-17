@@ -32,13 +32,13 @@ HARD_OFFLINE_REPLY = "The hard model didn't answer; try again."
 HARD_COURSE_GONE_REPLY = "This topic's course file is gone; /bind again."
 
 COMMANDS: list[tuple[str, str, bool]] = [
-    ("todo", "Top 5 open todos (/todo all for everything)", True),
+    ("todo", "Top 5", True),
     ("backlog", "Everything parked in the backlog", False),
     ("goals", "Active goals and progress", False),
-    ("today", "Today's events and top todos", True),
-    ("week", "The next 7 days", True),
-    ("now", "The one thing to do right now", True),
-    ("brief", "Morning briefing now (/brief 9am to shift today's)", True),
+    ("today", "Today", True),
+    ("week", "This week", True),
+    ("now", "Do this next", True),
+    ("brief", "Briefing", True),
     ("courses", "Courses and their topic counts", False),
     ("sources", "Course material stored here", False),
     ("summary", "Summary of a source from the last /sources (/summary 2)", False),
@@ -46,13 +46,13 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("channels", "Which topic is bound to what", False),
     ("bind", "Bind this topic (/bind course CS101 Intro to CS)", False),
     ("unbind", "Unbind this topic", False),
-    ("pause", "Quiet for a while (/pause 2h)", True),
+    ("pause", "Quiet for 2h", True),
     ("quiet", "Quiet until the end of the day", False),
     ("resume", "Cancel the pause", False),
     ("undo", "Revert the last change", False),
     ("hard", "Ask the big cloud model (/hard why does X happen?)", False),
     ("think", "Model thinking on/off for the Spark model (/think on)", False),
-    ("help", "List commands", True),
+    ("help", "List commands", False),
 ]
 
 _MAIN_COMMANDS = [(name, desc) for name, desc, menu in COMMANDS if menu]
