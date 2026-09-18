@@ -17,11 +17,20 @@ class FakeAgent:
 @pytest.fixture
 def store(tmp_path):
     s = KnowledgeStore(tmp_path / "k", clock=lambda: T(8)); s.init()
+    p = s.profile(); p.followup_gaps_minutes = [20, 90]; s.save_profile(p)  # follow-ups on, for these tests
     s.add(Goal(path="", title="Ship app", period="2026-W36")); s.commit("g"); return s
 
-def test_gaps():
+def test_gaps_default_to_none():
     from bot.knowledge.models import Profile
-    assert chain_gaps(Profile(), "briefing") == [20, 90] and chain_gaps(Profile(), "checkin") == [20]
+    assert chain_gaps(Profile(), "briefing") == [] and chain_gaps(Profile(), "checkin") == []
+
+
+async def test_no_gaps_means_no_followup_but_the_chain_stays_for_context(tmp_path):
+    store = KnowledgeStore(tmp_path / "k2", clock=lambda: T(8)); store.init()
+    s = RuntimeState.load(Path("/nonexistent")); a = FakeAgent()
+    s.chain = Chain("checkin", T(10), T(10), 0, "X", [])
+    assert await due_followup(T(12), store, s, a) is None
+    assert s.chain is not None and a.kinds == []
 
 def test_chain_gaps_caps_per_kind():
     from bot.knowledge.models import Profile

@@ -198,12 +198,9 @@ async def due_briefings(now: datetime, store: KnowledgeStore, state: RuntimeStat
     morning_key = f"morning:{day}"
     morning_at = briefing_time(profile, state, day, "morning")
     if is_due(morning_key, morning_at, now, state):
-        if profile.wake_time:
-            state.fired.discard(morning_key)
-        else:
-            outbound = await morning_outbound(store, now, agent)
-            out.append(outbound)
-            state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[outbound.text])
+        outbound = await morning_outbound(store, now, agent)
+        out.append(outbound)
+        state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[outbound.text])
 
     evening_key = f"evening:{day}"
     evening_at = briefing_time(profile, state, day, "evening")

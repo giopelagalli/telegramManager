@@ -69,11 +69,6 @@ async def test_due_briefings_fire_once_and_open_chain(store):
     out = await due_briefings(T(21), store, s, FakeAgent())
     assert len(out) == 1 and out[0].buttons
 
-async def test_morning_deferred_when_wake_time_set(store):
-    p = store.profile(); p.wake_time = "06:30"; store.save_profile(p)
-    s = RuntimeState.load(Path("/nonexistent"))
-    assert await due_briefings(T(8), store, s, FakeAgent()) == [] and "morning:2026-09-03" not in s.fired
-
 async def test_composed_prose_is_escaped(store):
     class HtmlAgent:
         async def compose(self, kind, context, fallback): return "Watch out <b>now</b>."

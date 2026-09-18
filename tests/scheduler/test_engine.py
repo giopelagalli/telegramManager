@@ -39,7 +39,7 @@ async def test_full_day_message_budget_and_order(rig):
     await run_until(eng, clock, T(22, 30))
     kinds = [o.kind for o in sink.sent]
     assert kinds.count("briefing") == 2 and kinds.count("reminder") == 2
-    assert 1 <= kinds.count("checkin") <= 14
+    assert 1 <= kinds.count("checkin") <= 3
     # never more than 3 non-critical proactive messages (checkin+followup) in any rolling hour
     times = [t for t, o in zip(eng.sent_times, sink.sent) if o.kind in ("checkin", "followup")]
     for i, t in enumerate(times):
@@ -61,16 +61,6 @@ async def test_startup_drops_late_jobs(rig):
     await eng.tick()
     assert all(o.kind != "reminder" for o in sink.sent)
 
-async def test_wake_flow_sends_morning_after_done(rig):
-    eng, clock, sink, state, store = rig
-    p = store.profile(); p.wake_time = "07:05"; store.save_profile(p)
-    await run_until(eng, clock, T(7, 6))
-    assert sink.sent and sink.sent[0].kind == "wake"
-    state.wake.phase = "done"; state.wake.verified = True
-    await eng.tick()
-    assert sink.sent[-1].kind == "briefing" and state.wake is None and "morning:2026-09-03" in state.fired
-
-
 async def test_run_survives_tick_exception(rig):
     eng, clock, sink, state, store = rig
     calls = []
@@ -90,20 +80,6 @@ async def test_run_survives_tick_exception(rig):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert len(calls) >= 2
-
-
-async def test_late_start_after_wake_time_still_sends_morning(rig):
-    eng, clock, sink, state, store = rig
-    p = store.profile(); p.wake_time = "06:30"; store.save_profile(p)
-    clock.set(T(9)); eng.startup(clock.now())
-    state.last_user_message_at = T(9)  # keep check-ins out of the way
-    await eng.tick()
-    briefings = [o for o in sink.sent if o.kind == "briefing"]
-    assert len(briefings) == 1 and "Wake-up window missed." in briefings[0].text
-    assert state.wake is None
-    before = len(sink.sent)
-    await eng.tick()
-    assert len(sink.sent) == before
 
 
 async def test_budget_exhausted_checkin_consumes_slot_and_keeps_chain(rig):
@@ -134,13 +110,6 @@ async def test_escalate_external_called_at_caps(rig):
     eng, clock, sink, state, store = rig
     eng = RecordingEngine(eng.store, eng.agent, eng.state, eng.state_path, eng.clock, eng.sender, eng.maps)
 
-    p = store.profile(); p.wake_time = "07:00"; store.save_profile(p)
-    await eng.tick()  # 07:00 — wake starts
-    assert state.wake is not None
-    clock.set(T(7, 31))  # past wakeup_cap_minutes (30)
-    await eng.tick()
-    assert "wake-up hit its cap" in eng.reasons
-
     store.add(Event(path="", title="Flight", start=T(12), travel_minutes=0, prep_minutes=15, importance="critical"))
     store.commit("critical event")
     clock.set(T(11, 55))  # leave_at
@@ -170,3 +139,15 @@ async def test_old_event_file_fires_each_reminder_once(tmp_path):
     assert sum("Get ready" in t for t in reminders) == 1
     assert sum("Leave in" in t for t in reminders) == 1
     assert len(reminders) == 2
+
+
+async def test_state_is_saved_before_a_send_so_a_crash_cannot_repeat_it(rig):
+    eng, clock, sink, state, store = rig
+    class Boom(Exception): pass
+    class DyingSink:
+        async def send(self, out):
+            raise Boom()
+    eng.sender = DyingSink()
+    clock.set(T(8, 0))
+    await eng.tick()  # the morning briefing "sends" and the process would die here
+    assert "morning:2026-09-03" in RuntimeState.load(eng.state_path).fired

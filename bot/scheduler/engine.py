@@ -55,7 +55,6 @@ class Engine:
             self._reminders,
             self._sprint,
             self._critical_leave,
-            self._wake,
             self._briefings,
             self._checkin,
             self._followup,
@@ -74,7 +73,7 @@ class Engine:
         return sent
 
     def startup(self, now: datetime) -> None:
-        """Drop jobs that are too late to fire and clear stale critical/wake state."""
+        """Drop jobs that are too late to fire and clear stale critical state."""
         profile = self.store.profile()
 
         for ev in self.store.events():
@@ -96,9 +95,6 @@ class Engine:
             cap = timedelta(minutes=profile.critical_leave_cap_minutes)
             if ev is None or ev.status != "upcoming" or now >= ev.times(profile).leave_by + cap:
                 self.state.critical = None
-
-        if self.state.wake is not None and self.state.wake.day != now.date().isoformat():
-            self.state.wake = None
 
     # -- steps -----------------------------------------------------------
 
@@ -128,42 +124,6 @@ class Engine:
         await self._send(out, now, sent)
         if self.state.critical is None:
             self.escalate_external("critical leave hit its cap")
-
-    async def _wake(self, now: datetime, sent: list[Outbound]) -> None:
-        profile = self.store.profile()
-        if critical.wake_due(now, self.state, self.store):
-            await self._send(critical.wake_start(now, self.state, self.store), now, sent)
-        elif self.state.wake is not None and self.state.wake.phase != "done":
-            out = critical.wake_tick(now, self.state, self.store)
-            if out is not None:
-                await self._send(out, now, sent)
-            if self.state.wake.phase == "done":
-                self.escalate_external("wake-up hit its cap")
-        elif self.state.wake is None and profile.wake_time:
-            await self._missed_wake_morning(now, profile, sent)
-
-        wake = self.state.wake
-        if wake is not None and wake.phase == "done":
-            note = None if wake.verified else "Wake-up not verified."
-            out = await briefings.send_morning(now, self.store, self.state, self.agent, note)
-            await self._send(out, now, sent)
-            self.state.wake = None
-
-    async def _missed_wake_morning(self, now: datetime, profile, sent: list[Outbound]) -> None:
-        """Started after the wake window: the morning briefing would be lost otherwise."""
-        day = now.date()
-        guard_key = f"wake-missed:{day}"
-        if guard_key in self.state.fired or f"morning:{day}" in self.state.fired:
-            return
-        hh, mm = (int(x) for x in profile.wake_time.split(":"))
-        wake_at = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-        if now <= wake_at + LATE_WINDOW:
-            return
-        self.state.fired.add(guard_key)
-        out = await briefings.send_morning(
-            now, self.store, self.state, self.agent, "Wake-up window missed."
-        )
-        await self._send(out, now, sent)
 
     async def _briefings(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await briefings.due_briefings(now, self.store, self.state, self.agent):
@@ -214,6 +174,12 @@ class Engine:
     # -- helpers ---------------------------------------------------------
 
     async def _send(self, out: Outbound, now: datetime, sent: list[Outbound]) -> None:
+        # Persist first: the fired key is already set, so a crash mid-send (voice synthesis
+        # running out of memory, say) loses one message instead of repeating it on restart.
+        try:
+            self.state.save(self.state_path)
+        except Exception:
+            logger.exception("failed to save runtime state to %s", self.state_path)
         await self.sender.send(out)
         self.sent_times.append(now)
         del self.sent_times[:-SENT_TIMES_CAP]

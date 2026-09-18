@@ -755,13 +755,30 @@ async def test_pasted_conversation_goes_to_the_coach(rig):
 async def test_chat_screenshot_in_dm_is_coached_not_filed(rig):
     router, store, client, state, _ = rig
     class Vision:
+        def __init__(self): self.n = 0
         async def chat(self, messages, tools=None, temperature=0.2):
-            return ModelResponse("Her: busy week tho\nMe: cool", [])
+            self.n += 1
+            if self.n == 1:  # look(): what is this
+                return ModelResponse('{"kind": "chat", "description": "a text conversation"}', [])
+            return ModelResponse("Her: busy week tho\nMe: cool", [])  # ocr()
     router.agent.vision = Vision()
-    client.responses.append(ModelResponse("chat", []))
     client.responses.append(ModelResponse("She's lukewarm. Send: \"Tuesday 4.\"", []))
     outs = await router.on_photo(b"img")
     assert "Tuesday 4" in outs[0].text and store.sources() == []
+
+
+async def test_photo_of_friends_is_talked_about_not_filed(rig):
+    router, store, client, state, _ = rig
+    class Vision:
+        async def chat(self, messages, tools=None, temperature=0.2):
+            return ModelResponse('{"kind": "photo", "description": "two guys grinning at a bar, one holding a beer"}', [])
+    router.agent.vision = Vision()
+    client.responses.append(R(("reply", {"text": "Hi Jack. Hi Chris. The one w/ the beer is the problem."})))
+    outs = await router.on_photo(b"img", "say hi to my friends jack and chris")
+    assert "Hi Jack" in outs[0].text and store.sources() == []
+    sent = client.calls[-1]["messages"][-1]["content"]
+    assert sent.startswith("[sent a photo: two guys grinning") and "jack and chris" in sent
+    assert state.recent[-2][0] == "user" and "two guys" in state.recent[-2][1]
 
 
 async def test_weekly_class_gets_coordinates_and_travel_time_on_every_occurrence(rig):

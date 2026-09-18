@@ -63,10 +63,10 @@ def test_apply_done_with_verify_sets_unconfirmed(store):
     assert applied.summary == ["Marked done: Wash car"]
 
 def test_apply_set_profile_coerces_and_snooze(store):
-    applied = apply_actions(store, [ToolCall("set_profile", {"field": "checkin_interval_minutes", "value": "90"}),
+    applied = apply_actions(store, [ToolCall("set_profile", {"field": "checkin_skip_if_active_minutes", "value": "90"}),
                                     ToolCall("set_profile", {"field": "morning_briefing", "value": "09:00"}),
                                     ToolCall("snooze", {"minutes": 120})], NOW)
-    assert store.profile().checkin_interval_minutes == 90
+    assert store.profile().checkin_skip_if_active_minutes == 90
     assert applied.snooze_minutes == 120 and applied.changed_schedule
 
 
@@ -84,12 +84,12 @@ def test_apply_actions_reports_bad_action_and_applies_the_rest(store):
 
 
 def test_apply_actions_bad_profile_value_leaves_profile_alone(store):
-    before = store.profile().checkin_interval_minutes
+    before = store.profile().checkin_skip_if_active_minutes
     applied = apply_actions(store, [
-        ToolCall("set_profile", {"field": "checkin_interval_minutes", "value": "soon"}),
+        ToolCall("set_profile", {"field": "checkin_skip_if_active_minutes", "value": "soon"}),
     ], NOW)
     assert applied.summary == ["Couldn't apply set_profile: invalid literal for int() with base 10: 'soon'"]
-    assert store.profile().checkin_interval_minutes == before
+    assert store.profile().checkin_skip_if_active_minutes == before
 
 
 def test_move_todo_remaps_later_actions_in_the_same_batch(store):

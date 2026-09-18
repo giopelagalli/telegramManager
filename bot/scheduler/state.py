@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 # Only these keys carry the day they belong to. Event keys embed the file's
 # creation date, which says nothing about when the job fires.
-_DAY_KEY_PREFIXES = ("checkin:", "morning:", "evening:", "wake:", "wake-missed:")
+_DAY_KEY_PREFIXES = ("checkin:", "morning:", "evening:")
 
 
 @dataclass
@@ -32,19 +32,6 @@ class CriticalLeaveState:
     started_at: datetime
     last_sent_at: datetime | None
     sent_count: int
-
-
-@dataclass
-class WakeState:
-    day: str
-    phase: str  # alarm|challenge|engage|done
-    started_at: datetime
-    last_sent_at: datetime | None
-    cadence_seconds: int
-    attempts: int
-    engaged_seconds: int
-    last_reply_at: datetime | None
-    verified: bool | None
 
 
 @dataclass
@@ -113,38 +100,6 @@ def _critical_from_json(d: dict | None) -> CriticalLeaveState | None:
     )
 
 
-def _wake_to_json(w: WakeState | None) -> dict | None:
-    if w is None:
-        return None
-    return {
-        "day": w.day,
-        "phase": w.phase,
-        "started_at": _iso(w.started_at),
-        "last_sent_at": _iso(w.last_sent_at),
-        "cadence_seconds": w.cadence_seconds,
-        "attempts": w.attempts,
-        "engaged_seconds": w.engaged_seconds,
-        "last_reply_at": _iso(w.last_reply_at),
-        "verified": w.verified,
-    }
-
-
-def _wake_from_json(d: dict | None) -> WakeState | None:
-    if d is None:
-        return None
-    return WakeState(
-        day=d["day"],
-        phase=d["phase"],
-        started_at=_from_iso(d["started_at"]),
-        last_sent_at=_from_iso(d["last_sent_at"]),
-        cadence_seconds=d["cadence_seconds"],
-        attempts=d["attempts"],
-        engaged_seconds=d["engaged_seconds"],
-        last_reply_at=_from_iso(d["last_reply_at"]),
-        verified=d["verified"],
-    )
-
-
 def _pv_to_json(p: PendingVerify | None) -> dict | None:
     if p is None:
         return None
@@ -175,7 +130,6 @@ class RuntimeState:
     proactive_sends: list[datetime] = field(default_factory=list)
     chain: Chain | None = None
     critical: CriticalLeaveState | None = None
-    wake: WakeState | None = None
     briefing_override: dict[str, str] = field(default_factory=dict)
     pending_verify: PendingVerify | None = None
     # source paths in the order the last /sources listing numbered them, for /summary <n>
@@ -194,7 +148,6 @@ class RuntimeState:
             "proactive_sends": [_iso(t) for t in self.proactive_sends],
             "chain": _chain_to_json(self.chain),
             "critical": _critical_to_json(self.critical),
-            "wake": _wake_to_json(self.wake),
             "briefing_override": self.briefing_override,
             "pending_verify": _pv_to_json(self.pending_verify),
             "last_sources_listing": list(self.last_sources_listing),
@@ -218,7 +171,6 @@ class RuntimeState:
                 proactive_sends=[_from_iso(t) for t in data.get("proactive_sends", [])],
                 chain=_chain_from_json(data.get("chain")),
                 critical=_critical_from_json(data.get("critical")),
-                wake=_wake_from_json(data.get("wake")),
                 briefing_override=data.get("briefing_override", {}),
                 pending_verify=_pv_from_json(data.get("pending_verify")),
                 last_sources_listing=list(data.get("last_sources_listing", [])),

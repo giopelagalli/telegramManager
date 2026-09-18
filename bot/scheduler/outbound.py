@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# kind is one of: reminder, checkin, briefing, followup, critical, wake, reply, edit
-KINDS = {"reminder", "checkin", "briefing", "followup", "critical", "wake", "reply", "edit"}
+# kind is one of: reminder, checkin, briefing, followup, critical, reply, edit
+KINDS = {"reminder", "checkin", "briefing", "followup", "critical", "reply", "edit"}
 
 
 @dataclass

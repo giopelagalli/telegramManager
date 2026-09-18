@@ -529,17 +529,13 @@ class Profile:
     places_latlng: dict = field(default_factory=dict)  # name -> [lat, lng]
     morning_briefing: str = "08:00"
     evening_briefing: str = "21:00"
-    wake_time: str = ""
-    wake_photo_spot: str = "kitchen sink"
-    checkin_interval_minutes: int = 60
+    checkin_times: list[str] = field(default_factory=lambda: ["11:00", "15:00", "19:00"])
     checkin_skip_if_active_minutes: int = 20
-    followup_gaps_minutes: list[int] = field(default_factory=lambda: [20, 90])
+    followup_gaps_minutes: list[int] = field(default_factory=list)  # empty = no follow-ups
     proactive_budget_per_hour: int = 3
     default_prep_minutes: int = 15
     leave_lead_minutes: int = 5
     critical_leave_cap_minutes: int = 20
-    wakeup_cap_minutes: int = 30
-    wakeup_engage_seconds: int = 120
     voice_on_proactive: bool = True
     voice_reply_mode: str = "on_voice"
     tutor_context_chars: int = 150000
@@ -549,7 +545,6 @@ class Profile:
     study_daily_minutes: int = 60          # default daily budget when planning for an exam
     cards_per_topic: int = 8
     review_time: str = "18:00"
-    checkin_on_the_hour: bool = True       # predictable check-ins; False = random minute
     review_daily_cap: int = 8
     review_exam_cap: int = 15
     exam_focus_days: int = 7
@@ -583,17 +578,13 @@ class Profile:
             "places_latlng": {k: list(v) for k, v in self.places_latlng.items()},
             "morning_briefing": self.morning_briefing,
             "evening_briefing": self.evening_briefing,
-            "wake_time": self.wake_time,
-            "wake_photo_spot": self.wake_photo_spot,
-            "checkin_interval_minutes": self.checkin_interval_minutes,
+            "checkin_times": self.checkin_times,
             "checkin_skip_if_active_minutes": self.checkin_skip_if_active_minutes,
             "followup_gaps_minutes": self.followup_gaps_minutes,
             "proactive_budget_per_hour": self.proactive_budget_per_hour,
             "default_prep_minutes": self.default_prep_minutes,
             "leave_lead_minutes": self.leave_lead_minutes,
             "critical_leave_cap_minutes": self.critical_leave_cap_minutes,
-            "wakeup_cap_minutes": self.wakeup_cap_minutes,
-            "wakeup_engage_seconds": self.wakeup_engage_seconds,
             "voice_on_proactive": self.voice_on_proactive,
             "voice_reply_mode": self.voice_reply_mode,
             "tutor_context_chars": self.tutor_context_chars,
@@ -602,7 +593,6 @@ class Profile:
             "exam_review_offsets_days": self.exam_review_offsets_days,
             "study_daily_minutes": self.study_daily_minutes,
             "cards_per_topic": self.cards_per_topic,
-            "checkin_on_the_hour": self.checkin_on_the_hour,
             "review_time": self.review_time,
             "review_daily_cap": self.review_daily_cap,
             "review_exam_cap": self.review_exam_cap,

@@ -12,7 +12,7 @@ from bot.knowledge.views import esc
 from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
 from bot.scheduler.briefings import evening_outbound, morning_outbound
-from bot.scheduler.critical import leave_on_location, leave_on_text, wake_on_message, wake_on_photo, wake_spot
+from bot.scheduler.critical import leave_on_location, leave_on_text
 from bot.scheduler import review
 from bot.scheduler.outbound import Outbound
 from bot.study.extract import (
@@ -133,15 +133,6 @@ class Router:
         awaiting = self.state.chain.item if self.state.chain is not None else None
         close_chain(self.state)
 
-        if self._wake_active():
-            out = wake_on_message(now, self.state, self.store, text)
-            if out is not None:
-                return [out]
-            question = await self.agent.compose(
-                "wake", build_context(self.store, now), "What's next after that?"
-            )
-            return [Outbound(md_to_html(question), kind="wake")]
-
         if self.state.critical is not None:
             out = leave_on_text(self.state, self.store)
             return [out] if out is not None else []
@@ -252,7 +243,7 @@ class Router:
             return ignored
         if _is_course(channel):
             return self._tag(await self._ingest_photo(image, caption, channel), channel)
-        return self._tag(await self._photo(image), channel)
+        return self._tag(await self._photo(image, caption), channel)
 
     async def on_document(
         self,
@@ -276,24 +267,22 @@ class Router:
         self._touch()
         return self._tag([Outbound(esc(TOO_LARGE_REPLY), kind="reply")], channel)
 
-    async def _photo(self, image: bytes) -> list[Outbound]:
+    async def _photo(self, image: bytes, caption: str | None = None) -> list[Outbound]:
         now = self._touch()
-
-        if self._wake_active() and self.state.wake.phase == "challenge":
-            close_chain(self.state)
-            spot = wake_spot(self.store.profile(), self.state.wake.day)
-            ok, reason = await self.agent.check_photo(
-                image, f"a fresh photo of a {spot}, not a screenshot"
-            )
-            return [wake_on_photo(now, self.state, self.store, ok, reason)]
-
         close_chain(self.state)
 
         pending = self.state.pending_verify
         if pending is not None and pending.kind == "photo":
             return [await self._verify_photo(pending, image)]
 
-        return await self._ingest_photo(image, None, None)
+        kind, description = await self.agent.look(image)
+        if kind != "photo":
+            return await self._ingest_photo(image, caption, None, kind=kind)
+        # Just a photo: talk about it like a person would, and keep what it showed in memory.
+        seen = f"[sent a photo: {description}]" if description else "[sent a photo]"
+        text = f"{seen} {caption}".strip() if caption else seen
+        awaiting = self.state.chain.item if self.state.chain is not None else None
+        return await self._capture(text, awaiting, False, now)
 
     # -- study ingest and tutoring ---------------------------------------
 
@@ -332,12 +321,14 @@ class Router:
         return [self._store_source(source, course)]
 
     async def _ingest_photo(
-        self, image: bytes, caption: str | None, channel: Channel
+        self, image: bytes, caption: str | None, channel: Channel, kind: str | None = None
     ) -> list[Outbound]:
         self._touch()
         text = await self.agent.ocr(image)
         body = text if text else (caption or "")
-        if text and not _is_course(channel) and await self.agent.classify_photo(text) == "chat":
+        if kind is None and text and not _is_course(channel):
+            kind = await self.agent.classify_photo(text)
+        if text and kind == "chat":
             advice = await self.agent.coach(text, caption or "", recent=list(self.state.recent))
             if advice is None:
                 return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
@@ -615,9 +606,6 @@ class Router:
         self.state.last_user_message_at = now
         self.last_outcome = "handled"
         return now
-
-    def _wake_active(self) -> bool:
-        return self.state.wake is not None and self.state.wake.phase != "done"
 
     def _voice_reply(self, via_voice: bool) -> bool:
         mode = self.store.profile().voice_reply_mode

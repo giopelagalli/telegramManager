@@ -18,11 +18,14 @@ class FakeAgent:
 def store(tmp_path):
     s = KnowledgeStore(tmp_path / "k", clock=lambda: T(8)); s.init(); return s
 
-def test_slots_are_hourly_jittered_and_stable():
-    a = checkin_slots(Profile(), D); b = checkin_slots(Profile(), D)
-    assert a == b and len(a) == 14
-    assert all(T(8 + i) <= due < T(9 + i) for i, (_, due) in enumerate(a))
+def test_slots_are_the_profile_times_three_a_day_by_default():
+    a = checkin_slots(Profile(), D)
+    assert [due for _, due in a] == [T(11), T(15), T(19)]
     assert a[0][0] == "checkin:2026-09-03:0"
+    p = Profile(); p.checkin_times = ["13:30"]
+    assert checkin_slots(p, D) == [("checkin:2026-09-03:0", T(13, 30))]
+    p.checkin_times = []
+    assert checkin_slots(p, D) == []
 
 def test_skip_reasons():
     s = RuntimeState.load(Path("/nonexistent")); p = Profile()
@@ -40,7 +43,7 @@ async def test_due_checkin_fires_once_and_opens_chain(store):
     key, due = checkin_slots(store.profile(), D)[2]
     assert await due_checkin(due - timedelta(minutes=1), store, s, FakeAgent()) is None
     out = await due_checkin(due, store, s, FakeAgent())
-    assert out and out.kind == "checkin" and out.voice and "Call dentist" in out.text
+    assert out and out.kind == "checkin" and not out.voice and "Call dentist" in out.text
     assert out.buttons[0][1].startswith("done:") and out.buttons[0][0] == "✅ Done"
     assert [d for _, d in out.buttons[1:]] == [f"sprint:{out.buttons[0][1].split(':', 1)[1]}", "ack:still"]
     assert s.chain and s.chain.kind == "checkin" and s.chain.item == "Call dentist"

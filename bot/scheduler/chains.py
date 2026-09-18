@@ -40,6 +40,8 @@ async def due_followup(now: datetime, store: KnowledgeStore, state: RuntimeState
         return None
 
     gaps = chain_gaps(profile, chain.kind)
+    if not gaps:
+        return None  # follow-ups are off; the chain still tells capture what "done" refers to
     if chain.step >= len(gaps):
         close_chain(state)
         return None

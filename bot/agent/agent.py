@@ -13,6 +13,7 @@ import logging
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
     CLASSIFY_PHOTO_SYSTEM,
+    LOOK_SYSTEM,
     COACH_SYSTEM,
     VOICE,
     CARDS_SYSTEM,
@@ -322,6 +323,24 @@ class Agent:
         ]
         response = await self._chat_or_none(messages, None, 0.5, client=self.hard or None)
         return (response.text or "").strip() or None if response else None
+
+    async def look(self, image: bytes) -> tuple[str, str]:
+        """What a photo is: ('chat'|'material'|'photo', one-line description). 'photo' when unsure."""
+        if self.vision is None:
+            return "photo", ""
+        data_url = f"data:image/jpeg;base64,{b64encode(image).decode()}"
+        messages = [
+            {"role": "system", "content": LOOK_SYSTEM},
+            {"role": "user", "content": [{"type": "image_url", "image_url": {"url": data_url}}]},
+        ]
+        response = await self._chat_or_none(messages, None, 0.0, client=self.vision)
+        data = _json_block(response.text or "") if response else None
+        if not isinstance(data, dict):
+            return "photo", ""
+        kind = str(data.get("kind", "photo")).strip().lower()
+        if kind not in ("chat", "material", "photo"):
+            kind = "photo"
+        return kind, str(data.get("description", "")).strip()
 
     async def classify_photo(self, text: str) -> str:
         """'chat' or 'material' for OCR'd text; material when unsure."""

@@ -293,8 +293,8 @@ the script to confirm.
 
 ## 4. Phone-side setup for critical mode
 
-Critical mode (a `critical` event's leave time, or wake-up verification) is
-only useful if the message actually reaches you. On the phone you carry:
+Critical mode (a `critical` event's leave time) is only useful if the message
+actually reaches you. On the phone you carry:
 
 - **Exempt the Telegram app (or at least this chat) from Focus/Do Not
   Disturb.** iOS: Settings → Focus → your active Focus → Apps → allow
@@ -303,9 +303,7 @@ only useful if the message actually reaches you. On the phone you carry:
   Not Disturb → Apps → allow Telegram.
 - **Set a distinct, loud notification sound for this specific chat**, not
   the default Telegram tone — open the chat → chat settings/mute icon →
-  notification sound, and pick something you won't sleep through. This
-  matters most for the wake-up alarm phase (§13.2 of the design spec), which
-  repeats every 60 seconds until you respond.
+  notification sound, and pick something you won't miss.
 - Turn notification banners/sound back to full volume before bed if your
   phone auto-lowers volume overnight.
 

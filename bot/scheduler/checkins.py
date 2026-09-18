@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import hashlib
 from datetime import date, datetime, timedelta
 
 from bot.agent.prompts import build_context
-from bot.knowledge.models import Event, Profile
+from bot.knowledge.models import Event, Profile, hm_to_time
 from bot.knowledge.ranking import top
 from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.views import esc, fmt_time
@@ -15,19 +14,11 @@ from bot.telegram.markdown import md_to_html
 
 
 def checkin_slots(profile: Profile, day: date) -> list[tuple[str, datetime]]:
-    start, end = profile.waking_window(day)
-    interval = profile.checkin_interval_minutes
-    slots: list[tuple[str, datetime]] = []
-    i = 0
-    while True:
-        slot_start = start + timedelta(minutes=interval * i)
-        if slot_start >= end:
-            break
-        jitter = 0 if profile.checkin_on_the_hour else int(hashlib.sha256(f"{day}:{i}".encode()).hexdigest(), 16) % interval
-        due = slot_start + timedelta(minutes=jitter)
-        slots.append((f"checkin:{day}:{i}", due))
-        i += 1
-    return slots
+    """A few fixed times a day (profile `checkin_times`), not every hour."""
+    return [
+        (f"checkin:{day}:{i}", datetime.combine(day, hm_to_time(hm), tzinfo=profile.tz))
+        for i, hm in enumerate(profile.checkin_times)
+    ]
 
 
 def should_skip_checkin(
@@ -80,9 +71,7 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
             if empty_key in state.fired:
                 return None
             state.fired.add(empty_key)
-            return Outbound(
-                EMPTY_DAY_PROMPT, voice=profile.voice_on_proactive, kind="checkin"
-            )
+            return Outbound(EMPTY_DAY_PROMPT, kind="checkin")
 
         parts = []
         if next_event:
@@ -100,9 +89,7 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
 
         buttons = [("✅ Done", f"done:{top1.path}"), ("🔥 Do it now", f"sprint:{top1.path}")] if top1 else []
         buttons += [("⏳ Still on it", "ack:still")]
-        return Outbound(
-            text, voice=profile.voice_on_proactive, buttons=buttons, kind="checkin"
-        )
+        return Outbound(text, buttons=buttons, kind="checkin")  # text only: a glance, not a bubble pair
 
     return None
 
