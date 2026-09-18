@@ -82,7 +82,5 @@ The bot needs no change: `TTS_MODEL` is only a label.
 
 ## The old `sparkbot`
 
-The Telegram bot in `~/Models/.../bot.py` (`sparkbot.service`) can stay: it is the Spark's
-admin console (`/status`, `/startmodel`, `/dropcaches`) and it is useful exactly when JD says
-"Spark's down". It must be a different BotFather token from JD's, or the two will fight over
-polling. Everything conversational moves to JD; don't point both at the same bot.
+Retire it: `sudo systemctl disable --now sparkbot`. JD is the only bot. The model service
+(`sparkmodel`) stays and autostarts on boot; that is all the Spark needs to run.
