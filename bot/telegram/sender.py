@@ -54,10 +54,12 @@ class Sender:
         synthesizer=None,
         tmp_dir: Path = Path("."),
         resolve: Callable[[str], tuple[int, int | None]] | None = None,
+        caller=None,
     ):
         self.bot = bot
         self.chat_id = chat_id
         self.synthesizer = synthesizer
+        self.caller = caller
         self.tmp_dir = Path(tmp_dir)
         self.resolve = resolve
 
@@ -100,6 +102,8 @@ class Sender:
 
         if out.voice and self.synthesizer is not None:
             await self._send_voice(out.text, out.silent, chat_id, thread)
+        if out.call and self.caller is not None:
+            await self.caller.call(plain_text(out.text))
 
     async def _edit(self, out: Outbound, chat_id: int) -> None:
         # No message_thread_id here: an edit is addressed by chat_id + message_id.

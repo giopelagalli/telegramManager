@@ -103,3 +103,16 @@ def test_deleted_event_stands_down(store):
     s = gone()
     o = C.leave_on_text(s, store)
     assert "That event is gone" in o.text and s.critical is None
+
+
+def test_storm_rings_on_its_first_message_then_every_fifth(store):
+    s = fresh(store)
+    assert C.leave_tick(T(16, 55), s, store).call is False  # the lead text is a text
+    outs = []
+    t = T(17, 0)
+    while len(outs) < 7:
+        o = C.leave_tick(t, s, store)
+        if o is not None:
+            outs.append(o)
+        t += timedelta(seconds=30)
+    assert [o.call for o in outs] == [True, False, False, False, False, True, False]

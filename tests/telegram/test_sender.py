@@ -259,3 +259,15 @@ async def test_plain_send_carries_the_persistent_quick_keyboard():
     markup = bot.calls[0][1]["reply_markup"]
     assert isinstance(markup, ReplyKeyboardMarkup) and markup.is_persistent
     assert [b.text for b in markup.keyboard[0]] == ["Now", "Today"]
+
+
+async def test_critical_storm_message_also_rings_when_a_caller_is_wired():
+    class FakeCaller:
+        def __init__(self): self.said = []
+        async def call(self, text): self.said.append(text); return "CA1"
+    bot = FakeBot(); caller = FakeCaller()
+    await Sender(bot, 7, caller=caller).send(Outbound("Leave <b>now</b> &amp; go.", call=True, kind="critical"))
+    assert caller.said == ["Leave now & go."]
+    await Sender(bot, 7, caller=caller).send(Outbound("plain", kind="reply"))
+    assert caller.said == ["Leave now & go."]
+    await Sender(bot, 7).send(Outbound("no caller", call=True, kind="critical"))  # nothing to ring with, no error

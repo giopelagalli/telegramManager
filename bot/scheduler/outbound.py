@@ -13,6 +13,7 @@ class Outbound:
     buttons: list[tuple[str, str]] = field(default_factory=list)
     location_button: bool = False
     critical: bool = False
+    call: bool = False  # also ring the phone (Twilio), when configured
     kind: str = ""
     silent: bool = False
     edit_message_id: int | None = None

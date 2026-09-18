@@ -10,6 +10,13 @@ FIREWORKS_URL = "https://api.fireworks.ai/inference/v1"
 FIREWORKS_AUDIO_URL = "https://audio-prod.us-virginia-1.direct.fireworks.ai/v1"
 FIREWORKS_MODEL_DEFAULT = "accounts/fireworks/models/deepseek-v4p1-flash"
 FIREWORKS_STT_DEFAULT = "whisper-v3"
+OPENAI_TTS_URL = "https://api.openai.com/v1"
+OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
+OPENAI_TTS_VOICE = "onyx"
+TTS_INSTRUCTIONS_DEFAULT = (
+    "An older guy talking to a younger friend on the phone. Low, dry, unhurried, a little "
+    "amused. No announcer energy, no upbeat customer-service tone. Plain and direct."
+)
 FIREWORKS_EMBED_DEFAULT = "nomic-ai/nomic-embed-text-v1.5"
 SPARK_MODEL_DEFAULT = "qwen3.8-flash-next"
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -49,6 +56,9 @@ def _derive(e: Mapping[str, str]) -> dict[str, str]:
             d["STT_PROVIDER"] = "api"
             default("STT_BASE_URL", FIREWORKS_AUDIO_URL); default("STT_API_KEY", key)
             default("STT_MODEL", d.get("FIREWORKS_STT_MODEL", "").strip() or FIREWORKS_STT_DEFAULT)
+    if d.get("TTS_API_KEY", "").strip():
+        default("TTS_BASE_URL", OPENAI_TTS_URL); default("TTS_MODEL", OPENAI_TTS_MODEL)
+        default("TTS_VOICE", OPENAI_TTS_VOICE); default("TTS_INSTRUCTIONS", TTS_INSTRUCTIONS_DEFAULT)
     default("KNOWLEDGE_DIR", str(REPO_ROOT / "knowledge"))
     default("DATA_DIR", str(REPO_ROOT / "data"))
     default("KOKORO_MODEL_DIR", str(REPO_ROOT / "models"))
@@ -88,6 +98,15 @@ class Settings:
     kokoro_model_dir: Path
     brave_api_key: str | None
     embed_model: str | None
+    tts_api_key: str | None
+    tts_base_url: str | None
+    tts_model: str | None
+    tts_voice: str | None
+    tts_instructions: str | None
+    twilio_account_sid: str | None
+    twilio_auth_token: str | None
+    twilio_from: str | None
+    phone: str | None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -128,6 +147,9 @@ class Settings:
         stt_model = opt("STT_MODEL")
         if stt_provider == "api" and not (stt_base_url and stt_api_key and stt_model):
             raise ValueError("STT_PROVIDER=api requires STT_BASE_URL, STT_API_KEY and STT_MODEL")
+        twilio = {k: opt(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "PHONE")}
+        if any(twilio.values()) and not all(twilio.values()):
+            raise ValueError("calls need all four of TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM and PHONE")
         return cls(
             telegram_bot_token=req("TELEGRAM_BOT_TOKEN"),
             telegram_user_id=int(req("TELEGRAM_USER_ID")),
@@ -158,6 +180,15 @@ class Settings:
             kokoro_model_dir=Path(req("KOKORO_MODEL_DIR")),
             brave_api_key=opt("BRAVE_API_KEY"),
             embed_model=opt("EMBED_MODEL"),
+            tts_api_key=opt("TTS_API_KEY"),
+            tts_base_url=opt("TTS_BASE_URL"),
+            tts_model=opt("TTS_MODEL"),
+            tts_voice=opt("TTS_VOICE"),
+            tts_instructions=opt("TTS_INSTRUCTIONS"),
+            twilio_account_sid=twilio["TWILIO_ACCOUNT_SID"],
+            twilio_auth_token=twilio["TWILIO_AUTH_TOKEN"],
+            twilio_from=twilio["TWILIO_FROM"],
+            phone=twilio["PHONE"],
         )
 
 

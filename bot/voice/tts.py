@@ -25,6 +25,29 @@ def available(model_path: Path, voices_path: Path) -> bool:
     )
 
 
+class ApiSynthesizer:
+    """OpenAI-style /audio/speech: returns OGG/Opus directly, so no ffmpeg and no model in RAM."""
+
+    def __init__(self, base_url: str, api_key: str, model: str, voice: str, instructions: str | None = None, client=None):
+        import openai
+
+        self._model = model
+        self._voice = voice
+        self._instructions = instructions
+        self._client = client or openai.AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=60.0)
+
+    async def synthesize(self, text: str, out_dir: Path) -> Path:
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        kwargs = {"model": self._model, "voice": self._voice, "input": text[:MAX_CHARS], "response_format": "opus"}
+        if self._instructions:
+            kwargs["instructions"] = self._instructions
+        response = await self._client.audio.speech.create(**kwargs)
+        path = out_dir / f"{uuid.uuid4().hex}.ogg"
+        path.write_bytes(response.content)
+        return path
+
+
 class Synthesizer:
     def __init__(self, model_path: Path, voices_path: Path, voice: str = "am_onyx"):
         self._model_path = model_path

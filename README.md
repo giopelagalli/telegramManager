@@ -91,6 +91,8 @@ chmod 600 .env
 | `HARD_MODEL` | Optional; a strong Fireworks model (e.g. GLM 5.3 or Kimi K3) for `/hard`, the explicit escape hatch to a bigger cloud model. Requires `FALLBACK_BASE_URL` and `FALLBACK_API_KEY` to also be set. |
 | `HARD_EXTRA_BODY` | Optional JSON object merged into every request to `HARD_MODEL`, e.g. `{"thinking": {"type": "enabled"}}` or `{"reasoning_effort": "high"}`. See "Thinking on Fireworks models" below. |
 | `GOOGLE_MAPS_API_KEY` | Optional. Without it, travel time falls back to the stored `travel_minutes` on each event. |
+| `TTS_API_KEY` | Optional. An OpenAI key: voice notes come from `gpt-4o-mini-tts` (voice `onyx`, style in `TTS_INSTRUCTIONS`) instead of local Kokoro. Under a dollar a month at two briefings a day. |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` / `PHONE` | Optional, all four together. A critical event's leave-now storm also rings your phone: at the first storm message and every fifth after. Save the Twilio number as a contact with Emergency Bypass so it rings through Silent and Sleep Focus. |
 | `KNOWLEDGE_DIR` | `/home/<droplet-user>/telegramManager/knowledge` |
 | `KNOWLEDGE_REMOTES` | `<spark-user>@<spark-hostname>:backups/knowledge.git,<mac-user>@<mac-hostname>:backups/knowledge.git` — see §1.3. |
 | `DATA_DIR` | `/home/<droplet-user>/telegramManager/data` |

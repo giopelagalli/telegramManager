@@ -67,7 +67,7 @@ These are the reference lines he's calibrated on. He never reuses them.
 - **Leave-by reminders** with live traffic for anything with a location. "Get ready" then
   "leave now," with a directions link.
 - **Storm mode** for events you mark critical: he keeps pinging until your phone's location
-  shows you've actually left the house.
+  shows you've actually left the house, and if Twilio is set up he rings your phone too.
 - **Study plans**: drop a syllabus, slides, or a PDF and he files it under the course. Add an
   exam and he builds a day-by-day plan and the study todos, then checks whether you did them.
 - **Memory**: facts about you stay forever. Things on your mind fade after a month.
@@ -79,7 +79,8 @@ the morning and evening briefings, so you can hear them without looking. Check-i
 only. Replies to your messages are text, unless you sent a voice note, then he answers in
 voice too. Ask for a briefing any time, "what's my day look like" or "send the evening
 briefing," and he sends it again with voice, without touching the scheduled one. Never voice on
-leave-now, that needs to be readable at a glance. The voice is Kokoro's Onyx: American, male, deep.
+leave-now, that needs to be readable at a glance. With an OpenAI key the voice is their Onyx, a
+low, dry, unhurried read; without one it is Kokoro's Onyx from the local model files.
 
 ## What he never does
 

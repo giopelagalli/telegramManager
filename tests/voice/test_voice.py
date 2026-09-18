@@ -66,3 +66,39 @@ async def test_synthesizer_unique_names(monkeypatch, tmp_path):
     out1 = await s.synthesize("hi there", tmp_path)
     out2 = await s.synthesize("hi there", tmp_path)
     assert out1 != out2
+
+
+async def test_api_synthesizer_writes_opus_and_passes_style(tmp_path):
+    class Speech:
+        def __init__(self): self.kwargs = None
+        async def create(self, **kwargs):
+            self.kwargs = kwargs
+            return types.SimpleNamespace(content=b"OggS-fake")
+    speech = Speech()
+    client = types.SimpleNamespace(audio=types.SimpleNamespace(speech=speech))
+    s = tts.ApiSynthesizer("http://t/v1", "k", "gpt-4o-mini-tts", "onyx", "dry, unhurried", client=client)
+    path = await s.synthesize("Leave now.", tmp_path / "out")
+    assert path.suffix == ".ogg" and path.read_bytes() == b"OggS-fake"
+    assert speech.kwargs["voice"] == "onyx" and speech.kwargs["response_format"] == "opus"
+    assert speech.kwargs["instructions"] == "dry, unhurried" and speech.kwargs["input"] == "Leave now."
+
+
+async def test_twilio_caller_posts_twiml_and_returns_sid():
+    import httpx
+    from bot.voice.call import TwilioCaller
+    seen = {}
+    def handler(request):
+        seen["url"] = str(request.url); seen["body"] = request.content.decode()
+        seen["auth"] = request.headers.get("authorization", "")
+        return httpx.Response(201, json={"sid": "CA123"})
+    c = TwilioCaller("AC1", "tok", "+15550001111", "+15552223333", transport=httpx.MockTransport(handler))
+    assert await c.call("Leave now for Flight & go.") == "CA123"
+    assert seen["url"].endswith("/Accounts/AC1/Calls.json") and seen["auth"].startswith("Basic ")
+    assert "To=%2B15552223333" in seen["body"] and "Flight+%26amp%3B+go" in seen["body"]
+
+
+async def test_twilio_caller_failure_returns_none():
+    import httpx
+    from bot.voice.call import TwilioCaller
+    c = TwilioCaller("AC1", "tok", "+1", "+2", transport=httpx.MockTransport(lambda r: httpx.Response(401)))
+    assert await c.call("x") is None

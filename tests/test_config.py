@@ -183,3 +183,20 @@ def test_brave_key_optional():
 def test_chat_extra_body():
     assert Settings.from_env(MIN).chat_extra_body is None
     assert Settings.from_env(dict(MIN, CHAT_EXTRA_BODY='{"thinking": {"type": "disabled"}}')).chat_extra_body == {"thinking": {"type": "disabled"}}
+
+
+def test_tts_key_derives_the_openai_speech_defaults():
+    s = Settings.from_env(BASE)
+    assert s.tts_api_key is None and s.tts_model is None
+    s = Settings.from_env(dict(BASE, TTS_API_KEY="sk"))
+    assert s.tts_base_url == "https://api.openai.com/v1" and s.tts_model == "gpt-4o-mini-tts"
+    assert s.tts_voice == "onyx" and "unhurried" in s.tts_instructions
+
+
+def test_twilio_is_all_or_nothing():
+    s = Settings.from_env(BASE)
+    assert s.twilio_account_sid is None and s.phone is None
+    s = Settings.from_env(dict(BASE, TWILIO_ACCOUNT_SID="AC", TWILIO_AUTH_TOKEN="t", TWILIO_FROM="+1", PHONE="+2"))
+    assert s.twilio_from == "+1" and s.phone == "+2"
+    with pytest.raises(ValueError, match="all four"):
+        Settings.from_env(dict(BASE, TWILIO_ACCOUNT_SID="AC"))

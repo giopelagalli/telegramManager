@@ -70,9 +70,10 @@ def leave_tick(now: datetime, state: RuntimeState, store: KnowledgeStore) -> Out
             text = f"{profile.name}, if you don't leave now you will be late for {ev.title}. Share your location to confirm."
         else:
             text = f"{profile.name}, you need to leave now. {ev.title} at {fmt_time(ev.start)}. Tap the button and share your location."
+        ring = crit.sent_count % 5 == 1  # the first storm message, then every fifth
         crit.sent_count += 1
         crit.last_sent_at = now
-        return Outbound(text=text, location_button=True, critical=True, kind="critical")
+        return Outbound(text=text, location_button=True, critical=True, call=ring, kind="critical")
 
     return None
 

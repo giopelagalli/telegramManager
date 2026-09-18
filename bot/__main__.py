@@ -21,6 +21,7 @@ from bot.telegram.app import build_application
 from bot.telegram.router import Router
 from bot.telegram.sender import Sender, channel_resolver
 from bot.voice import stt, tts
+from bot.voice.call import TwilioCaller
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,10 @@ KOKORO_MODEL = "kokoro-v1.0.onnx"
 KOKORO_VOICES = "voices-v1.0.bin"
 
 
-def _synthesizer(settings: Settings) -> tts.Synthesizer | None:
+def _synthesizer(settings: Settings) -> tts.Synthesizer | tts.ApiSynthesizer | None:
+    if settings.tts_api_key:
+        return tts.ApiSynthesizer(settings.tts_base_url, settings.tts_api_key, settings.tts_model,
+                                  settings.tts_voice, settings.tts_instructions)
     model_dir = settings.kokoro_model_dir
     model_path = model_dir / KOKORO_MODEL
     voices_path = model_dir / KOKORO_VOICES
@@ -130,6 +134,10 @@ def main() -> None:
         _synthesizer(settings),
         settings.data_dir / "tmp",
         resolve=channel_resolver(store, settings.telegram_user_id),
+        caller=(
+            TwilioCaller(settings.twilio_account_sid, settings.twilio_auth_token, settings.twilio_from, settings.phone)
+            if settings.twilio_account_sid else None
+        ),
     )
     index = None
     if settings.embed_model and settings.fallback_base_url and settings.fallback_api_key:
