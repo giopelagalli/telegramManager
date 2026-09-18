@@ -34,6 +34,18 @@ class ModelClient(Protocol):
     ) -> ModelResponse: ...
 
 
+def _one_system_message(messages: list[dict]) -> list[dict]:
+    """Qwen's chat template (vLLM) allows a single system message, and only first. We build
+    prompts as instructions + context; fold every leading system message into one."""
+    n = 0
+    while n < len(messages) and messages[n].get("role") == "system":
+        n += 1
+    if n <= 1:
+        return messages
+    merged = "\n\n".join(str(m.get("content", "")) for m in messages[:n])
+    return [{"role": "system", "content": merged}, *messages[n:]]
+
+
 class OpenAIModelClient:
     def __init__(
         self,
@@ -73,7 +85,7 @@ class OpenAIModelClient:
             extra_kwargs["extra_body"] = merged_extra_body
         response = await self._client.chat.completions.create(
             model=self.model,
-            messages=messages,
+            messages=_one_system_message(messages),
             tools=tools or NOT_GIVEN,
             tool_choice="auto" if tools else NOT_GIVEN,
             temperature=temperature,

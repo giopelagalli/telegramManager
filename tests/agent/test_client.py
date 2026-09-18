@@ -158,3 +158,20 @@ async def test_probe_resets_the_breaker_from_the_primary_answer():
     assert await fb.probe() is False and fb.breaker_open
     primary.up = True
     assert await fb.probe() is True and not fb.breaker_open
+
+
+async def test_leading_system_messages_are_folded_into_one():
+    from unittest.mock import AsyncMock
+    from bot.agent.client import OpenAIModelClient
+    client = OpenAIModelClient("http://x/v1", "k", "m")
+    client._client.chat.completions.create = AsyncMock(return_value=_make_response())
+    await client.chat([
+        {"role": "system", "content": "rules"},
+        {"role": "system", "content": "context"},
+        {"role": "user", "content": "hey"},
+        {"role": "assistant", "content": "yo"},
+        {"role": "system", "content": "late note stays where it is"},
+    ])
+    sent = client._client.chat.completions.create.call_args.kwargs["messages"]
+    assert sent[0] == {"role": "system", "content": "rules\n\ncontext"}
+    assert [m["role"] for m in sent] == ["system", "user", "assistant", "system"]
