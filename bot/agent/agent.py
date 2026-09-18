@@ -72,6 +72,7 @@ class Agent:
         self.vision = vision
         self.store = store
         self.hard_remote = False  # /hard goes to another provider than the primary: give it the minimal view
+        self.cloud: ModelClient | None = None  # the explicit opt-in for /hard: the bigger cloud model, blind view
         self.clock = clock
         self.hard = hard
 

@@ -35,7 +35,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("goals", "Your goals and where you stand", True),
     ("pause", "Quiet for 2h", True),
     ("undo", "Take back the last thing he changed", False),
-    ("hard", "Ask the bigger model, for hard questions (/hard …)", False),
+    ("hard", "Ask the bigger cloud model; it sees your schedule, not your notes (/hard …)", False),
     ("think", "Slower, more careful answers on/off (/think on)", False),
     ("help", "List commands", False),
 ]
@@ -138,9 +138,13 @@ async def _brief(arg: str, store, agent, state, now: datetime) -> list[Outbound]
 
 
 async def _hard(text: str, store, agent, now: datetime, channel: Channel | None) -> list[Outbound]:
-    if agent.hard is None:
+    """/hard is the one explicit door to the cloud model when there is one: the user typed it,
+    so they chose it. It still gets the blind view (schedule, todos, goals), not the memories."""
+    client = agent.cloud or agent.hard
+    if client is None:
         return [Outbound(HARD_UNCONFIGURED_REPLY, kind="reply")]
-    model_name = getattr(agent.hard, "model", "the hard model")
+    remote = agent.cloud is not None or agent.hard_remote
+    model_name = getattr(client, "model", "the hard model")
 
     if channel is not None and channel.kind == "course":
         try:
@@ -148,9 +152,9 @@ async def _hard(text: str, store, agent, now: datetime, channel: Channel | None)
         except KeyError:
             return [Outbound("This topic's course file is gone.", kind="reply")]
         sources = select_sources(text, store.sources(channel.course), store.profile().tutor_context_chars)
-        answer, _note = await agent.tutor(text, course, sources, notes_tool=False, client=agent.hard)
+        answer, _note = await agent.tutor(text, course, sources, notes_tool=False, client=client)
     else:
-        answer = await agent.answer(text, agent.context(now, remote=agent.hard_remote), client=agent.hard)
+        answer = await agent.answer(text, agent.context(now, remote=remote), client=client)
 
     if answer is None:
         return [Outbound(HARD_OFFLINE_REPLY, kind="reply")]

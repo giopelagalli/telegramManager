@@ -128,6 +128,12 @@ def main() -> None:
     agent = Agent(client, vision, store, clock.now, hard=hard, search=search is not None)
     # /hard on another provider than the primary only gets the minimal view
     agent.hard_remote = bool(settings.hard_model) and settings.hard_base_url != settings.openai_base_url
+    if settings.fallback_model:
+        # /hard is the explicit opt-in to the cloud model; everything automatic stays on the primary
+        agent.cloud = OpenAIModelClient(
+            settings.fallback_base_url, settings.fallback_api_key, settings.fallback_model,
+            enable_thinking=None, extra_body=settings.fallback_extra_body, timeout=300,
+        )
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 
     sender = Sender(

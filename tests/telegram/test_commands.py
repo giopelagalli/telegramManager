@@ -217,3 +217,16 @@ async def test_quick_keys_are_commands_not_captured(rig):
     outs = await r.on_text("today")
     assert "T0" in outs[0].text
     assert r.agent.client.calls == []
+
+
+async def test_hard_prefers_the_cloud_opt_in_with_the_blind_view(tmp_path):
+    hard = FakeModelClient([ModelResponse("spark says", [])], model="qwen")
+    cloud = FakeModelClient([ModelResponse("cloud says", [])], model="deepseek")
+    r, store, primary = _rig_with_hard(tmp_path, hard)
+    store.add_memory("Sister is Anna", kind="fact"); store.commit("m")
+    r.agent.cloud = cloud
+    out = (await r.command("hard", "what should I do?", channel=DM))[0]
+    assert "cloud says" in out.text and "deepseek" in out.text
+    assert hard.calls == [] and len(cloud.calls) == 1
+    sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
+    assert "Anna" not in sent and "Backup model: schedule, todos and goals only." in sent
