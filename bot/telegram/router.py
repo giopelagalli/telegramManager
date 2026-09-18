@@ -102,6 +102,8 @@ def _stored_reply(source: Source, course: Course) -> str:
     )
 
 
+SPARK_DOWN_WAIT = "Spark's down. That one waits till it's back — the backup only gets your schedule."
+
 class Router:
     """Turns a user action into a list of outbound messages. No telegram types here."""
 
@@ -275,6 +277,8 @@ class Router:
         if pending is not None and pending.kind == "photo":
             return [await self._verify_photo(pending, image)]
 
+        if self.agent.degraded:
+            return [Outbound(SPARK_DOWN_WAIT, kind="reply")]
         kind, description = await self.agent.look(image)
         if kind != "photo":
             return await self._ingest_photo(image, caption, None, kind=kind)
@@ -635,6 +639,9 @@ class Router:
         await self._geocode_home(result.actions)
         travel_lines = await self._geocode_events(result.actions, applied)
         plan_lines = await self._plan_new_exams(result.actions, now)
+
+        if self.agent.degraded and any(a.name in ("coach", "recall", "study") for a in result.actions):
+            return [Outbound(SPARK_DOWN_WAIT, kind="reply")]
 
         briefing = next((a for a in result.actions if a.name == "briefing"), None)
         if briefing is not None:

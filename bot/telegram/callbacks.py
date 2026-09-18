@@ -4,7 +4,6 @@ from datetime import timedelta
 
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
-from bot.agent.prompts import build_context
 from bot.knowledge.views import esc
 from bot.scheduler.chains import close_chain
 from bot.scheduler.outbound import Outbound
@@ -72,7 +71,7 @@ async def _done(path, store, agent, state, now, message_id, message_html, remain
     question = None
     if todo.verify == "question":
         question = await agent.compose(
-            "verify_question", build_context(store, now), f"How did {todo.title} go?"
+            "verify_question", agent.context(now), f"How did {todo.title} go?"
         )
         text = md_to_html(question)
     else:

@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 PENDING_VERIFY_TTL = timedelta(minutes=10)
 SENT_TIMES_CAP = 200
+BACKEND_PROBE_EVERY = timedelta(seconds=60)
+SPARK_DOWN_TEXT = (
+    "Spark's down. Backup model until it's back: it gets your schedule and todos, nothing else. "
+    "Memory, notes, photos and voice wait."
+)
+SPARK_UP_TEXT = "Spark's back."
 
 
 class Engine:
@@ -29,6 +35,7 @@ class Engine:
         self.sender = sender
         self.maps = maps
         self.sent_times: list[datetime] = []
+        self._last_probe: datetime | None = None
 
     # -- hooks -----------------------------------------------------------
 
@@ -52,6 +59,7 @@ class Engine:
 
         for step in (
             self._prune,
+            self._backend,
             self._reminders,
             self._sprint,
             self._critical_leave,
@@ -105,6 +113,20 @@ class Engine:
             self.state.fired.add(key)
             if self.store.materialize(now):
                 self.store.commit("schedule: materialize weekly events")
+
+    async def _backend(self, now: datetime, sent: list[Outbound]) -> None:
+        """Notice the primary model going down or coming back, and say so once each way."""
+        probe = getattr(self.agent.client, "probe", None)
+        if probe is None:
+            return
+        if self._last_probe is not None and now < self._last_probe + BACKEND_PROBE_EVERY:
+            return
+        self._last_probe = now
+        down = not await probe()
+        if down == self.state.backend_down:
+            return
+        self.state.backend_down = down
+        await self._send(Outbound(SPARK_DOWN_TEXT if down else SPARK_UP_TEXT, kind="reply"), now, sent)
 
     async def _reminders(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await due_reminders(now, self.store, self.state, self.maps):

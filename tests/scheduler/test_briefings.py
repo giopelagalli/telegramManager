@@ -13,6 +13,7 @@ NY = ZoneInfo("America/New_York")
 def T(h, m=0, d=3): return datetime(2026, 9, d, h, m, tzinfo=NY)
 
 class FakeAgent:
+    def context(self, now, awaiting=None, remote=False): return "ctx"
     async def compose(self, kind, context, fallback): return "Make it count."
 
 @pytest.fixture
@@ -71,6 +72,7 @@ async def test_due_briefings_fire_once_and_open_chain(store):
 
 async def test_composed_prose_is_escaped(store):
     class HtmlAgent:
+        def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "Watch out <b>now</b>."
     s = RuntimeState.load(Path("/nonexistent"))
     out = (await due_briefings(T(8), store, s, HtmlAgent()))[0]
@@ -79,6 +81,7 @@ async def test_composed_prose_is_escaped(store):
 
 async def test_evening_escapes_composed_prose(store):
     class Sharp:
+        def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "<Dune> & rest"
 
     s = RuntimeState.load(Path("/nonexistent"))
@@ -88,6 +91,7 @@ async def test_evening_escapes_composed_prose(store):
 
 async def test_composed_prose_markdown_bold(store):
     class MdAgent:
+        def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "**Nice work**"
     s = RuntimeState.load(Path("/nonexistent"))
     out = (await due_briefings(T(8), store, s, MdAgent()))[0]

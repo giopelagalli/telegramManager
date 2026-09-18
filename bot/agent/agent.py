@@ -12,6 +12,7 @@ import logging
 
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
+    BACKUP_NOTE,
     CLASSIFY_PHOTO_SYSTEM,
     LOOK_SYSTEM,
     COACH_SYSTEM,
@@ -69,14 +70,27 @@ class Agent:
         self.client = client
         self.vision = vision
         self.store = store
+        self.hard_remote = False  # /hard goes to another provider than the primary: give it the minimal view
         self.clock = clock
         self.hard = hard
+
+    @property
+    def degraded(self) -> bool:
+        """True while the primary model is unreachable and the backup is answering."""
+        return bool(getattr(self.client, "breaker_open", False))
+
+    def context(self, now: datetime, awaiting: str | None = None, *, remote: bool = False) -> str:
+        """The context for this moment: the full view on the primary, the minimal one on a backup."""
+        return build_context(self.store, now, awaiting, minimal=self.degraded or remote)
 
     async def capture(self, text: str, awaiting: str | None = None, recent: list | None = None) -> CaptureResult:
         now = self.clock()
         profile = self.store.profile()
         system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat(), voice=VOICE)
-        context = build_context(self.store, now, awaiting)
+        if self.degraded:
+            system += "\n\n" + BACKUP_NOTE
+            recent = []  # the conversation so far stays home too
+        context = self.context(now, awaiting)
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": context},

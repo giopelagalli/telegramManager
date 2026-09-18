@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from bot.agent.prompts import build_context
 from bot.knowledge.models import Event, Profile, hm_to_time
 from bot.knowledge.ranking import top
 from bot.knowledge.store import KnowledgeStore
@@ -81,7 +80,7 @@ async def due_checkin(now: datetime, store: KnowledgeStore, state: RuntimeState,
         parts.append("Done?")
         fallback = " ".join(parts)
 
-        context = build_context(store, now)
+        context = agent.context(now)
         text = md_to_html(await agent.compose("checkin", context, fallback))
 
         item = (top1.title if top1 else None) or (next_event.title if next_event else None) or ""

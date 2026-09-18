@@ -144,3 +144,17 @@ async def test_other_exception_propagates_without_opening_breaker():
         await client.chat([])
     assert fallback.calls == 0
     assert client.breaker_open is False
+
+
+async def test_probe_resets_the_breaker_from_the_primary_answer():
+    from bot.agent.client import FallbackModelClient
+    class Primary:
+        def __init__(self): self.up = False
+        async def alive(self): return self.up
+        async def chat(self, *a, **k): raise AssertionError("not used")
+    primary = Primary()
+    t = [0.0]
+    fb = FallbackModelClient(primary, primary, cooldown_seconds=600, clock=lambda: t[0])
+    assert await fb.probe() is False and fb.breaker_open
+    primary.up = True
+    assert await fb.probe() is True and not fb.breaker_open

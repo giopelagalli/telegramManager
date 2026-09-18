@@ -4,7 +4,6 @@ import logging
 
 from datetime import date, datetime, timedelta
 
-from bot.agent.prompts import build_context
 from bot.knowledge.models import Profile, hm_to_time
 from bot.knowledge.ranking import goal_progress, top
 from bot.knowledge.store import KnowledgeStore
@@ -139,7 +138,7 @@ def _chain_item(store: KnowledgeStore, day: date) -> str:
 
 
 async def _compose_prose(store: KnowledgeStore, now: datetime, agent) -> str:
-    context = build_context(store, now)
+    context = agent.context(now)
     return await agent.compose("briefing", context, _FALLBACK_PROSE)
 
 

@@ -10,6 +10,7 @@ FIREWORKS_URL = "https://api.fireworks.ai/inference/v1"
 FIREWORKS_AUDIO_URL = "https://audio-prod.us-virginia-1.direct.fireworks.ai/v1"
 FIREWORKS_MODEL_DEFAULT = "accounts/fireworks/models/deepseek-v4p1-flash"
 FIREWORKS_STT_DEFAULT = "whisper-v3"
+SPARK_EMBED_DEFAULT = "nomic-ai/nomic-embed-text-v1.5"
 OPENAI_TTS_URL = "https://api.openai.com/v1"
 OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
 OPENAI_TTS_VOICE = "onyx"
@@ -38,24 +39,36 @@ def _derive(e: Mapping[str, str]) -> dict[str, str]:
     fw_model = d.get("FIREWORKS_MODEL", "").strip() or FIREWORKS_MODEL_DEFAULT
     spark = d.get("SPARK_URL", "").strip()
     spark_model = d.get("SPARK_MODEL", "").strip() or SPARK_MODEL_DEFAULT
+    voice = d.get("SPARK_VOICE_URL", "").strip()
     if spark:
+        # Spark first. Fireworks is chat fallback and /hard only: photos, voice notes and the
+        # memory index never leave the house — they are off until the Spark's voice server exists.
         default("OPENAI_BASE_URL", spark); default("OPENAI_API_KEY", "unused")
         default("CHAT_MODEL", spark_model); default("CHAT_ENABLE_THINKING", "false")
         default("VISION_BASE_URL", spark); default("VISION_MODEL", spark_model)
         if key:
-            default("FALLBACK_MODEL", fw_model); default("FALLBACK_VISION_MODEL", fw_model)
+            default("FALLBACK_MODEL", fw_model)
     elif key:
         default("OPENAI_BASE_URL", FIREWORKS_URL); default("OPENAI_API_KEY", key)
         default("CHAT_MODEL", fw_model)
         default("VISION_BASE_URL", FIREWORKS_URL); default("VISION_MODEL", fw_model)
-    if key:
+        default("EMBED_BASE_URL", FIREWORKS_URL); default("EMBED_API_KEY", key)
         default("EMBED_MODEL", FIREWORKS_EMBED_DEFAULT)
-        default("FALLBACK_BASE_URL", FIREWORKS_URL); default("FALLBACK_API_KEY", key)
-        default("HARD_MODEL", fw_model)
         if "STT_PROVIDER" not in d:
             d["STT_PROVIDER"] = "api"
             default("STT_BASE_URL", FIREWORKS_AUDIO_URL); default("STT_API_KEY", key)
             default("STT_MODEL", d.get("FIREWORKS_STT_MODEL", "").strip() or FIREWORKS_STT_DEFAULT)
+    if key:
+        default("FALLBACK_BASE_URL", FIREWORKS_URL); default("FALLBACK_API_KEY", key)
+        default("HARD_MODEL", fw_model)
+    if voice:
+        # The Spark's voice server (spark/voice_server.py): whisper in, speech out, embeddings.
+        if "STT_PROVIDER" not in d:
+            d["STT_PROVIDER"] = "api"
+        default("STT_BASE_URL", voice); default("STT_API_KEY", "unused"); default("STT_MODEL", "whisper")
+        default("TTS_API_KEY", "unused"); default("TTS_BASE_URL", voice)
+        default("TTS_MODEL", "kokoro"); default("TTS_VOICE", "am_onyx"); default("TTS_INSTRUCTIONS", "")
+        default("EMBED_BASE_URL", voice); default("EMBED_API_KEY", "unused"); default("EMBED_MODEL", SPARK_EMBED_DEFAULT)
     if d.get("TTS_API_KEY", "").strip():
         default("TTS_BASE_URL", OPENAI_TTS_URL); default("TTS_MODEL", OPENAI_TTS_MODEL)
         default("TTS_VOICE", OPENAI_TTS_VOICE); default("TTS_INSTRUCTIONS", TTS_INSTRUCTIONS_DEFAULT)
@@ -98,6 +111,8 @@ class Settings:
     kokoro_model_dir: Path
     brave_api_key: str | None
     embed_model: str | None
+    embed_base_url: str | None
+    embed_api_key: str | None
     tts_api_key: str | None
     tts_base_url: str | None
     tts_model: str | None
@@ -180,6 +195,8 @@ class Settings:
             kokoro_model_dir=Path(req("KOKORO_MODEL_DIR")),
             brave_api_key=opt("BRAVE_API_KEY"),
             embed_model=opt("EMBED_MODEL"),
+            embed_base_url=opt("EMBED_BASE_URL"),
+            embed_api_key=opt("EMBED_API_KEY"),
             tts_api_key=opt("TTS_API_KEY"),
             tts_base_url=opt("TTS_BASE_URL"),
             tts_model=opt("TTS_MODEL"),

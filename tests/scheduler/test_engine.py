@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 import pytest
-from bot.agent.client import FakeModelClient
+from bot.agent.client import FakeModelClient, ModelResponse
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.models import Todo, Event
@@ -151,3 +151,26 @@ async def test_state_is_saved_before_a_send_so_a_crash_cannot_repeat_it(rig):
     clock.set(T(8, 0))
     await eng.tick()  # the morning briefing "sends" and the process would die here
     assert "morning:2026-09-03" in RuntimeState.load(eng.state_path).fired
+
+
+async def test_engine_announces_the_spark_going_down_and_coming_back(rig):
+    eng, clock, sink, state, store = rig
+    class Probing:
+        def __init__(self): self.up = True; self.breaker_open = False
+        async def probe(self): self.breaker_open = not self.up; return self.up
+        async def chat(self, *a, **k): return ModelResponse("x", [])
+    eng.agent.client = Probing()
+    state.fired |= {"morning:2026-09-03"}
+    await eng.tick()
+    assert not [o for o in sink.sent if "Spark" in o.text]
+    eng.agent.client.up = False
+    clock.advance(seconds=61); await eng.tick()
+    assert [o.text for o in sink.sent if "Spark" in o.text] == [
+        "Spark's down. Backup model until it's back: it gets your schedule and todos, nothing else. "
+        "Memory, notes, photos and voice wait."
+    ] and state.backend_down
+    clock.advance(seconds=61); await eng.tick()  # still down: no repeat
+    assert len([o for o in sink.sent if "Spark" in o.text]) == 1
+    eng.agent.client.up = True
+    clock.advance(seconds=61); await eng.tick()
+    assert [o.text for o in sink.sent if "Spark" in o.text][-1] == "Spark's back." and not state.backend_down

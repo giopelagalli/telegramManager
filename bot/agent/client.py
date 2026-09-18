@@ -49,6 +49,14 @@ class OpenAIModelClient:
         self.enable_thinking = enable_thinking
         self.extra_body = extra_body
 
+    async def alive(self) -> bool:
+        """Cheap reachability check (GET /models), for noticing the Spark going down or coming back."""
+        try:
+            await self._client.with_options(timeout=5.0).models.list()
+            return True
+        except Exception:
+            return False
+
     async def chat(
         self,
         messages: list[dict],
@@ -113,6 +121,17 @@ class FallbackModelClient:
     @property
     def breaker_open(self) -> bool:
         return self._clock() < self._open_until
+
+    async def probe(self) -> bool:
+        """Ask the primary directly whether it is up, and reset the breaker to match. True = primary."""
+        alive = getattr(self._primary, "alive", None)
+        if alive is None:
+            return not self.breaker_open
+        if await alive():
+            self._open_until = 0.0
+            return True
+        self._open_until = self._clock() + self._cooldown_seconds
+        return False
 
     async def chat(
         self,

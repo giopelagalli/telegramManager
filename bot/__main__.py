@@ -126,6 +126,7 @@ def main() -> None:
     search = BraveSearch(settings.brave_api_key) if settings.brave_api_key else None
     briefings.WEATHER = MorningWeather(settings.google_maps_api_key)
     agent = Agent(client, vision, store, clock.now, hard=hard, search=search is not None)
+    agent.hard_remote = bool(settings.fallback_model)  # a Spark primary with Fireworks behind it
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 
     sender = Sender(
@@ -140,9 +141,9 @@ def main() -> None:
         ),
     )
     index = None
-    if settings.embed_model and settings.fallback_base_url and settings.fallback_api_key:
+    if settings.embed_model and settings.embed_base_url and settings.embed_api_key:
         index = VectorIndex(settings.data_dir / "index.json",
-                            Embedder(settings.fallback_base_url, settings.fallback_api_key, settings.embed_model))
+                            Embedder(settings.embed_base_url, settings.embed_api_key, settings.embed_model))
     router = Router(store, agent, state, clock, maps, search=search, index=index)
     engine = Engine(store, agent, state, state_path, clock, sender, maps)
 

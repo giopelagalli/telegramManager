@@ -11,6 +11,7 @@ NY = ZoneInfo("America/New_York")
 def T(h, m=0): return datetime(2026, 9, 3, h, m, tzinfo=NY)
 
 class FakeAgent:
+    def context(self, now, awaiting=None, remote=False): return "ctx"
     def __init__(self): self.kinds = []
     async def compose(self, kind, context, fallback): self.kinds.append(kind); return fallback
 
@@ -69,6 +70,7 @@ def test_close_chain():
 
 async def test_composed_prose_is_escaped(store):
     class HtmlAgent:
+        def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "Do it <b>now</b>."
     s = RuntimeState.load(Path("/nonexistent")); s.chain = Chain("checkin", T(10), T(10), 0, "X", [])
     out = await due_followup(T(10, 20), store, s, HtmlAgent())
@@ -76,6 +78,7 @@ async def test_composed_prose_is_escaped(store):
 
 async def test_composed_prose_markdown_bold(store):
     class MdAgent:
+        def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "**Nice work**"
     s = RuntimeState.load(Path("/nonexistent")); s.chain = Chain("checkin", T(10), T(10), 0, "X", [])
     out = await due_followup(T(10, 20), store, s, MdAgent())

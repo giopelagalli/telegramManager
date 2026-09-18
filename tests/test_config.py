@@ -159,7 +159,22 @@ def test_spark_plus_fireworks_derives_fallback():
     s = Settings.from_env(dict(MIN, SPARK_URL="http://spark:8888/v1"))
     assert s.openai_base_url == "http://spark:8888/v1" and s.chat_model == "qwen3.8-flash-next"
     assert s.chat_enable_thinking is False and s.vision_base_url == "http://spark:8888/v1"
-    assert s.fallback_model.endswith("deepseek-v4p1-flash") and s.fallback_vision_model == s.fallback_model
+    assert s.fallback_model.endswith("deepseek-v4p1-flash")
+    # privacy: with the Spark in front, photos, voice notes and the memory index never go to Fireworks
+    assert s.fallback_vision_model is None and s.stt_provider == "local" and s.embed_base_url is None
+
+
+def test_spark_voice_server_drives_stt_tts_and_embeddings():
+    s = Settings.from_env(dict(MIN, SPARK_URL="http://spark:8888/v1", SPARK_VOICE_URL="http://spark:8890/v1"))
+    assert s.stt_provider == "api" and s.stt_base_url == "http://spark:8890/v1" and s.stt_model == "whisper"
+    assert s.tts_base_url == "http://spark:8890/v1" and s.tts_model == "kokoro" and s.tts_voice == "am_onyx"
+    assert s.embed_base_url == "http://spark:8890/v1" and s.embed_model == "nomic-ai/nomic-embed-text-v1.5"
+
+
+def test_fireworks_only_keeps_embeddings_and_stt_on_fireworks():
+    s = Settings.from_env(MIN)
+    assert s.embed_base_url == "https://api.fireworks.ai/inference/v1" and s.embed_model
+    assert s.stt_provider == "api"
 
 def test_explicit_advanced_vars_win():
     s = Settings.from_env(dict(MIN, SPARK_URL="http://spark:8888/v1", OPENAI_BASE_URL="http://other/v1", STT_PROVIDER="local"))

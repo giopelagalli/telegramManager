@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from datetime import datetime, time, timedelta
 
-from bot.agent.prompts import build_context
 from bot.knowledge.models import Channel
 from bot.knowledge.ranking import top
 from bot.knowledge.views import (
@@ -151,7 +150,7 @@ async def _hard(text: str, store, agent, now: datetime, channel: Channel | None)
         sources = select_sources(text, store.sources(channel.course), store.profile().tutor_context_chars)
         answer, _note = await agent.tutor(text, course, sources, notes_tool=False, client=agent.hard)
     else:
-        answer = await agent.answer(text, build_context(store, now), client=agent.hard)
+        answer = await agent.answer(text, agent.context(now, remote=agent.hard_remote), client=agent.hard)
 
     if answer is None:
         return [Outbound(HARD_OFFLINE_REPLY, kind="reply")]

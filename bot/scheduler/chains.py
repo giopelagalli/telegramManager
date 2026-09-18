@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from bot.agent.prompts import build_context
 from bot.knowledge.models import Profile
 from bot.knowledge.store import KnowledgeStore
 from bot.scheduler.outbound import Outbound
@@ -56,7 +55,7 @@ async def due_followup(now: datetime, store: KnowledgeStore, state: RuntimeState
         goal = goals[0].title if goals else ""
         fallback = _FALLBACKS[chain.step].format(name=profile.name, item=chain.item, goal=goal)
 
-    context = build_context(store, now)
+    context = agent.context(now)
     context += f"\nFollow-up step: {chain.step}\nItem: {chain.item}\nHistory: {chain.history}"
 
     text = md_to_html(await agent.compose("followup", context, fallback))

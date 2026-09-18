@@ -143,10 +143,19 @@ When the message is study content rather than a question — notes, a definition
 {name} wants kept — call `save_note` with the text and its topics instead of answering."""
 
 
-def build_context(store, now: datetime, awaiting: str | None = None) -> str:
+BACKUP_NOTE = """You are the backup model while the user's own server (the Spark) is down. You have only
+their schedule, todos and goals — no memories, notes, files or history, on purpose. If they ask
+about any of those, say it waits until the Spark is back. Keep everything else the same."""
+
+
+def build_context(store, now: datetime, awaiting: str | None = None, minimal: bool = False) -> str:
+    """What the model gets to see. `minimal` is the backup-model view: schedule, todos, goals,
+    nothing personal."""
     profile = store.profile()
     lines = [f"Name: {profile.name}", f"Timezone: {profile.timezone}"]
-    if profile.body.strip():
+    if minimal:
+        lines.append("Backup model: schedule, todos and goals only.")
+    elif profile.body.strip():
         lines.append(profile.body.strip())
     lines.append("Check-ins: " + (", ".join(profile.checkin_times) if profile.checkin_times else "off"))
 
@@ -177,7 +186,7 @@ def build_context(store, now: datetime, awaiting: str | None = None) -> str:
     else:
         lines.append("- none")
 
-    memories = store.memories()
+    memories = [] if minimal else store.memories()
     facts = [m for m in memories if m.kind == "fact"][-40:]
     if facts:
         lines.append("Things I know about them:")
@@ -196,11 +205,11 @@ def build_context(store, now: datetime, awaiting: str | None = None) -> str:
             until = f" until {e.repeat_until}" if e.repeat_until else ""
             lines.append(f"- [{e.path}] {e.title} {'/'.join(e.repeat_days)} {e.start:%H:%M}{until}")
 
-    if profile.places:
+    if profile.places and not minimal:
         lines.append("Places: " + "; ".join(f"{k} ({v})" for k, v in profile.places.items())
                      + f". Home right now: {profile.base or 'unset'}")
 
-    courses = store.courses()
+    courses = [] if minimal else store.courses()
     if courses:
         lines.append("Courses:")
         for c in courses:

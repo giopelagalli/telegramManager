@@ -12,6 +12,7 @@ D = date(2026, 9, 3)
 def T(h, m=0): return datetime(2026, 9, 3, h, m, tzinfo=NY)
 
 class FakeAgent:
+    def context(self, now, awaiting=None, remote=False): return "ctx"
     async def compose(self, kind, context, fallback): return f"[{kind}] " + fallback
 
 @pytest.fixture
@@ -56,6 +57,7 @@ async def test_skipped_checkin_is_consumed(store):
 
 async def test_composed_prose_is_escaped(store):
     class HtmlAgent:
+        def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "Check in <b>now</b>."
     store.add(Todo(path="", title="Ship it")); store.commit("t")
     s = RuntimeState.load(Path("/nonexistent"))
@@ -65,6 +67,7 @@ async def test_composed_prose_is_escaped(store):
 
 async def test_composed_prose_markdown_bold(store):
     class MdAgent:
+        def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "**Nice work**"
     store.add(Todo(path="", title="Ship it")); store.commit("t")
     s = RuntimeState.load(Path("/nonexistent"))
@@ -77,6 +80,7 @@ async def test_empty_day_gets_one_planning_prompt_and_no_chain(store):
     from bot.scheduler.checkins import EMPTY_DAY_PROMPT, due_checkin, checkin_slots
     s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
     class Quiet:
+        def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return fallback
     agent = Quiet()
     slots = checkin_slots(store.profile(), T(9).date())
