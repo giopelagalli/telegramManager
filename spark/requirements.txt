@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+faster-whisper>=1.0
+kokoro-onnx>=0.4
+soundfile>=0.12
+numpy
+sentence-transformers>=3.0
+einops
+# optional, for a more human voice: pip install chatterbox-tts   (needs torch with CUDA)
