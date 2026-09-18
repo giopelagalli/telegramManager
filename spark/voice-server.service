@@ -5,7 +5,8 @@ After=network-online.target
 [Service]
 User=__USER__
 WorkingDirectory=__ROOT__/spark
-Environment=WHISPER_MODEL=large-v3-turbo
+Environment=VOICE_DEVICE=cpu
+Environment=WHISPER_MODEL=small
 Environment=TTS_ENGINE=kokoro
 Environment=KOKORO_MODEL_DIR=__ROOT__/spark/models
 ExecStart=__ROOT__/spark/.venv/bin/uvicorn voice_server:app --host 0.0.0.0 --port 8890

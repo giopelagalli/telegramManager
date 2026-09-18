@@ -25,7 +25,11 @@ from pydantic import BaseModel
 
 app = FastAPI(title="spark-voice")
 
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "large-v3-turbo")
+# CPU by default, on purpose: the Spark's 121 GiB pool is shared with vLLM and the host reserve
+# is what keeps the kernel from hanging. Whisper `small` on 20 ARM cores is a few seconds per
+# voice note. Set VOICE_DEVICE=cuda and WHISPER_MODEL=large-v3-turbo only if the budget allows.
+VOICE_DEVICE = os.environ.get("VOICE_DEVICE", "cpu")
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 TTS_ENGINE = os.environ.get("TTS_ENGINE", "kokoro")  # kokoro | chatterbox
 KOKORO_DIR = Path(os.environ.get("KOKORO_MODEL_DIR", str(Path(__file__).parent / "models")))
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "nomic-ai/nomic-embed-text-v1.5")
@@ -37,6 +41,8 @@ _lock = asyncio.Lock()
 
 
 def _device() -> str:
+    if VOICE_DEVICE != "cuda":
+        return "cpu"
     try:
         import torch
 
