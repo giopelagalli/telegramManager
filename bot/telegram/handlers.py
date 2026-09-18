@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from telegram import ReactionTypeEmoji
@@ -43,6 +45,20 @@ class Handlers:
         except Exception:
             logger.debug("typing action failed", exc_info=True)
 
+    @asynccontextmanager
+    async def _busy(self, message):
+        """Keep the typing indicator up for as long as the work takes; Telegram drops it after ~5s."""
+        async def keep():
+            while True:
+                await asyncio.sleep(4)
+                await self._typing(message)
+        await self._typing(message)
+        task = asyncio.create_task(keep())
+        try:
+            yield
+        finally:
+            task.cancel()
+
     async def _outcome(self, message) -> None:
         # Only mark the one case worth knowing about: the message went to the inbox unparsed.
         if self.router.last_outcome == "inbox":
@@ -70,8 +86,8 @@ class Handlers:
     async def on_text(self, update, context) -> None:
         message = update.effective_message
         logger.info("text from %s: %r", getattr(getattr(update, "effective_user", None), "id", None), (message.text or "")[:40])
-        await self._typing(message)
-        outs = await self.router.on_text(message.text, channel=self._channel(update))
+        async with self._busy(message):
+            outs = await self.router.on_text(message.text, channel=self._channel(update))
         await self._outcome(message)
         await self._send(outs)
 
@@ -81,21 +97,21 @@ class Handlers:
         if self.transcriber is None:
             await self._send(await self.router.on_voice_unavailable(channel=channel))
             return
-        await self._typing(message)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         voice = message.voice
         path = self.tmp_dir / f"{voice.file_id}.ogg"
-        file = await voice.get_file()
-        await file.download_to_drive(path)
-        try:
-            text, confidence = await self.transcriber.transcribe(path)
-        except Exception as exc:
-            reason = str(exc) or type(exc).__name__
-            await self._send(await self.router.on_voice_failed(reason, channel=channel))
-            return
-        finally:
-            path.unlink(missing_ok=True)
-        outs = await self.router.on_text(text, via_voice=True, channel=channel)
+        async with self._busy(message):
+            file = await voice.get_file()
+            await file.download_to_drive(path)
+            try:
+                text, confidence = await self.transcriber.transcribe(path)
+            except Exception as exc:
+                reason = str(exc) or type(exc).__name__
+                await self._send(await self.router.on_voice_failed(reason, channel=channel))
+                return
+            finally:
+                path.unlink(missing_ok=True)
+            outs = await self.router.on_text(text, via_voice=True, channel=channel)
         await self._outcome(message)
         if outs and confidence < LOW_CONFIDENCE:
             outs[0].text = f"Heard: “{esc(text)}”\n" + outs[0].text
@@ -107,11 +123,12 @@ class Handlers:
         if _too_large(getattr(photo, "file_size", None)):
             await self._send(await self.router.on_file_too_large(channel=self._channel(update)))
             return
-        file = await photo.get_file()
-        image = await file.download_as_bytearray()
-        outs = await self.router.on_photo(
-            bytes(image), message.caption, channel=self._channel(update)
-        )
+        async with self._busy(message):
+            file = await photo.get_file()
+            image = await file.download_as_bytearray()
+            outs = await self.router.on_photo(
+                bytes(image), message.caption, channel=self._channel(update)
+            )
         await self._outcome(message)
         await self._send(outs)
 
@@ -126,16 +143,12 @@ class Handlers:
         if _too_large(getattr(document, "file_size", None)):
             await self._send(await self.router.on_file_too_large(channel=channel))
             return
-        await self._typing(message)
-        file = await document.get_file()
-        data = await file.download_as_bytearray()
-        outs = await self.router.on_document(
-            bytes(data),
-            document.file_name or "",
-            document.mime_type or "",
-            message.caption,
-            channel=channel,
-        )
+        async with self._busy(message):
+            file = await document.get_file()
+            data = await file.download_as_bytearray()
+            outs = await self.router.on_document(
+                bytes(data), document.file_name or "", document.mime_type or "", message.caption, channel=channel
+            )
         await self._outcome(message)
         await self._send(outs)
 
