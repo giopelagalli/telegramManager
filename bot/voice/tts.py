@@ -34,7 +34,7 @@ class ApiSynthesizer:
         self._model = model
         self._voice = voice
         self._instructions = instructions
-        self._client = client or openai.AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=60.0)
+        self._client = client or openai.AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=180.0)  # CPU synthesis is slow
 
     async def synthesize(self, text: str, out_dir: Path) -> Path:
         out_dir = Path(out_dir)

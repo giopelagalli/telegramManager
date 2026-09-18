@@ -42,7 +42,11 @@ def build_application(settings, router, sender, transcriber=None) -> Application
         await context.bot.send_message(chat.id, ERROR_REPLY, **thread)
 
     app = (
-        Application.builder().token(settings.telegram_bot_token).post_init(post_init).build()
+        Application.builder()
+        .token(settings.telegram_bot_token)
+        .media_write_timeout(120)  # voice notes upload from home wifi; the default 20s cut long ones off
+        .post_init(post_init)
+        .build()
     )
     for name, _description, _menu in COMMANDS:
         app.add_handler(CommandHandler(name, handlers.command(name), filters=only_me))

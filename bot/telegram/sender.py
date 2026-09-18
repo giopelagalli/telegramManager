@@ -140,14 +140,11 @@ class Sender:
             logger.exception("voice synthesis failed, skipping voice leg")
             return
         try:
-            data = path.read_bytes()
-            await self._retry(
-                lambda: self.bot.send_voice(
-                    chat_id=chat_id, voice=data, disable_notification=silent, **thread
-                )
-            )
+            # No retry on the voice leg: a slow upload that Telegram actually accepted would be
+            # sent twice, and a missing voice note is better than a duplicated one.
+            await self.bot.send_voice(chat_id=chat_id, voice=path.read_bytes(), disable_notification=silent, **thread)
         except NetworkError as exc:
-            logger.error("send_voice gave up after retries: %s", exc)
+            logger.error("send_voice failed, skipping voice leg: %s", exc)
         finally:
             path.unlink(missing_ok=True)
 

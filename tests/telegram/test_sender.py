@@ -91,7 +91,7 @@ def test_plain_text_strips_markup():
     assert plain_text("<b>a</b>\n<i>b</i>") == "a\nb"
 
 
-async def test_voice_retry_resends_full_bytes(tmp_path, no_sleep):
+async def test_voice_is_sent_once_and_never_retried(tmp_path, no_sleep):
     bot = FakeBot(voice_fail_times=1)
 
     class FakeSynth:
@@ -102,9 +102,9 @@ async def test_voice_retry_resends_full_bytes(tmp_path, no_sleep):
 
     await Sender(bot, 7, FakeSynth(), tmp_path).send(Outbound("hi", voice=True))
     voice_calls = [kwargs for name, kwargs in bot.calls if name == "send_voice"]
-    assert len(voice_calls) == 2
-    assert voice_calls[0]["voice"] == b"full ogg bytes"
-    assert voice_calls[1]["voice"] == b"full ogg bytes"
+    assert len(voice_calls) == 1 and voice_calls[0]["voice"] == b"full ogg bytes"
+    assert bot.calls[0][0] == "send_message"  # the text still went out
+    assert not (tmp_path / "v.ogg").exists()
 
 
 async def test_edit_replaces_text_and_keyboard():
