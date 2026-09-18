@@ -130,7 +130,8 @@ class Agent:
     async def _chat_or_none(self, messages, tools, temperature, client: ModelClient | None = None):
         try:
             return await (client or self.client).chat(messages, tools=tools, temperature=temperature)
-        except Exception:
+        except Exception as exc:
+            logger.error("model call failed: %s: %s", type(exc).__name__, str(exc)[:500])
             return None
 
     def _to_inbox(self, text: str, reply: str) -> CaptureResult:
