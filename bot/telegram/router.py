@@ -677,7 +677,10 @@ class Router:
                 str(study.arguments.get("question", text)), study.arguments.get("course"), via_voice
             )
 
-        lines = [md_to_html(result.reply)] + [esc(s) for s in applied.summary] + travel_lines + plan_lines
+        reply_html = md_to_html(result.reply)
+        if self.agent.degraded and reply_html:
+            reply_html = "☁️ " + reply_html  # so it's always clear which model you're talking to
+        lines = [reply_html] + [esc(s) for s in applied.summary] + travel_lines + plan_lines
         for a in result.actions:
             if a.name == "directions":
                 url = directions_url(str(a.arguments.get("destination", "")))

@@ -859,3 +859,14 @@ async def test_fallback_lines_are_not_remembered_as_his_own_words(rig):
     assert outs[0].text.startswith("Model's down")
     assert [r for r in state.recent if r[0] == "assistant"] == []
     assert state.recent[-1] == ["user", "hey"]
+
+
+async def test_backup_replies_are_marked(rig):
+    router, store, client, state, _ = rig
+    client.breaker_open = True
+    client.responses.append(R(("add_todo", {"title": "Paper", "priority": 2}), ("reply", {"text": "Added."})))
+    outs = await router.on_text("add paper")
+    assert outs[0].text.startswith("☁️ Added.") and "Added todo: Paper" in outs[0].text
+    client.breaker_open = False
+    client.responses.append(R(("reply", {"text": "Ok."})))
+    assert not (await router.on_text("hey"))[0].text.startswith("☁️")

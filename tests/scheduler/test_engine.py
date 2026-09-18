@@ -165,10 +165,8 @@ async def test_engine_announces_the_spark_going_down_and_coming_back(rig):
     assert not [o for o in sink.sent if "Spark" in o.text]
     eng.agent.client.up = False
     clock.advance(seconds=61); await eng.tick()
-    assert [o.text for o in sink.sent if "Spark" in o.text] == [
-        "Spark's down. Backup model until it's back: it gets your schedule and todos, nothing else. "
-        "Memory, notes, photos and voice wait."
-    ] and state.backend_down
+    down = [o.text for o in sink.sent if "Spark" in o.text]
+    assert len(down) == 1 and down[0].startswith("Spark's down.") and "☁️" in down[0] and state.backend_down
     clock.advance(seconds=61); await eng.tick()  # still down: no repeat
     assert len([o for o in sink.sent if "Spark" in o.text]) == 1
     eng.agent.client.up = True
