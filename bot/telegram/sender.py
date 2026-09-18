@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import time
 import re
 from pathlib import Path
 from typing import Callable
@@ -135,7 +136,9 @@ class Sender:
     async def _send_voice(self, text: str, silent: bool, chat_id: int, thread: dict) -> None:
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         try:
+            started = time.monotonic()
             path = await self.synthesizer.synthesize(plain_text(text), self.tmp_dir)
+            logger.info("voice synthesized in %.1fs", time.monotonic() - started)
         except Exception:
             logger.exception("voice synthesis failed, skipping voice leg")
             return

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 import logging
+import time
 
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
@@ -128,8 +129,11 @@ class Agent:
         return CaptureResult(response.tool_calls, reply_text, parsed=True)
 
     async def _chat_or_none(self, messages, tools, temperature, client: ModelClient | None = None):
+        started = time.monotonic()
         try:
-            return await (client or self.client).chat(messages, tools=tools, temperature=temperature)
+            response = await (client or self.client).chat(messages, tools=tools, temperature=temperature)
+            logger.info("model call %.1fs (%d msgs, tools=%s)", time.monotonic() - started, len(messages), tools is not None)
+            return response
         except Exception as exc:
             logger.error("model call failed: %s: %s", type(exc).__name__, str(exc)[:500])
             return None

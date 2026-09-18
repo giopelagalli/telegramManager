@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -104,7 +105,9 @@ class Handlers:
             file = await voice.get_file()
             await file.download_to_drive(path)
             try:
+                started = time.monotonic()
                 text, confidence = await self.transcriber.transcribe(path)
+                logger.info("transcribed in %.1fs: %r", time.monotonic() - started, text[:40])
             except Exception as exc:
                 reason = str(exc) or type(exc).__name__
                 await self._send(await self.router.on_voice_failed(reason, channel=channel))
