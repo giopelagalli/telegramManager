@@ -46,12 +46,16 @@ def _derive(e: Mapping[str, str]) -> dict[str, str]:
         default("OPENAI_BASE_URL", spark); default("OPENAI_API_KEY", "unused")
         default("CHAT_MODEL", spark_model); default("CHAT_ENABLE_THINKING", "false")
         default("VISION_BASE_URL", spark); default("VISION_MODEL", spark_model)
+        # "hard" (coaching, exam plans, /hard) is the Spark thinking harder, never the cloud
+        default("HARD_BASE_URL", spark); default("HARD_API_KEY", "unused")
+        default("HARD_MODEL", spark_model); default("HARD_THINKING", "true")
         if key:
             default("FALLBACK_MODEL", fw_model)
     elif key:
         default("OPENAI_BASE_URL", FIREWORKS_URL); default("OPENAI_API_KEY", key)
         default("CHAT_MODEL", fw_model)
         default("VISION_BASE_URL", FIREWORKS_URL); default("VISION_MODEL", fw_model)
+        default("HARD_BASE_URL", FIREWORKS_URL); default("HARD_API_KEY", key); default("HARD_MODEL", fw_model)
         default("EMBED_BASE_URL", FIREWORKS_URL); default("EMBED_API_KEY", key)
         default("EMBED_MODEL", FIREWORKS_EMBED_DEFAULT)
         if "STT_PROVIDER" not in d:
@@ -60,7 +64,6 @@ def _derive(e: Mapping[str, str]) -> dict[str, str]:
             default("STT_MODEL", d.get("FIREWORKS_STT_MODEL", "").strip() or FIREWORKS_STT_DEFAULT)
     if key:
         default("FALLBACK_BASE_URL", FIREWORKS_URL); default("FALLBACK_API_KEY", key)
-        default("HARD_MODEL", fw_model)
     if voice:
         # The Spark's voice server (spark/voice_server.py): whisper in, speech out, embeddings.
         if "STT_PROVIDER" not in d:
@@ -94,6 +97,9 @@ class Settings:
     vision_model: str | None
     fallback_vision_model: str | None
     hard_model: str | None
+    hard_base_url: str | None
+    hard_api_key: str | None
+    hard_thinking: bool | None
     chat_extra_body: dict | None
     fallback_extra_body: dict | None
     hard_extra_body: dict | None
@@ -154,7 +160,9 @@ class Settings:
         if fallback_vision_model and not (fallback["FALLBACK_BASE_URL"] and fallback["FALLBACK_API_KEY"]):
             raise ValueError("FALLBACK_VISION_MODEL requires FALLBACK_BASE_URL and FALLBACK_API_KEY")
         hard_model = opt("HARD_MODEL")
-        if hard_model and not (fallback["FALLBACK_BASE_URL"] and fallback["FALLBACK_API_KEY"]):
+        hard_base_url = opt("HARD_BASE_URL") or fallback["FALLBACK_BASE_URL"]
+        hard_api_key = opt("HARD_API_KEY") or fallback["FALLBACK_API_KEY"]
+        if hard_model and not (hard_base_url and hard_api_key):
             raise ValueError("HARD_MODEL requires FALLBACK_BASE_URL and FALLBACK_API_KEY")
         stt_provider = opt("STT_PROVIDER") or "local"
         stt_base_url = opt("STT_BASE_URL")
@@ -178,6 +186,9 @@ class Settings:
             vision_model=opt("VISION_MODEL"),
             fallback_vision_model=fallback_vision_model,
             hard_model=hard_model,
+            hard_base_url=hard_base_url if hard_model else None,
+            hard_api_key=hard_api_key if hard_model else None,
+            hard_thinking=_tristate(e.get("HARD_THINKING", "")),
             chat_extra_body=json_obj("CHAT_EXTRA_BODY"),
             fallback_extra_body=json_obj("FALLBACK_EXTRA_BODY"),
             hard_extra_body=json_obj("HARD_EXTRA_BODY"),

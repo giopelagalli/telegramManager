@@ -419,7 +419,7 @@ async def test_tutor_says_so_when_the_model_is_down(rig):
     router, store, client, state, _ = rig
     store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
     outs = await router.on_text("what is a pointer?", channel=COURSE)  # no queued response -> IndexError
-    assert outs[0].text == "The model is offline; ask again in a bit."
+    assert outs[0].text == "Can't reach the model for that right now. Try again in a bit."
     assert store.sources("cs101") == []
 
 
@@ -857,8 +857,7 @@ async def test_fallback_lines_are_not_remembered_as_his_own_words(rig):
     router.agent.client = Boom()
     outs = await router.on_text("hey")
     assert outs[0].text.startswith("Model's down")
-    assert [r for r in state.recent if r[0] == "assistant"] == []
-    assert state.recent[-1] == ["user", "hey"]
+    assert state.recent == []
 
 
 async def test_backup_replies_are_marked(rig):

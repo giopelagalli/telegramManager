@@ -116,17 +116,18 @@ def main() -> None:
     hard: ModelClient | None = None
     if settings.hard_model:
         hard = OpenAIModelClient(
-            settings.fallback_base_url,
-            settings.fallback_api_key,
+            settings.hard_base_url,
+            settings.hard_api_key,
             settings.hard_model,
-            enable_thinking=None,
+            enable_thinking=settings.hard_thinking,
             extra_body=settings.hard_extra_body,
             timeout=300,
         )
     search = BraveSearch(settings.brave_api_key) if settings.brave_api_key else None
     briefings.WEATHER = MorningWeather(settings.google_maps_api_key)
     agent = Agent(client, vision, store, clock.now, hard=hard, search=search is not None)
-    agent.hard_remote = bool(settings.fallback_model)  # a Spark primary with Fireworks behind it
+    # /hard on another provider than the primary only gets the minimal view
+    agent.hard_remote = bool(settings.hard_model) and settings.hard_base_url != settings.openai_base_url
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 
     sender = Sender(

@@ -151,7 +151,8 @@ def test_minimal_fireworks_only_derives_everything():
     assert s.openai_base_url.startswith("https://api.fireworks.ai") and s.openai_api_key == "fw"
     assert s.chat_model.endswith("deepseek-v4p1-flash") and s.chat_enable_thinking is None
     assert s.vision_model == s.chat_model and s.fallback_model is None
-    assert s.hard_model == s.chat_model and s.fallback_base_url and s.fallback_api_key == "fw"
+    assert s.hard_model == s.chat_model and s.hard_base_url == s.openai_base_url and s.hard_api_key == "fw"
+    assert s.fallback_base_url and s.fallback_api_key == "fw"
     assert s.stt_provider == "api" and s.stt_model == "whisper-v3"
     assert s.knowledge_dir.name == "knowledge" and s.data_dir.name == "data" and s.kokoro_model_dir.name == "models"
 
@@ -162,6 +163,8 @@ def test_spark_plus_fireworks_derives_fallback():
     assert s.fallback_model.endswith("deepseek-v4p1-flash")
     # privacy: with the Spark in front, photos, voice notes and the memory index never go to Fireworks
     assert s.fallback_vision_model is None and s.stt_provider == "local" and s.embed_base_url is None
+    # ...and neither does anything "hard": that is the Spark thinking harder
+    assert s.hard_base_url == "http://spark:8888/v1" and s.hard_model == "qwen3.8-flash-next" and s.hard_thinking is True
 
 
 def test_spark_voice_server_drives_stt_tts_and_embeddings():
