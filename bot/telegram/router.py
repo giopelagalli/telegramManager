@@ -624,7 +624,10 @@ class Router:
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now) -> list[Outbound]:
         result = await self.agent.capture(text, awaiting=awaiting, recent=list(self.state.recent))
         self._remember("user", text)
-        self._remember("assistant", result.reply or "")
+        if result.parsed:
+            # A fallback line ("Model's down…") is not something he said; remembered as his own
+            # words, the next model copies the pattern and keeps saying it after the outage.
+            self._remember("assistant", result.reply or "")
         self.last_outcome = "captured" if result.parsed else "inbox"
         if any(a.name == "undo" for a in result.actions):
             subject = self.store.undo()

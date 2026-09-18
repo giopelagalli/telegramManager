@@ -848,3 +848,14 @@ async def test_backup_model_declines_coaching_recall_study_and_photos(rig):
     assert outs[0].text.startswith("Spark's down.")
     outs = await router.on_photo(b"img", "look")
     assert outs[0].text.startswith("Spark's down.") and store.sources() == []
+
+
+async def test_fallback_lines_are_not_remembered_as_his_own_words(rig):
+    router, store, client, state, _ = rig
+    class Boom:
+        async def chat(self, *a, **k): raise ConnectionError("down")
+    router.agent.client = Boom()
+    outs = await router.on_text("hey")
+    assert outs[0].text.startswith("Model's down")
+    assert [r for r in state.recent if r[0] == "assistant"] == []
+    assert state.recent[-1] == ["user", "hey"]
