@@ -576,7 +576,7 @@ class Router:
     ) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
-        outs = await commands.handle(name, arg, self.store, self.agent, self.state, now, channel)
+        outs = await commands.handle(name, arg, self.store, self.agent, self.state, now, channel, recall=self._recall)
         return self._tag(outs, channel)
 
     # -- helpers ---------------------------------------------------------

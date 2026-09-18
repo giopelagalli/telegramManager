@@ -237,7 +237,9 @@ async def test_hard_carries_the_conversation_but_not_the_memories(tmp_path):
     r, store, primary = _rig_with_hard(tmp_path, None)
     store.add_memory("Sister is Anna", kind="fact"); store.commit("m")
     r.agent.cloud = cloud
+    store.add_memory("Ally is the girl from the Saturday party", kind="fact"); store.commit("m2")
     r.state.recent = [["user", "she left me on read"], ["assistant", "Then don't double text."]]
-    await r.command("hard", "what do you think?", channel=DM)
+    await r.command("hard", "what do you think about Ally?", channel=DM)
     sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
-    assert "she left me on read" in sent and "don't double text" in sent and "Anna" not in sent
+    assert "she left me on read" in sent and "don't double text" in sent
+    assert "Ally is the girl" in sent and "Anna" not in sent  # only the memories that match the question

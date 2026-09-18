@@ -58,7 +58,7 @@ _TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", re.IGNORECASE)
 
 
 async def handle(
-    name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None
+    name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None, recall=None
 ) -> list[Outbound]:
     arg = (arg or "").strip()
     today = now.date()
@@ -114,7 +114,7 @@ async def handle(
         return [Outbound(f"Reverted: {esc(subject)}", kind="reply")]
 
     if name == "hard":
-        return await _hard(arg, store, agent, now, channel, recent=list(state.recent))
+        return await _hard(arg, store, agent, now, channel, recent=list(state.recent), recall=recall)
 
     if name == "think":
         return _think(arg, store, agent)
@@ -137,10 +137,13 @@ async def _brief(arg: str, store, agent, state, now: datetime) -> list[Outbound]
     return [Outbound(f"Morning briefing moved to {fmt_time(when)} today.", kind="reply")]
 
 
-async def _hard(text: str, store, agent, now: datetime, channel: Channel | None, recent: list | None = None) -> list[Outbound]:
+async def _hard(
+    text: str, store, agent, now: datetime, channel: Channel | None, recent: list | None = None, recall=None
+) -> list[Outbound]:
     """/hard is the one explicit door to the cloud model when there is one: the user typed it,
-    so they chose it. It gets the blind view (schedule, todos, goals) plus the conversation so far,
-    so "what do you think" means something — but not the memories or notes."""
+    so they chose it. It gets the blind view (schedule, todos, goals), the conversation so far
+    (so "what do you think" means something), and only the few memories that match the question
+    — never the whole vault."""
     client = agent.cloud or agent.hard
     if client is None:
         return [Outbound(HARD_UNCONFIGURED_REPLY, kind="reply")]
@@ -156,6 +159,9 @@ async def _hard(text: str, store, agent, now: datetime, channel: Channel | None,
         answer, _note = await agent.tutor(text, course, sources, notes_tool=False, client=client)
     else:
         context = agent.context(now, remote=remote)
+        hits = (await recall(text))[:6] if recall is not None else []
+        if hits:
+            context += "\n\nWhat JD knows that seems relevant:\n" + "\n".join(f"- {h}" for h in hits)
         if recent:
             context += "\n\nThe conversation so far (the question refers to it):\n" + "\n".join(
                 f"{role}: {body}" for role, body in recent
