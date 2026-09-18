@@ -225,3 +225,15 @@ async def test_backup_model_gets_the_minimal_view_and_no_history(store):
     await agent.capture("hey", recent=[["user", "secret earlier thing"], ["assistant", "…"]])
     joined = "\n".join(m["content"] for m in client.calls[1]["messages"])
     assert "Anna" in joined and "secret earlier thing" in joined
+
+
+async def test_consolidate_parses_notes_skips_known_and_never_runs_on_the_backup(store):
+    client = FakeModelClient([ModelResponse(
+        '{"memories": [{"kind": "fact", "text": "Ally is the girl from Saturday"}, '
+        '{"kind": "state", "text": "Worried about Spanish"}, {"kind": "fact", "text": "Sister is Anna"}]}', [])])
+    agent = Agent(client, None, store, lambda: NOW)
+    notes = await agent.consolidate([["user", "ally…"], ["assistant", "…"]], known=["Sister is Anna"])
+    assert notes == [{"kind": "fact", "text": "Ally is the girl from Saturday"}, {"kind": "state", "text": "Worried about Spanish"}]
+    assert "Already known:\n- Sister is Anna" in client.calls[0]["messages"][-1]["content"]
+    client.breaker_open = True
+    assert await agent.consolidate([["user", "x"]], known=[]) == [] and len(client.calls) == 1

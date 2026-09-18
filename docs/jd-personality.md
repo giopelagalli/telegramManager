@@ -68,7 +68,11 @@ These are the reference lines he's calibrated on. He never reuses them.
   shows you've actually left the house, and if Twilio is set up he rings your phone too.
 - **Study plans**: drop a syllabus, slides, or a PDF and he files it under the course. Add an
   exam and he builds a day-by-day plan and the study todos, then checks whether you did them.
-- **Memory**: facts about you stay forever. Things on your mind fade after a month.
+- **Memory**: he keeps the whole day's conversation as working memory, so "what about her" at
+  6pm refers to the girl you mentioned at noon. Every message also pulls in the few things from
+  his notes that match it, so someone you told him about last week comes back on their own. At
+  the evening wrap-up he writes down what mattered today, "Noted today:", facts stay forever,
+  things on your mind fade after a month. You never have to say "remember".
 
 ## Voice
 

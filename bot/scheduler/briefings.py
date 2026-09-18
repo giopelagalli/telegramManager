@@ -10,6 +10,7 @@ from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.views import esc, fmt_time, render_today
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import is_due
+from bot.memory.thread import thread, user_turns
 from bot.scheduler.state import Chain, RuntimeState
 from bot.telegram.markdown import md_to_html
 
@@ -171,11 +172,24 @@ async def morning_outbound(store: KnowledgeStore, now: datetime, agent, note: st
     return Outbound(text, voice=profile.voice_on_proactive, buttons=buttons, kind="briefing")
 
 
-async def evening_outbound(store: KnowledgeStore, now: datetime, agent) -> Outbound:
+async def evening_outbound(store: KnowledgeStore, now: datetime, agent, notes: list[str] | None = None) -> Outbound:
     body, buttons = evening_text(store, now)
     prose = await _compose_prose(store, now, agent)
-    text = f"{body}\n\n{md_to_html(prose)}"
+    noted = ("\n\nNoted today:\n" + "\n".join(f"• {esc(n)}" for n in notes)) if notes else ""
+    text = f"{body}{noted}\n\n{md_to_html(prose)}"
     return Outbound(text, voice=store.profile().voice_on_proactive, buttons=buttons, kind="briefing")
+
+
+async def nightly_notes(store: KnowledgeStore, state: RuntimeState, now: datetime, agent) -> list[str]:
+    """Distil today's conversation into memories, once, before the evening wrap-up."""
+    if user_turns(state) < 4:
+        return []
+    notes = await agent.consolidate(thread(state, now), [m.text for m in store.memories()])
+    for note in notes:
+        store.add_memory(note["text"], kind=note["kind"])
+    if notes:
+        store.commit("memory: nightly notes")
+    return [n["text"] for n in notes]
 
 
 async def send_morning(
@@ -204,7 +218,7 @@ async def due_briefings(now: datetime, store: KnowledgeStore, state: RuntimeStat
     evening_key = f"evening:{day}"
     evening_at = briefing_time(profile, state, day, "evening")
     if is_due(evening_key, evening_at, now, state):
-        outbound = await evening_outbound(store, now, agent)
+        outbound = await evening_outbound(store, now, agent, notes=await nightly_notes(store, state, now, agent))
         out.append(outbound)
         state.chain = Chain("briefing", now, now, 0, item=_chain_item(store, day), history=[outbound.text])
 

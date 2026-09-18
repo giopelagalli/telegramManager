@@ -692,17 +692,6 @@ async def test_new_exam_gets_a_plan_and_daily_study_todos(rig):
     assert any("Days left: 3" in c["messages"][1]["content"] for c in client.calls)
 
 
-async def test_recent_exchanges_are_passed_and_capped(rig):
-    router, store, client, state, _ = rig
-    for i in range(10):
-        client.responses.append(R(("reply", {"text": f"ok {i}"})))
-        await router.on_text(f"msg {i}")
-    msgs = client.calls[-1]["messages"]
-    assert msgs[2]["content"] == "msg 1" and msgs[2]["role"] == "user"  # window starts 8 exchanges back
-    assert msgs[-2]["content"] == "ok 8" and msgs[-1]["content"] == "msg 9"
-    assert len(state.recent) == 16
-
-
 async def test_remember_then_recall(rig):
     router, store, client, state, _ = rig
     client.responses.append(R(("remember", {"fact": "Sam is his lab partner in CS101."}), ("reply", {"text": "Noted."})))
@@ -869,3 +858,44 @@ async def test_backup_replies_are_marked(rig):
     client.breaker_open = False
     client.responses.append(R(("reply", {"text": "Ok."})))
     assert not (await router.on_text("hey"))[0].text.startswith("☁️")
+
+
+async def test_memories_that_match_the_message_ride_along(rig):
+    router, store, client, state, _ = rig
+    store.add_memory("Ally is the girl from the Saturday party", kind="fact")
+    store.add_memory("Sister is Anna", kind="fact"); store.commit("m")
+    client.responses.append(R(("reply", {"text": "Then don't double text."})))
+    await router.on_text("ally still hasn't answered me")
+    sent = "\n".join(m["content"] for m in client.calls[-1]["messages"])
+    assert "From memory, possibly relevant:" in sent and "Ally is the girl" in sent
+    assert "Sister is Anna" in sent  # facts are always in the context anyway; the recall block is the extra
+
+
+async def test_the_days_conversation_is_all_there(rig):
+    router, store, client, state, clock = rig
+    for i in range(12):
+        client.responses.append(R(("reply", {"text": f"a{i}"})))
+        await router.on_text(f"u{i}")
+    client.responses.append(R(("reply", {"text": "ok"})))
+    await router.on_text("so what do you think")
+    msgs = client.calls[-1]["messages"]
+    assert [m["content"] for m in msgs if m["role"] == "user"][:2] == ["u0", "u1"]
+    assert sum(1 for m in msgs if m["role"] == "assistant") == 12
+
+
+async def test_chat_screenshots_are_read_with_sides_and_timestamps(rig):
+    router, store, client, state, _ = rig
+    seen = []
+    class Vision:
+        def __init__(self): self.n = 0
+        async def chat(self, messages, tools=None, temperature=0.2):
+            self.n += 1
+            seen.append(messages)
+            if self.n == 1:
+                return ModelResponse('{"kind": "chat", "description": "texts"}', [])
+            return ModelResponse("Saturday 8:59 PM\nMe: what are your plans\nThem: birthday", [])
+    router.agent.vision = Vision()
+    client.responses.append(ModelResponse("Leave it till tomorrow.", []))
+    await router.on_photo(b"img", "she didn't respond")
+    ocr_prompt = seen[1][0]["content"][0]["text"]
+    assert "Right-side bubbles" in ocr_prompt and "time label" in ocr_prompt

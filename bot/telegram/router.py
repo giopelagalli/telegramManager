@@ -12,6 +12,7 @@ from bot.knowledge.views import esc
 from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
 from bot.scheduler.briefings import evening_outbound, morning_outbound
+from bot.memory.thread import remember, thread
 from bot.scheduler.critical import leave_on_location, leave_on_text
 from bot.scheduler import review
 from bot.scheduler.outbound import Outbound
@@ -328,12 +329,12 @@ class Router:
         self, image: bytes, caption: str | None, channel: Channel, kind: str | None = None
     ) -> list[Outbound]:
         self._touch()
-        text = await self.agent.ocr(image)
+        text = await self.agent.ocr(image, chat=(kind == "chat"))
         body = text if text else (caption or "")
         if kind is None and text and not _is_course(channel):
             kind = await self.agent.classify_photo(text)
         if text and kind == "chat":
-            advice = await self.agent.coach(text, caption or "", recent=list(self.state.recent))
+            advice = await self.agent.coach(text, caption or "", recent=self._thread())
             if advice is None:
                 return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
             self._remember("user", f"[screenshot of a conversation] {caption or ''}".strip())
@@ -576,7 +577,9 @@ class Router:
     ) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
-        outs = await commands.handle(name, arg, self.store, self.agent, self.state, now, channel, recall=self._recall)
+        outs = await commands.handle(
+            name, arg, self.store, self.agent, self.state, now, channel, recall=self._recall, recent=self._thread()
+        )
         return self._tag(outs, channel)
 
     # -- helpers ---------------------------------------------------------
@@ -615,14 +618,27 @@ class Router:
         mode = self.store.profile().voice_reply_mode
         return via_voice if mode == "on_voice" else mode == "always"
 
-    RECENT_LIMIT = 8  # exchanges kept as short-term memory; bounded, so the context never grows
-
     def _remember(self, role: str, text: str) -> None:
-        self.state.recent.append([role, text[:600]])
-        del self.state.recent[: -self.RECENT_LIMIT * 2]
+        remember(self.state, role, text, self.clock.now())
+
+    def _thread(self) -> list:
+        """Today's conversation, the model's working memory."""
+        return thread(self.state, self.clock.now())
+
+    async def _recalled(self, text: str) -> list[str]:
+        """A few things from the vault that match this message, so old context resurfaces on its own."""
+        if self.agent.degraded or len(text) < 12:
+            return []
+        try:
+            return (await self._recall(text))[:5]
+        except Exception:
+            logger.exception("recall before capture failed")
+            return []
 
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now) -> list[Outbound]:
-        result = await self.agent.capture(text, awaiting=awaiting, recent=list(self.state.recent))
+        result = await self.agent.capture(
+            text, awaiting=awaiting, recent=self._thread(), recalled=await self._recalled(text)
+        )
         if result.parsed:
             # An exchange that failed is not part of the conversation: remembered, the fallback
             # line reads as his own words and the next model copies it; the dangling question
@@ -655,7 +671,7 @@ class Router:
         coach = next((a for a in result.actions if a.name == "coach"), None)
         if coach is not None:
             advice = await self.agent.coach(str(coach.arguments.get("thread", text)),
-                                            str(coach.arguments.get("ask", "")), recent=list(self.state.recent))
+                                            str(coach.arguments.get("ask", "")), recent=self._thread())
             if advice is None:
                 return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
             self._remember("assistant", advice)

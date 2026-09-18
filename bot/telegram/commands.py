@@ -58,7 +58,7 @@ _TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", re.IGNORECASE)
 
 
 async def handle(
-    name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None, recall=None
+    name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None, recall=None, recent=None
 ) -> list[Outbound]:
     arg = (arg or "").strip()
     today = now.date()
@@ -114,7 +114,7 @@ async def handle(
         return [Outbound(f"Reverted: {esc(subject)}", kind="reply")]
 
     if name == "hard":
-        return await _hard(arg, store, agent, now, channel, recent=list(state.recent), recall=recall)
+        return await _hard(arg, store, agent, now, channel, recent=list(recent or []), recall=recall)
 
     if name == "think":
         return _think(arg, store, agent)

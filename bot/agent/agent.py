@@ -14,6 +14,8 @@ import time
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
     BACKUP_NOTE,
+    CHAT_OCR_PROMPT,
+    CONSOLIDATE_SYSTEM,
     CLASSIFY_PHOTO_SYSTEM,
     LOOK_SYSTEM,
     COACH_SYSTEM,
@@ -85,14 +87,18 @@ class Agent:
         """The context for this moment: the full view on the primary, the minimal one on a backup."""
         return build_context(self.store, now, awaiting, minimal=self.degraded or remote)
 
-    async def capture(self, text: str, awaiting: str | None = None, recent: list | None = None) -> CaptureResult:
+    async def capture(
+        self, text: str, awaiting: str | None = None, recent: list | None = None, recalled: list[str] | None = None
+    ) -> CaptureResult:
         now = self.clock()
         profile = self.store.profile()
         system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat(), voice=VOICE)
         if self.degraded:
             system += "\n\n" + BACKUP_NOTE
-            recent = []  # the conversation so far stays home too
+            recent, recalled = [], []  # the conversation and the vault stay home
         context = self.context(now, awaiting)
+        if recalled:
+            context += "\nFrom memory, possibly relevant:\n" + "\n".join(f"- {r}" for r in recalled)
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": context},
@@ -344,6 +350,31 @@ class Agent:
         response = await self._chat_or_none(messages, None, 0.5, client=self.hard or None)
         return (response.text or "").strip() or None if response else None
 
+    async def consolidate(self, thread: list, known: list[str]) -> list[dict]:
+        """Nightly notes: what today's conversation is worth remembering. Never on the backup model."""
+        if self.degraded or not thread:
+            return []
+        profile = self.store.profile()
+        system = CONSOLIDATE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name)
+        known_text = "\n".join(f"- {k}" for k in known[-80:]) or "- nothing yet"
+        convo = "\n".join(f"{role}: {body}" for role, body in thread)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Already known:\n{known_text}\n\nToday:\n{convo}"},
+        ]
+        response = await self._chat_or_none(messages, None, 0.2)
+        data = _json_block(response.text or "") if response else None
+        items = data.get("memories") if isinstance(data, dict) else None
+        out: list[dict] = []
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text", "")).strip()
+            kind = "state" if str(item.get("kind", "fact")).lower() == "state" else "fact"
+            if text and text.lower() not in {k.lower() for k in known}:
+                out.append({"kind": kind, "text": text})
+        return out[:8]
+
     async def look(self, image: bytes) -> tuple[str, str]:
         """What a photo is: ('chat'|'material'|'photo', one-line description). 'photo' when unsure."""
         if self.vision is None:
@@ -369,7 +400,8 @@ class Agent:
         word = (response.text or "").strip().lower() if response else ""
         return "chat" if word.startswith("chat") else "material"
 
-    async def ocr(self, image: bytes) -> str | None:
+    async def ocr(self, image: bytes, chat: bool = False) -> str | None:
+        """Text in an image. `chat` keeps sides and timestamps, for screenshots of conversations."""
         if self.vision is None:
             return None
         data_url = f"data:image/jpeg;base64,{b64encode(image).decode()}"
@@ -377,7 +409,7 @@ class Agent:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": OCR_PROMPT},
+                    {"type": "text", "text": CHAT_OCR_PROMPT if chat else OCR_PROMPT},
                     {"type": "image_url", "image_url": {"url": data_url}},
                 ],
             }

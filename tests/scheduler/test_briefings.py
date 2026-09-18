@@ -123,3 +123,35 @@ def test_evening_names_goals_with_nothing_done_toward_them(store):
     assert "Health week" not in text.split("Nothing toward")[-1]
     assert "Nothing toward Read 2 books this month yet. Tomorrow?" in text
     assert "Ship" not in text
+
+
+async def test_evening_writes_nightly_notes_from_the_days_conversation(store):
+    from bot.memory.thread import remember
+    class Notebook:
+        degraded = False
+        def context(self, now, awaiting=None, remote=False): return "ctx"
+        async def compose(self, kind, context, fallback): return "Rest."
+        async def consolidate(self, thread, known):
+            assert any("ally" in body.lower() for _, body in thread) and isinstance(known, list)
+            return [{"kind": "fact", "text": "Ally is the girl from Saturday; she went quiet Wednesday"},
+                    {"kind": "state", "text": "Spanish class is wearing on him"}]
+    s = RuntimeState.load(Path("/nonexistent"))
+    for i, line in enumerate(["ally didn't answer", "spanish sucks", "gym later", "ok fine"]):
+        remember(s, "user", line, T(12 + i)); remember(s, "assistant", "…", T(12 + i))
+    out = await due_briefings(T(21), store, s, Notebook())
+    text = out[-1].text
+    assert "Noted today:" in text and "Ally is the girl from Saturday" in text
+    kinds = {m.text: m.kind for m in store.memories()}
+    assert kinds["Ally is the girl from Saturday; she went quiet Wednesday"] == "fact"
+    assert kinds["Spanish class is wearing on him"] == "state"
+
+
+async def test_no_notes_on_a_quiet_day(store):
+    class Notebook:
+        degraded = False
+        def context(self, now, awaiting=None, remote=False): return "ctx"
+        async def compose(self, kind, context, fallback): return "Rest."
+        async def consolidate(self, thread, known): raise AssertionError("should not run")
+    s = RuntimeState.load(Path("/nonexistent"))
+    out = await due_briefings(T(21), store, s, Notebook())
+    assert out and "Noted today" not in out[-1].text
