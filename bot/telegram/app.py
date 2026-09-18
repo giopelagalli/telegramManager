@@ -18,6 +18,11 @@ def build_application(settings, router, sender, transcriber=None) -> Application
 
     async def post_init(app: Application) -> None:
         await app.bot.set_my_commands([(name, desc) for name, desc, menu in COMMANDS if menu])
+        logger.info("listening as @%s, answering only user id %s", app.bot.username, settings.telegram_user_id)
+
+    async def on_stranger(update, context) -> None:
+        user = update.effective_user
+        logger.warning("ignored a message from user id %s (not %s)", getattr(user, "id", None), settings.telegram_user_id)
 
     async def on_callback(update, context) -> None:
         user = update.effective_user
@@ -53,5 +58,6 @@ def build_application(settings, router, sender, transcriber=None) -> Application
         MessageHandler(only_me & filters.StatusUpdate.FORUM_TOPIC_EDITED, handlers.on_forum_topic_edited)
     )
     app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_handler(MessageHandler(~only_me, on_stranger))
     app.add_error_handler(on_error)
     return app

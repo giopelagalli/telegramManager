@@ -46,14 +46,25 @@ def test_build_application_registers_every_handler():
     app = build_application(FakeSettings(), router=None, sender=None)
     registered = app.handlers[0]
     # one per command, plus text, voice, photo, document, location, forum topic
-    # created, forum topic edited, callback
-    assert len(registered) == len(COMMANDS) + 8
+    # created, forum topic edited, callback, and the stranger logger
+    assert len(registered) == len(COMMANDS) + 9
     assert app.error_handlers
+
+
+def _answering(app):
+    """Message handlers that answer; the stranger logger only records who was ignored."""
+    return [h for h in app.handlers[0] if isinstance(h, MessageHandler) and h.callback.__name__ != "on_stranger"]
+
+
+def test_stranger_messages_are_only_logged():
+    app = build_application(FakeSettings(), router=None, sender=None)
+    stranger = next(h for h in app.handlers[0] if isinstance(h, MessageHandler) and h.callback.__name__ == "on_stranger")
+    assert stranger.check_update(_update(FOREIGN, text="hi")) and not stranger.check_update(_update(MINE, text="hi"))
 
 
 def test_message_handlers_accept_only_the_owner():
     app = build_application(FakeSettings(), router=None, sender=None)
-    message_handlers = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
+    message_handlers = _answering(app)
     assert len(message_handlers) == 7
 
     for kind, content in CONTENT.items():
@@ -147,7 +158,7 @@ def _group_update(user_id: int, thread_id: int | None = None, **content) -> Upda
 def test_group_topic_messages_reach_the_handlers():
     """filters.TEXT & filters.User already cover groups; only the owner is answered."""
     app = build_application(FakeSettings(), router=None, sender=None)
-    message_handlers = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
+    message_handlers = _answering(app)
     mine = _group_update(MINE, thread_id=45, text="hi")
     assert sum(1 for h in message_handlers if h.check_update(mine)) == 1
     assert not any(h.check_update(_group_update(FOREIGN, 45, text="hi")) for h in message_handlers)
@@ -162,7 +173,7 @@ def test_group_topic_messages_reach_the_handlers():
 
 def test_forum_topic_created_reaches_the_handler_owner_only():
     app = build_application(FakeSettings(), router=None, sender=None)
-    message_handlers = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
+    message_handlers = _answering(app)
     created = dict(forum_topic_created=ForumTopicCreated(name="CS101", icon_color=0))
     mine = _group_update(MINE, thread_id=45, **created)
     foreign = _group_update(FOREIGN, thread_id=45, **created)

@@ -69,6 +69,7 @@ class Handlers:
 
     async def on_text(self, update, context) -> None:
         message = update.effective_message
+        logger.info("text from %s: %r", getattr(getattr(update, "effective_user", None), "id", None), (message.text or "")[:40])
         await self._typing(message)
         outs = await self.router.on_text(message.text, channel=self._channel(update))
         await self._outcome(message)
