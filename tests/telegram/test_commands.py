@@ -230,3 +230,14 @@ async def test_hard_prefers_the_cloud_opt_in_with_the_blind_view(tmp_path):
     assert hard.calls == [] and len(cloud.calls) == 1
     sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
     assert "Anna" not in sent and "Backup model: schedule, todos and goals only." in sent
+
+
+async def test_hard_carries_the_conversation_but_not_the_memories(tmp_path):
+    cloud = FakeModelClient([ModelResponse("cloud says", [])], model="deepseek")
+    r, store, primary = _rig_with_hard(tmp_path, None)
+    store.add_memory("Sister is Anna", kind="fact"); store.commit("m")
+    r.agent.cloud = cloud
+    r.state.recent = [["user", "she left me on read"], ["assistant", "Then don't double text."]]
+    await r.command("hard", "what do you think?", channel=DM)
+    sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
+    assert "she left me on read" in sent and "don't double text" in sent and "Anna" not in sent
