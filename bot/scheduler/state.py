@@ -136,6 +136,7 @@ class RuntimeState:
     last_sources_listing: list[str] = field(default_factory=list)
     sprint: dict | None = None  # {"path": todo path, "title": str, "ends_at": ISO}
     backend_down: bool = False  # the primary (Spark) model is unreachable; running on the backup
+    last_location: dict | None = None  # {"lat", "lng", "at": ISO} — the last location he shared
     review: dict | None = None  # an open recall session: queue, current, right, again
     recent: list = field(default_factory=list)  # last few [role, text] exchanges, capped
 
@@ -154,6 +155,7 @@ class RuntimeState:
             "last_sources_listing": list(self.last_sources_listing),
             "sprint": self.sprint,
             "backend_down": self.backend_down,
+            "last_location": self.last_location,
             "review": self.review,
             "recent": [list(x) for x in self.recent],
         }
@@ -178,6 +180,7 @@ class RuntimeState:
                 last_sources_listing=list(data.get("last_sources_listing", [])),
                 sprint=data.get("sprint"),
                 backend_down=bool(data.get("backend_down", False)),
+                last_location=data.get("last_location"),
                 review=data.get("review"),
                 recent=[list(x) for x in data.get("recent", [])],
             )

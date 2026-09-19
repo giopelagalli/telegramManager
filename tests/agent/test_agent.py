@@ -237,3 +237,16 @@ async def test_consolidate_parses_notes_skips_known_and_never_runs_on_the_backup
     assert "Already known:\n- Sister is Anna" in client.calls[0]["messages"][-1]["content"]
     client.breaker_open = True
     assert await agent.consolidate([["user", "x"]], known=[]) == [] and len(client.calls) == 1
+
+
+async def test_tool_calls_without_a_reply_call_are_fine_and_a_raw_call_echo_is_not_an_answer(store):
+    client = FakeModelClient([R(("directions", {"destination": "Bar South"}))])
+    agent = Agent(client, None, store, lambda: NOW)
+    res = await agent.capture("directions to bar south")
+    assert res.parsed and res.reply == "" and res.actions[0].name == "directions" and len(client.calls) == 1
+
+    client = FakeModelClient([ModelResponse("directions({'destination': 'Bar South'})", []),
+                              ModelResponse("directions({'destination': 'Bar South'})", [])])
+    agent = Agent(client, None, store, lambda: NOW)
+    res = await agent.capture("directions to bar south")
+    assert not res.parsed and "Say it again" in res.reply

@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import pytest
 from bot.agent.client import FakeModelClient, ModelResponse, ToolCall
@@ -32,6 +32,17 @@ class FakeMaps:
     async def travel_minutes(self, origin, dest, depart_at):
         self.travel_calls.append((origin, dest, depart_at))
         return self.travel
+
+    places: dict = {}
+    routes: dict = {}
+
+    async def find_place(self, query, near=None):
+        self.calls.append(("find", query, near))
+        return self.places.get(query.lower())
+
+    async def route(self, origin, dest, mode="drive"):
+        self.calls.append(("route", origin, dest, mode))
+        return self.routes.get(mode)
 
 
 @pytest.fixture
@@ -907,3 +918,48 @@ async def test_every_exchange_lands_in_the_transcript(rig):
     await router.on_text("ally left me on read")
     lines = store.chat_lines()
     assert lines[-2].endswith("user: ally left me on read") and lines[-1].endswith("assistant: Then don't double text.")
+
+
+async def test_how_far_uses_the_shared_location_and_resolves_the_place(rig):
+    router, store, client, state, clock = rig
+    maps = FakeMaps({})
+    maps.places = {"mags": {"name": "Magnolias", "address": "240 E Clayton St, Athens, GA", "latlng": (33.958, -83.376)}}
+    maps.routes = {"walk": (12, 1450)}
+    router.maps = maps
+    outs = await router.on_location(33.95, -83.38)
+    assert outs[0].text.startswith("Got it.") and state.last_location["lat"] == 33.95
+    client.responses.append(R(("directions", {"destination": "mags", "mode": "walk"})))  # no reply call needed
+    outs = await router.on_text("going to mags how far is that from me")
+    text = outs[0].text
+    assert text.startswith("Magnolias: 12 min walk (0.9 mi) from you.") and 'href="' in text
+    assert ("find", "mags", (33.95, -83.38)) in maps.calls and ("route", (33.95, -83.38), (33.958, -83.376), "walk") in maps.calls
+    assert not outs[0].location_button
+
+
+async def test_how_far_without_a_location_asks_for_one(rig):
+    router, store, client, state, clock = rig
+    maps = FakeMaps({}); maps.places = {"bar south": {"name": "Bar South", "address": "Athens, GA", "latlng": (33.9, -83.3)}}
+    router.maps = maps
+    client.responses.append(R(("directions", {"destination": "bar south"}), ("reply", {"text": "Here."})))
+    outs = await router.on_text("directions to bar south")
+    assert "Share your location" in outs[0].text and outs[0].location_button and 'href="' in outs[0].text
+    assert not any(c[0] == "route" for c in maps.calls)
+
+
+async def test_stale_location_falls_back_to_home(rig):
+    router, store, client, state, clock = rig
+    p = store.profile(); p.home_latlng = (33.77, -84.39); store.save_profile(p)
+    state.last_location = {"lat": 33.95, "lng": -83.38, "at": (clock.now() - timedelta(hours=5)).isoformat()}
+    maps = FakeMaps({}); maps.places = {"gym": {"name": "Equinox", "address": "x", "latlng": (33.78, -84.40)}}; maps.routes = {"drive": (9, 3200)}
+    router.maps = maps
+    client.responses.append(R(("directions", {"destination": "gym"}), ("reply", {"text": "Go."})))
+    outs = await router.on_text("how far is the gym")
+    assert "Equinox: 9 min drive (2.0 mi) from home." in outs[0].text
+    assert ("route", (33.77, -84.39), (33.78, -84.40), "drive") in maps.calls
+
+
+async def test_directions_without_maps_is_just_the_link(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("directions", {"destination": "Bar South, Athens GA"})))
+    outs = await router.on_text("just give me directions for bar south athens ga")
+    assert outs[0].text.startswith("Bar South, Athens GA. <a href=") and not outs[0].location_button

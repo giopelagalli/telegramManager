@@ -59,6 +59,9 @@ class Applied:
     changed_schedule: bool
 
 
+_RAW_CALL_RE = re.compile(r"^\w+\(\{.*\}\)$", re.DOTALL)
+
+
 class Agent:
     def __init__(
         self,
@@ -158,15 +161,21 @@ class Agent:
             errors.extend(f"{call.name}: {e}" for e in validate_call(call.name, call.arguments))
             if call.name == "reply":
                 reply_count += 1
-        if reply_count != 1:
-            errors.append(f"expected exactly one reply call, got {reply_count}")
+        if reply_count > 1:
+            errors.append(f"expected at most one reply call, got {reply_count}")
+        if not tool_calls:
+            errors.append("no tool calls and no text")
         return errors
 
     @staticmethod
     def _adopt_text_as_reply(response) -> None:
         """A model that answers in prose instead of calling `reply` still answered: keep it."""
-        if response.text and response.text.strip() and not any(c.name == "reply" for c in response.tool_calls):
-            response.tool_calls.append(ToolCall("reply", {"text": response.text.strip()}))
+        text = (response.text or "").strip()
+        if not text or any(c.name == "reply" for c in response.tool_calls):
+            return
+        if _RAW_CALL_RE.match(text):
+            return  # the model echoed our "name({...})" retry note; that is not an answer
+        response.tool_calls.append(ToolCall("reply", {"text": text}))
 
     @staticmethod
     def _raw_calls_repr(tool_calls: list[ToolCall]) -> str:

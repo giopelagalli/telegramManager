@@ -258,10 +258,14 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "directions",
-            "description": "Send a navigation link to a place, e.g. \"directions to the gym\".",
+            "description": "How far a place is and how to get there: \"directions to the gym\", \"how far is mags from me\". "
+            "Resolves the place near the user, gives time and distance from where they are, and a Maps link.",
             "parameters": {
                 "type": "object",
-                "properties": {"destination": {"type": "string"}},
+                "properties": {
+                    "destination": {"type": "string", "description": "the place as they said it"},
+                    "mode": {"type": "string", "enum": ["drive", "walk"], "description": "walk when they're on foot or ask walking distance"},
+                },
                 "required": ["destination"],
                 "additionalProperties": False,
             },

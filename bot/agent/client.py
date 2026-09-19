@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 import time
 from dataclasses import dataclass
@@ -32,6 +33,18 @@ class ModelClient(Protocol):
         tools: list[dict] | None = None,
         temperature: float = 0.2,
     ) -> ModelResponse: ...
+
+
+_THINK_RE = re.compile(r"<think>.*?</think>|</?think>", re.DOTALL)
+
+
+def _strip_thinking(content: str | None) -> str | None:
+    """With thinking on and no reasoning parser on the server, Qwen's <think> block lands in the
+    content. Nobody should ever see it, least of all as a Telegram bubble."""
+    if not content:
+        return content
+    cleaned = _THINK_RE.sub("", content).strip()
+    return cleaned or None
 
 
 def _one_system_message(messages: list[dict]) -> list[dict]:
@@ -92,6 +105,7 @@ class OpenAIModelClient:
             **extra_kwargs,
         )
         message = response.choices[0].message
+        text = _strip_thinking(message.content)
         tool_calls = []
         for tc in message.tool_calls or []:
             try:
@@ -99,7 +113,7 @@ class OpenAIModelClient:
             except (json.JSONDecodeError, TypeError):
                 arguments = {"__invalid_json__": tc.function.arguments}
             tool_calls.append(ToolCall(name=tc.function.name, arguments=arguments))
-        return ModelResponse(text=message.content, tool_calls=tool_calls)
+        return ModelResponse(text=text, tool_calls=tool_calls)
 
 
 _FALLBACK_ERRORS = (

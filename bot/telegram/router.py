@@ -187,9 +187,10 @@ class Router:
             return [await self._verify_location(pending, lat, lng)]
 
         out = leave_on_location(now, self.state, self.store, lat, lng)
+        self.state.last_location = {"lat": lat, "lng": lng, "at": now.isoformat()}
         if out is not None:
             return [out]
-        return [Outbound("Got your location, nothing waiting for it.", kind="reply")]
+        return [Outbound("Got it. I'll go off this for \"how far\" until you move.", kind="reply")]
 
     def on_topic_named(self, chat_id: int, thread_id: int, name: str) -> list[Outbound]:
         """A forum topic was created or renamed: bind it from its own name."""
@@ -700,18 +701,58 @@ class Router:
         if self.agent.degraded and reply_html:
             reply_html = "☁️ " + reply_html  # so it's always clear which model you're talking to
         lines = [reply_html] + [esc(s) for s in applied.summary] + travel_lines + plan_lines
+        ask_location = False
         for a in result.actions:
             if a.name == "directions":
-                url = directions_url(str(a.arguments.get("destination", "")))
-                if url:
-                    lines.append(f'<a href="{url}">Directions to {esc(str(a.arguments["destination"]))}</a>')
+                line, need_location = await self._directions(
+                    str(a.arguments.get("destination", "")), str(a.arguments.get("mode") or "drive")
+                )
+                lines.append(line)
+                ask_location = ask_location or need_location
         return [
             Outbound(
                 "\n".join(line for line in lines if line),
                 voice=self._voice_reply(via_voice),
+                location_button=ask_location,
                 kind="reply",
             )
         ]
+
+    LOCATION_FRESH_HOURS = 3
+
+    def _origin(self, now) -> tuple[tuple[float, float] | None, str]:
+        """Where he is: the location he shared in the last few hours, else home. (latlng, label)"""
+        loc = self.state.last_location
+        if loc and loc.get("at"):
+            try:
+                if now - datetime.fromisoformat(loc["at"]) <= timedelta(hours=self.LOCATION_FRESH_HOURS):
+                    return (float(loc["lat"]), float(loc["lng"])), "from you"
+            except (ValueError, TypeError, KeyError):
+                pass
+        return self.store.profile().home_latlng, "from home"
+
+    async def _directions(self, destination: str, mode: str) -> tuple[str, bool]:
+        """'Mags: 12 min walk (0.9 km) from you. Directions.' Returns (line, needs_location)."""
+        now = self.clock.now()
+        origin, where = self._origin(now)
+        place = None
+        if self.maps is not None and destination.strip():
+            place = await self.maps.find_place(destination, near=origin)
+        name = place["name"] if place else destination
+        url = directions_url(place["address"] or name if place else destination, place["latlng"] if place else None)
+        link = f'<a href="{url}">Directions</a>' if url else ""
+        if self.maps is None or origin is None or place is None:
+            line = f"{esc(name)}. {link}".strip()
+            if self.maps is not None and origin is None:
+                line += "\nShare your location and I'll tell you how far."
+            return line, self.maps is not None and origin is None
+        route = await self.maps.route(origin, place["latlng"], mode)
+        if route is None:
+            return f"{esc(name)}. {link}", False
+        minutes, meters = route
+        how = "walk" if mode == "walk" else "drive"
+        dist = f"{meters / 1609.34:.1f} mi" if meters >= 400 else f"{int(meters * 3.281)} ft"
+        return f"{esc(name)}: {minutes} min {how} ({dist}) {where}. {link}", False
 
     async def _geocode_home(self, actions: list[ToolCall]) -> None:
         """Coordinates for a new home address or saved place; home follows the current base."""

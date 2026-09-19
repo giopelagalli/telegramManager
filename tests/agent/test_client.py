@@ -175,3 +175,16 @@ async def test_leading_system_messages_are_folded_into_one():
     sent = client._client.chat.completions.create.call_args.kwargs["messages"]
     assert sent[0] == {"role": "system", "content": "rules\n\ncontext"}
     assert [m["role"] for m in sent] == ["system", "user", "assistant", "system"]
+
+
+async def test_think_blocks_never_reach_the_reply():
+    from unittest.mock import AsyncMock
+    from bot.agent.client import OpenAIModelClient
+    from bot.agent.client import _strip_thinking
+    assert _strip_thinking("<think>\nhmm\n</think>\n\nPong.") == "Pong."
+    assert _strip_thinking("<think>") is None and _strip_thinking("") == "" and _strip_thinking(None) is None
+    client = OpenAIModelClient("http://x/v1", "k", "m")
+    resp = _make_response()
+    resp.choices[0].message.content = "<think>reasoning</think>Hey."
+    client._client.chat.completions.create = AsyncMock(return_value=resp)
+    assert (await client.chat([{"role": "user", "content": "hi"}])).text == "Hey."

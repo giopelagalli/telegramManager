@@ -10,6 +10,7 @@ EARTH_RADIUS_M = 6371000
 
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"
+PLACES_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,46 @@ class MapsClient:
             return (location["lat"], location["lng"])
         except (KeyError, IndexError, TypeError) as exc:
             logger.warning("maps.geocode failed: %s", type(exc).__name__)
+            return None
+
+    async def find_place(self, query: str, near: tuple[float, float] | None = None) -> dict | None:
+        """What "mags" means around here: {"name", "address", "latlng"} for the best match near `near`."""
+        params = {"query": query, "key": self._api_key}
+        if near is not None:
+            params["location"] = f"{near[0]},{near[1]}"
+            params["radius"] = 25000
+        data = await self._get_json(PLACES_URL, params, "find_place")
+        if data is None:
+            return None
+        try:
+            hit = data["results"][0]
+            loc = hit["geometry"]["location"]
+            return {"name": hit["name"], "address": hit.get("formatted_address", ""), "latlng": (loc["lat"], loc["lng"])}
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.warning("maps.find_place failed: %s", type(exc).__name__)
+            return None
+
+    async def route(
+        self, origin: tuple[float, float], dest: tuple[float, float], mode: str = "drive"
+    ) -> tuple[int, int] | None:
+        """(minutes, meters) from origin to dest, walking or driving with live traffic."""
+        params = {
+            "origin": f"{origin[0]},{origin[1]}",
+            "destination": f"{dest[0]},{dest[1]}",
+            "mode": "walking" if mode == "walk" else "driving",
+            "key": self._api_key,
+        }
+        if mode != "walk":
+            params["departure_time"] = "now"
+        data = await self._get_json(DIRECTIONS_URL, params, "route")
+        if data is None:
+            return None
+        try:
+            leg = data["routes"][0]["legs"][0]
+            duration = leg.get("duration_in_traffic", leg["duration"])
+            return math.ceil(duration["value"] / 60), int(leg["distance"]["value"])
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.warning("maps.route failed: %s", type(exc).__name__)
             return None
 
     async def travel_minutes(
