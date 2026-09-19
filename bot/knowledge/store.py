@@ -211,7 +211,7 @@ class KnowledgeStore:
         self.log("add", path)
         return path
 
-    CHAT_RECALL_DAYS = 90
+    CHAT_RECALL_DAYS: int | None = None  # the whole transcript, however far back it goes
 
     def log_chat(self, role: str, text: str) -> None:
         """The full transcript, one file per day under chat/. Stays in the knowledge repo, so it is
