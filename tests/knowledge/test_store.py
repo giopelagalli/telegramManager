@@ -230,3 +230,35 @@ def test_weekly_series_materializes_two_weeks_and_is_idempotent(store):
     assert all(e.series == path and e.travel_minutes == 20 for e in store.events())
     removed = store.delete_series(path, now)
     assert removed == len(starts) and store.events() == [] and store.series() == []
+
+
+def test_chat_transcript_is_kept_per_day_and_searchable(tmp_path):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    NY = ZoneInfo("America/New_York")
+    clock = {"now": datetime(2026, 9, 10, 12, 5, tzinfo=NY)}
+    s = KnowledgeStore(tmp_path / "k", clock=lambda: clock["now"]); s.init()
+    s.log_chat("user", "ally still hasn't\nanswered me")
+    s.log_chat("assistant", "Then don't double text.")
+    clock["now"] += timedelta(days=8)
+    s.log_chat("user", "gym was good")
+    assert (s.root / "chat" / "2026-09-10.md").read_text().splitlines()[0] == "- 12:05 user: ally still hasn't answered me"
+    lines = s.chat_lines()
+    assert lines[0] == "(2026-09-10 12:05) user: ally still hasn't answered me" and lines[-1].endswith("user: gym was good")
+    assert s.chat_lines(days=3) == ["(2026-09-18 12:05) user: gym was good"]
+    assert any("ally still" in h for h in s.recall("what did I say about ally"))
+    assert any("ally still" in h for h in s.recall_corpus())
+
+
+def test_ordinary_commits_leave_the_transcript_out_and_undo_survives_it(tmp_path):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    s = KnowledgeStore(tmp_path / "k", clock=lambda: datetime(2026, 9, 10, 12, 5, tzinfo=ZoneInfo("America/New_York"))); s.init()
+    s.log_chat("user", "hey")
+    s.add(Todo(path="", title="Paper", priority=1)); s.commit("capture: add paper")
+    assert "chat/" not in s._git("show", "--stat", "--format=", "HEAD")
+    s.log_chat("assistant", "yo")
+    assert s.undo() == "capture: add paper" and s.todos() == []
+    assert len(s.chat_lines()) == 2  # nothing in the transcript was lost
+    s.commit("chat: transcript", include_chat=True)
+    assert "chat/2026-09-10.md" in s._git("show", "--stat", "--format=", "HEAD")

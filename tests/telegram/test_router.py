@@ -899,3 +899,11 @@ async def test_chat_screenshots_are_read_with_sides_and_timestamps(rig):
     await router.on_photo(b"img", "she didn't respond")
     ocr_prompt = seen[1][0]["content"][0]["text"]
     assert "Right-side bubbles" in ocr_prompt and "time label" in ocr_prompt
+
+
+async def test_every_exchange_lands_in_the_transcript(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("reply", {"text": "Then don't double text."})))
+    await router.on_text("ally left me on read")
+    lines = store.chat_lines()
+    assert lines[-2].endswith("user: ally left me on read") and lines[-1].endswith("assistant: Then don't double text.")

@@ -183,12 +183,12 @@ async def evening_outbound(store: KnowledgeStore, now: datetime, agent, notes: l
 async def nightly_notes(store: KnowledgeStore, state: RuntimeState, now: datetime, agent) -> list[str]:
     """Distil today's conversation into memories, once, before the evening wrap-up."""
     if user_turns(state, now) < 4:
+        store.commit("chat: transcript", include_chat=True)
         return []
     notes = await agent.consolidate(thread(state, now, only_today=True), [m.text for m in store.memories()])
     for note in notes:
         store.add_memory(note["text"], kind=note["kind"])
-    if notes:
-        store.commit("memory: nightly notes")
+    store.commit("memory: nightly notes" if notes else "chat: transcript", include_chat=True)
     return [n["text"] for n in notes]
 
 

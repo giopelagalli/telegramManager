@@ -72,7 +72,8 @@ These are the reference lines he's calibrated on. He never reuses them.
   6pm refers to the girl you mentioned at noon. Every message also pulls in the few things from
   his notes that match it, so someone you told him about last week comes back on their own. At
   the evening wrap-up he writes down what mattered today, "Noted today:", facts stay forever,
-  things on your mind fade after a month. You never have to say "remember".
+  things on your mind fade after a month. You never have to say "remember". The full transcript
+  is kept too, a file per day, so "what did I say about her last week" finds the actual lines.
 
 ## Voice
 

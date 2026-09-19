@@ -211,9 +211,38 @@ class KnowledgeStore:
         self.log("add", path)
         return path
 
+    CHAT_RECALL_DAYS = 90
+
+    def log_chat(self, role: str, text: str) -> None:
+        """The full transcript, one file per day under chat/. Stays in the knowledge repo, so it is
+        backed up with everything else and searchable long after the two-day working memory."""
+        now = self.clock()
+        folder = self.root / "chat"
+        folder.mkdir(exist_ok=True)
+        one_line = " ".join(text.split())
+        with (folder / f"{now:%Y-%m-%d}.md").open("a", encoding="utf-8") as f:
+            f.write(f"- {now:%H:%M} {role}: {one_line}\n")
+
+    def chat_lines(self, days: int | None = None) -> list[str]:
+        """Transcript lines as '(YYYY-MM-DD HH:MM) role: text', oldest first."""
+        folder = self.root / "chat"
+        if not folder.exists():
+            return []
+        files = sorted(folder.glob("*.md"))
+        if days is not None:
+            cutoff = (self.clock() - timedelta(days=days)).date().isoformat()
+            files = [f for f in files if f.stem >= cutoff]
+        out: list[str] = []
+        for f in files:
+            for line in f.read_text(encoding="utf-8").splitlines():
+                if line.startswith("- ") and len(line) > 8:
+                    out.append(f"({f.stem} {line[2:7]}){line[7:]}")
+        return out
+
     def recall_corpus(self) -> list[str]:
         """Every line recall may return, for the vector index."""
         lines = [f"({m.day}) {m.text}" for m in self.memories()]
+        lines += self.chat_lines(days=self.CHAT_RECALL_DAYS)
         log = self.root / "log.md"
         if log.exists():
             lines += [l[2:] for l in log.read_text(encoding="utf-8").splitlines() if l.startswith("- ")]
@@ -242,6 +271,10 @@ class KnowledgeStore:
             score = sum(1 for w in words if w in (src.title + " " + " ".join(src.topics)).lower())
             if score:
                 hits.append((score, f"source: {src.title} ({src.course})"))
+        for line in self.chat_lines(days=self.CHAT_RECALL_DAYS):
+            score = sum(1 for w in words if w in line.lower())
+            if score:
+                hits.append((score, line))
         hits.sort(key=lambda h: -h[0])
         return [h for _, h in hits[:limit]]
 
@@ -570,9 +603,14 @@ class KnowledgeStore:
 
     # -- commit / undo -----------------------------------------------------
 
-    def commit(self, message: str) -> str | None:
+    def commit(self, message: str, include_chat: bool = False) -> str | None:
+        """Commit the bundle. The chat transcript rides along only with the nightly commit, so an
+        undo of a real change never reverts conversation lines."""
         self.regenerate_indexes()
-        self._git("add", "-A")
+        if include_chat:
+            self._git("add", "-A")
+        else:
+            self._git("add", "-A", "--", ".", ":(exclude)chat")
         status = self._git("status", "--porcelain")
         if not status.strip():
             return None
@@ -585,6 +623,12 @@ class KnowledgeStore:
         if count == "1":
             return None
         subject = self._git("log", "-1", "--format=%s").strip()
-        self._git("revert", "--no-edit", "HEAD")
+        try:
+            self._git("revert", "--no-edit", "HEAD")
+        except subprocess.CalledProcessError:
+            # Only the nightly commit touches the transcript, and it is appended to all day;
+            # that one is not undoable, everything else is.
+            self._git("revert", "--abort")
+            return None
         self._push_remotes()
         return subject

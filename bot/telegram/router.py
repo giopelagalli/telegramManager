@@ -620,6 +620,7 @@ class Router:
 
     def _remember(self, role: str, text: str) -> None:
         remember(self.state, role, text, self.clock.now())
+        self.store.log_chat(role, text)
 
     def _thread(self) -> list:
         """Today's conversation, the model's working memory."""
