@@ -611,9 +611,8 @@ class KnowledgeStore:
             self._git("add", "-A")
         else:
             self._git("add", "-A", "--", ".", ":(exclude)chat")
-        status = self._git("status", "--porcelain")
-        if not status.strip():
-            return None
+        if not self._git("diff", "--cached", "--name-only").strip():
+            return None  # nothing staged (an unsaved transcript alone is not a change)
         self._git("commit", "-q", "-m", message)
         self._push_remotes()
         return self._git("rev-parse", "--short", "HEAD").strip()
