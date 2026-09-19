@@ -80,7 +80,9 @@ class Handlers:
     def command(self, name: str):
         async def handler(update, context):
             arg = " ".join(context.args) if context.args else ""
-            await self._send(await self.router.command(name, arg, channel=self._channel(update)))
+            async with self._busy(update.effective_message):
+                outs = await self.router.command(name, arg, channel=self._channel(update))
+            await self._send(outs)
 
         return handler
 

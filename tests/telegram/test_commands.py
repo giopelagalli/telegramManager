@@ -243,3 +243,18 @@ async def test_hard_carries_the_conversation_but_not_the_memories(tmp_path):
     sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
     assert "she left me on read" in sent and "don't double text" in sent
     assert "Ally is the girl" in sent and "Anna" not in sent  # only the memories that match the question
+
+
+async def test_hard_searches_the_web_first_when_search_is_configured(tmp_path):
+    cloud = FakeModelClient([ModelResponse("Merriam-Webster added 'rizz' in 2023.", [])], model="accounts/fireworks/models/deepseek-v4p1-flash")
+    r, store, primary = _rig_with_hard(tmp_path, None)
+    r.agent.cloud = cloud
+    class FakeSearch:
+        def __init__(self): self.queries = []
+        async def search(self, q): self.queries.append(q); return "1. New words 2026 — https://example.com/words"
+    r.search = FakeSearch()
+    out = (await r.command("hard", "what words were added to the dictionary this year", channel=DM))[0]
+    assert r.search.queries == ["what words were added to the dictionary this year"]
+    sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
+    assert "example.com/words" in sent and "cite the URL" in sent
+    assert out.text.startswith("<i>via deepseek-v4p1-flash</i>")

@@ -58,7 +58,8 @@ _TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", re.IGNORECASE)
 
 
 async def handle(
-    name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None, recall=None, recent=None
+    name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None,
+    recall=None, recent=None, search=None,
 ) -> list[Outbound]:
     arg = (arg or "").strip()
     today = now.date()
@@ -114,7 +115,7 @@ async def handle(
         return [Outbound(f"Reverted: {esc(subject)}", kind="reply")]
 
     if name == "hard":
-        return await _hard(arg, store, agent, now, channel, recent=list(recent or []), recall=recall)
+        return await _hard(arg, store, agent, now, channel, recent=list(recent or []), recall=recall, search=search)
 
     if name == "think":
         return _think(arg, store, agent)
@@ -138,7 +139,7 @@ async def _brief(arg: str, store, agent, state, now: datetime) -> list[Outbound]
 
 
 async def _hard(
-    text: str, store, agent, now: datetime, channel: Channel | None, recent: list | None = None, recall=None
+    text: str, store, agent, now: datetime, channel: Channel | None, recent: list | None = None, recall=None, search=None
 ) -> list[Outbound]:
     """/hard is the one explicit door to the cloud model when there is one: the user typed it,
     so they chose it. It gets the blind view (schedule, todos, goals), the conversation so far
@@ -148,7 +149,7 @@ async def _hard(
     if client is None:
         return [Outbound(HARD_UNCONFIGURED_REPLY, kind="reply")]
     remote = agent.cloud is not None or agent.hard_remote
-    model_name = getattr(client, "model", "the hard model")
+    model_name = str(getattr(client, "model", "the hard model")).rsplit("/", 1)[-1]
 
     if channel is not None and channel.kind == "course":
         try:
@@ -166,6 +167,10 @@ async def _hard(
             context += "\n\nThe conversation so far (the question refers to it):\n" + "\n".join(
                 f"{role}: {body}" for role, body in recent
             )
+        if search is not None:
+            results = await search.search(text)  # one web search per /hard, so "what's new" questions have something real
+            if results:
+                context += f"\n\nWeb search results for the question (use if relevant, cite the URL you used):\n{results}"
         answer = await agent.answer(text, context, client=client)
 
     if answer is None:

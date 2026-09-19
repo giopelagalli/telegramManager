@@ -578,7 +578,8 @@ class Router:
         now = self._touch()
         close_chain(self.state)
         outs = await commands.handle(
-            name, arg, self.store, self.agent, self.state, now, channel, recall=self._recall, recent=self._thread()
+            name, arg, self.store, self.agent, self.state, now, channel,
+            recall=self._recall, recent=self._thread(), search=self.search,
         )
         return self._tag(outs, channel)
 
