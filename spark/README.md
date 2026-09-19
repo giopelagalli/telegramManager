@@ -84,3 +84,28 @@ The bot needs no change: `TTS_MODEL` is only a label.
 
 Retire it: `sudo systemctl disable --now sparkbot`. JD is the only bot. The model service
 (`sparkmodel`) stays and autostarts on boot; that is all the Spark needs to run.
+
+## Sharing the Spark with other projects
+
+One vLLM, several users: JD, AgentHub's agents, the probability engine. vLLM already queues and
+batches requests; the only question is who waits. Its priority scheduler settles that:
+
+1. **On the Spark**, add `--scheduling-policy priority` to the vLLM launch args (the recipe's
+   `start.sh` / `.env`; check with `docker exec vllm-fn-tp1 vllm serve --help | grep scheduling`
+   that the version has it). Restart the model.
+2. **JD sends nothing** — priority 0 is the default and the highest. His request goes to the front
+   of the line the moment it arrives; a long agent prompt gets preempted only if the KV cache is
+   actually full, and resumes when JD's reply is out.
+3. **Every other project sends `"priority": 10`** in the request body (AgentHub: `priority: 10` on
+   the Spark's serving entry in `configs/spark.yaml`; anything else: one field in `extra_body`).
+   Without step 1 a non-zero priority is a 400, so do them together.
+
+No pausing, no checkpoints, no second model, no cloud hop: agents wait a few seconds while JD
+answers, then carry on. The others fall back to Fireworks only when the Spark is down, same as JD.
+
+`/queue` in Telegram shows what the Spark is doing (requests running and waiting, KV cache) and,
+with `AGENTHUB_URL` and `AGENTHUB_PASSWORD` in JD's `.env`, AgentHub's projects and job queue.
+
+AgentHub's Spark node config expects to launch its own model servers; to share the one already
+running, point its orchestrator entry at `http://localhost:8888` (model `qwen3.8-flash-next`)
+instead of launching a second copy — there is no memory for two.

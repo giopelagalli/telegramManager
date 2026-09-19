@@ -7,6 +7,7 @@ from pathlib import Path
 
 from bot.agent.agent import Agent
 from bot.agent.client import FallbackModelClient, ModelClient, OpenAIModelClient
+from bot.cluster import AgentHubStatus, ClusterStatus, SparkStatus
 from bot.config import Settings
 from bot.memory.index import Embedder, VectorIndex
 from bot.search import BraveSearch
@@ -151,7 +152,11 @@ def main() -> None:
     if settings.embed_model and settings.embed_base_url and settings.embed_api_key:
         index = VectorIndex(settings.data_dir / "index.json",
                             Embedder(settings.embed_base_url, settings.embed_api_key, settings.embed_model))
-    router = Router(store, agent, state, clock, maps, search=search, index=index)
+    cluster = ClusterStatus(
+        spark=SparkStatus(settings.openai_base_url) if settings.fallback_model or "localhost" in settings.openai_base_url else None,
+        hub=AgentHubStatus(settings.agenthub_url, settings.agenthub_password) if settings.agenthub_url else None,
+    )
+    router = Router(store, agent, state, clock, maps, search=search, index=index, cluster=cluster)
     engine = Engine(store, agent, state, state_path, clock, sender, maps)
 
     application = build_application(settings, router, sender, _transcriber(settings))

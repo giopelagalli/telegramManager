@@ -258,3 +258,13 @@ async def test_hard_searches_the_web_first_when_search_is_configured(tmp_path):
     sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
     assert "example.com/words" in sent and "cite the URL" in sent
     assert out.text.startswith("<i>via deepseek-v4p1-flash</i>")
+
+
+async def test_queue_command_reports_the_cluster(rig):
+    r, store, _ = rig
+    class FakeCluster:
+        async def report(self, now): return "Spark: idle.\n• Probability engine — active"
+    r.cluster = FakeCluster()
+    assert (await r.command("queue", ""))[0].text == "Spark: idle.\n• Probability engine — active"
+    r.cluster = None
+    assert (await r.command("queue", ""))[0].text.startswith("Nothing to report")

@@ -35,6 +35,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("goals", "Your goals and where you stand", True),
     ("pause", "Quiet for 2h", True),
     ("undo", "Take back the last thing he changed", False),
+    ("queue", "What's using the Spark right now", False),
     ("hard", "Ask the bigger cloud model; it sees your schedule, not your notes (/hard …)", False),
     ("think", "Slower, more careful answers on/off (/think on)", False),
     ("help", "List commands", False),
@@ -59,7 +60,7 @@ _TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", re.IGNORECASE)
 
 async def handle(
     name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None,
-    recall=None, recent=None, search=None,
+    recall=None, recent=None, search=None, cluster=None,
 ) -> list[Outbound]:
     arg = (arg or "").strip()
     today = now.date()
@@ -107,6 +108,11 @@ async def handle(
         )]
 
 
+
+    if name == "queue":
+        if cluster is None:
+            return [Outbound("Nothing to report: no Spark or AgentHub configured.", kind="reply")]
+        return [Outbound(esc(await cluster.report(now)), kind="reply")]
 
     if name == "undo":
         subject = store.undo()

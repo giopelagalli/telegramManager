@@ -124,6 +124,8 @@ class Settings:
     tts_model: str | None
     tts_voice: str | None
     tts_instructions: str | None
+    agenthub_url: str | None
+    agenthub_password: str | None
     twilio_account_sid: str | None
     twilio_auth_token: str | None
     twilio_from: str | None
@@ -213,6 +215,8 @@ class Settings:
             tts_model=opt("TTS_MODEL"),
             tts_voice=opt("TTS_VOICE"),
             tts_instructions=opt("TTS_INSTRUCTIONS"),
+            agenthub_url=opt("AGENTHUB_URL"),
+            agenthub_password=opt("AGENTHUB_PASSWORD"),
             twilio_account_sid=twilio["TWILIO_ACCOUNT_SID"],
             twilio_auth_token=twilio["TWILIO_AUTH_TOKEN"],
             twilio_from=twilio["TWILIO_FROM"],

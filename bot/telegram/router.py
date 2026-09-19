@@ -108,7 +108,7 @@ SPARK_DOWN_WAIT = "Spark's down. That one waits till it's back — the backup on
 class Router:
     """Turns a user action into a list of outbound messages. No telegram types here."""
 
-    def __init__(self, store, agent, state, clock, maps, search=None, index=None):
+    def __init__(self, store, agent, state, clock, maps, search=None, index=None, cluster=None):
         self.store = store
         self.agent = agent
         self.state = state
@@ -116,6 +116,7 @@ class Router:
         self.maps = maps
         self.search = search
         self.index = index
+        self.cluster = cluster
         self.last_outcome = "handled"
         self._warned_threads: set[str] = set()
 
@@ -580,7 +581,7 @@ class Router:
         close_chain(self.state)
         outs = await commands.handle(
             name, arg, self.store, self.agent, self.state, now, channel,
-            recall=self._recall, recent=self._thread(), search=self.search,
+            recall=self._recall, recent=self._thread(), search=self.search, cluster=self.cluster,
         )
         return self._tag(outs, channel)
 
