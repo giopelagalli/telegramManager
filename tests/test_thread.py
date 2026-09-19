@@ -20,7 +20,7 @@ def test_the_whole_day_is_kept_not_eight_lines():
         remember(s, "assistant", f"a{i}", T0 + timedelta(minutes=i))
     t = thread(s, T0 + timedelta(hours=1))
     assert len(t) == 80 and t[0] == ["user", "u0"] and t[-1] == ["assistant", "a39"]
-    assert user_turns(s) == 40
+    assert user_turns(s, T0 + timedelta(hours=1)) == 40
 
 
 def test_long_gaps_are_marked_and_a_new_day_starts_fresh():
@@ -30,9 +30,21 @@ def test_long_gaps_are_marked_and_a_new_day_starts_fresh():
     remember(s, "user", "evening", T0 + timedelta(hours=8))
     t = thread(s, T0 + timedelta(hours=8))
     assert t[2] == ["user", "[8h later] evening"]
-    # 1am the same night is still today; 9am the next day is not
+    # 1am the same night is still today; the next day keeps it as yesterday; the day after drops it
     assert thread(s, T0 + timedelta(hours=16)) and len(s.recent) == 3
-    assert thread(s, T0 + timedelta(days=1)) == [] and s.recent == []
+    assert len(thread(s, T0 + timedelta(days=1))) == 3 and len(s.recent) == 3
+    assert thread(s, T0 + timedelta(days=1), only_today=True) == []
+    assert user_turns(s, T0 + timedelta(days=1)) == 0
+    assert thread(s, T0 + timedelta(days=2)) == [] and s.recent == []
+
+
+def test_notes_only_see_todays_part():
+    s = _state()
+    remember(s, "user", "yesterday thing", T0 - timedelta(days=1))
+    remember(s, "user", "today thing", T0)
+    assert [t for _, t in thread(s, T0)] == ["yesterday thing", "[24h later] today thing"]
+    assert [t for _, t in thread(s, T0, only_today=True)] == ["today thing"]
+    assert user_turns(s, T0) == 1
 
 
 def test_size_cap_drops_the_oldest_and_old_two_item_entries_still_work():
