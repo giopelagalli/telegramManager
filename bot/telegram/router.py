@@ -660,7 +660,6 @@ class Router:
         return outs
 
     async def _captured(self, text: str, result, awaiting, via_voice: bool, now) -> list[Outbound]:
-        self.last_outcome = "captured" if result.parsed else "inbox"
         if any(a.name == "undo" for a in result.actions):
             subject = self.store.undo()
             return [Outbound("Nothing to undo." if subject is None else f"Reverted: {esc(subject)}", kind="reply")]
