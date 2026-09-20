@@ -250,3 +250,12 @@ async def test_tool_calls_without_a_reply_call_are_fine_and_a_raw_call_echo_is_n
     agent = Agent(client, None, store, lambda: NOW)
     res = await agent.capture("directions to bar south")
     assert not res.parsed and "Say it again" in res.reply
+
+
+async def test_a_silent_model_is_asked_again_without_tools(store):
+    client = FakeModelClient([ModelResponse(None, []), ModelResponse(None, []),
+                              ModelResponse("Because most of them are 5'4\" and it's the first thing they can see.", [])])
+    agent = Agent(client, None, store, lambda: NOW)
+    res = await agent.capture("why does height matter so much to girls")
+    assert res.parsed and res.reply.startswith("Because most")
+    assert client.calls[-1]["tools"] is None and len(client.calls) == 3

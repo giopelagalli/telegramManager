@@ -40,3 +40,17 @@ async def test_aclose_closes_owned_client_only():
     await injected.aclose()
     assert not injected_http.is_closed
     await injected_http.aclose()
+
+
+async def test_find_place_reports_googles_status_on_an_empty_result():
+    import logging
+    seen = []
+    def handler(req):
+        return httpx.Response(200, json={"results": [], "status": "REQUEST_DENIED", "error_message": "Places API not enabled"})
+    c = MapsClient("k", http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    logger = logging.getLogger("bot.maps.client")
+    class Grab(logging.Handler):
+        def emit(self, record): seen.append(record.getMessage())
+    logger.addHandler(Grab())
+    assert await c.find_place("mags", near=(33.9, -83.3)) is None
+    assert any("REQUEST_DENIED" in m and "Places API not enabled" in m for m in seen)

@@ -131,6 +131,13 @@ class Agent:
             self._adopt_text_as_reply(response)
             errors = self._check(response.tool_calls)
 
+        if errors == ["no tool calls and no text"]:
+            # The model went silent (Qwen does this now and then with tools attached). Ask again
+            # with no tools: it then just answers in prose.
+            plain = await self._chat_or_none(messages, None, 0.3)
+            if plain is not None and (plain.text or "").strip():
+                return CaptureResult([ToolCall("reply", {"text": plain.text.strip()})], plain.text.strip(), parsed=True)
+
         if errors:
             logger.warning("capture unparsed after retry: %s | calls: %s", errors, self._raw_calls_repr(response.tool_calls))
             return self._to_inbox(text, "Didn't catch that. Say it again, plainer.")

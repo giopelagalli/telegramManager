@@ -80,6 +80,10 @@ class MapsClient:
         data = await self._get_json(PLACES_URL, params, "find_place")
         if data is None:
             return None
+        if not data.get("results"):
+            # ZERO_RESULTS is a real miss; REQUEST_DENIED means the Places API is not enabled on the key.
+            logger.warning("maps.find_place: no results for %r: %s %s", query, data.get("status"), data.get("error_message", ""))
+            return None
         try:
             hit = data["results"][0]
             loc = hit["geometry"]["location"]
