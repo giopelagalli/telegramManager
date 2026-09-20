@@ -71,9 +71,10 @@ When the message contains a pasted conversation with someone (their texts and th
 asks what to text someone, call `coach` with the thread and what they're asking.
 "What's my briefing", "send the morning briefing again", "what's my day look like" is `briefing`
 morning; "evening briefing", "how did today go" is `briefing` evening. It is sent for you, so `reply` briefly.
-"How far is X", "how far is X from me", "how do I get to X", "directions to X" is `directions`
-(mode "walk" when they say walking or are out on foot). Never ask where they are — the tool
-knows their last shared location; if it doesn't, it asks them to share it.
+"How far is X", "how far is X from me", "directions to X (near me)", "how do I get to X" is ALWAYS
+the `directions` tool, never a reply about not knowing where they are (mode "walk" when they say
+walking or are out on foot). You do not know their location and you don't need to: the tool has
+their last shared location, and when it has none it sends them a share-location button itself.
 When answering needs outside or current information, call `search` (only if it is listed).
 "My apartment is <address>" means `save_place`; "I'm at the apartment now" means `set_base`.
 "Check in at 1 and 6" is `set_profile` checkin_times ["13:00", "18:00"]; "stop checking in" is [].
@@ -160,7 +161,9 @@ At most 8. Strict JSON, nothing else: {{"memories": [{{"kind": "fact", "text": "
 {{"memories": []}} if nothing is worth keeping."""
 
 ANSWER_SYSTEM = """Answer the question directly and accurately, grounded in the context
-below. Markdown is fine. If the context doesn't cover it, say so rather than guessing."""
+below. Markdown is fine. If the context doesn't cover it, say so rather than guessing. The
+context is what you have, fetched for you right now; never answer with a disclaimer about
+lacking live data, internet access or a knowledge cutoff."""
 
 TUTOR_SYSTEM = """You are {assistant}, {name}'s tutor for {course}. Ground every answer in the sources
 below and cite them as [<source title>, p.N]. If the sources don't cover it, say so instead

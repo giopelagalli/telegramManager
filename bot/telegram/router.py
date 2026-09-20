@@ -31,6 +31,7 @@ from bot.study.extract import (
 from bot.study.select import select_sources
 from bot.telegram import callbacks, commands
 from bot.telegram.markdown import md_to_html
+from bot.telegram.sender import plain_text
 
 logger = logging.getLogger(__name__)
 
@@ -502,7 +503,9 @@ class Router:
         if results is None:
             return [Outbound("Search isn't answering right now.", kind="reply")]
         answer = await self.agent.answer(
-            question, f"Web search results for \"{query}\":\n{results}\nCite the URL you used."
+            question,
+            f"Live web search results fetched just now for \"{query}\" (you DO have current information — "
+            f"never say you lack internet access or a knowledge cutoff; answer from these and cite the URL used):\n{results}",
         )
         if answer is None:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
@@ -643,12 +646,20 @@ class Router:
         result = await self.agent.capture(
             text, awaiting=awaiting, recent=self._thread(), recalled=await self._recalled(text)
         )
-        if result.parsed:
-            # An exchange that failed is not part of the conversation: remembered, the fallback
-            # line reads as his own words and the next model copies it; the dangling question
-            # reads as something he never answered and he starts answering it.
-            self._remember("user", text)
-            self._remember("assistant", result.reply or "")
+        self.last_outcome = "captured" if result.parsed else "inbox"
+        if not result.parsed:
+            # A failed exchange is not part of the conversation: remembered, the fallback line
+            # reads as his own words and the next model copies it.
+            return [Outbound(esc(result.reply), kind="reply")]
+        outs = await self._captured(text, result, awaiting, via_voice, now)
+        # Remember what was actually sent — the search answer, the directions line — not the
+        # model's placeholder "Sending it.", or "what's the address" is forgotten a message later.
+        self._remember("user", text)
+        if outs and outs[0].text:
+            self._remember("assistant", plain_text(outs[0].text))
+        return outs
+
+    async def _captured(self, text: str, result, awaiting, via_voice: bool, now) -> list[Outbound]:
         self.last_outcome = "captured" if result.parsed else "inbox"
         if any(a.name == "undo" for a in result.actions):
             subject = self.store.undo()
@@ -678,7 +689,6 @@ class Router:
                                             str(coach.arguments.get("ask", "")), recent=self._thread())
             if advice is None:
                 return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
-            self._remember("assistant", advice)
             return [Outbound(md_to_html(advice), voice=self._voice_reply(via_voice), kind="reply")]
 
         recall = next((a for a in result.actions if a.name == "recall"), None)

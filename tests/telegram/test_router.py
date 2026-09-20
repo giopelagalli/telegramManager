@@ -963,3 +963,19 @@ async def test_directions_without_maps_is_just_the_link(rig):
     client.responses.append(R(("directions", {"destination": "Bar South, Athens GA"})))
     outs = await router.on_text("just give me directions for bar south athens ga")
     assert outs[0].text.startswith("Bar South, Athens GA. <a href=") and not outs[0].location_button
+
+
+async def test_the_search_answer_is_what_he_remembers_saying(rig):
+    router, store, client, state, _ = rig
+    class FakeSearch:
+        async def search(self, q): return "- Magnolias Bar\n  https://example.com\n  312 E Broad St, Athens, GA 30601"
+    router.search = FakeSearch()
+    router.agent.tools = router.agent.tools + [{"type": "function", "function": {"name": "search", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}}]
+    client.responses.append(R(("search", {"query": "Mags Athens GA address"}), ("reply", {"text": "Looking."})))
+    client.responses.append(ModelResponse("312 E Broad St, Athens, GA 30601. Source: https://example.com", []))
+    outs = await router.on_text("what's the address")
+    assert "312 E Broad St" in outs[0].text
+    assert state.recent[-1][0] == "assistant" and "312 E Broad St" in state.recent[-1][1]
+    assert "Looking." not in state.recent[-1][1]
+    sent = "\n".join(m["content"] for m in client.calls[-1]["messages"])
+    assert "fetched just now" in sent and "never say you lack internet" in sent
