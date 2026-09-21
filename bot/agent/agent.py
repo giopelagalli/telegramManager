@@ -596,6 +596,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                     goal=args.get("goal"),
                     verify=args.get("verify", "none"),
                     body=args.get("notes", ""),
+                    course=args.get("course") or None,
                 )
                 store.add(todo, folder="backlog" if args.get("backlog") else None)
                 due_part = f", due {_fmt_due(todo.due)}" if todo.due else ""
@@ -611,6 +612,8 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                     todo.goal = args["goal"]
                 if "verify" in args:
                     todo.verify = args["verify"]
+                if "course" in args:
+                    todo.course = args["course"] or None
                 if "notes" in args:
                     todo.body = args["notes"]
                 if "status" in args:

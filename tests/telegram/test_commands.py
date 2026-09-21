@@ -29,7 +29,8 @@ def rig(tmp_path):
 async def test_todo_top5_with_buttons(rig):
     r, store, state = rig
     o = (await r.command("todo", ""))[0]
-    assert o.text.count("\n") >= 5 and len(o.buttons) == 5 and o.buttons[0][1].startswith("done:")
+    assert o.text.startswith("<b>To do</b>") and o.text.count("\n") == 7 and o.buttons[0][1] == "todo:personal:e:0"
+    assert o.buttons[-1] == ("➕ Add", "todo:personal:add")
     assert "All open (7)" in (await r.command("todo", "all"))[0].text
 
 
@@ -139,7 +140,7 @@ def test_command_menu_is_the_minimal_set():
     from bot.telegram.commands import COMMANDS
 
     menu_names = {name for name, _, menu in COMMANDS if menu}
-    assert menu_names == {"todo", "now", "today", "week", "brief", "due", "schedule", "goals", "pause"}
+    assert menu_names == {"todo", "now", "today", "week", "brief", "due", "courses", "schedule", "goals", "pause"}
 
 
 async def test_help_lists_only_the_menu_commands(rig):
@@ -260,18 +261,18 @@ async def test_due_lists_by_date_and_buttons_finish_change_or_remove(rig):
     store.commit("t")
     out = (await r.command("due", ""))[0]
     assert out.text.splitlines()[1:] == ["today — CS project", "Fri Sep 4 — Spanish homework"]
-    assert out.buttons[-1] == ("➕ Add", "due:add") and out.buttons[0][1] == "due:e:0"
+    assert out.buttons[-1] == ("➕ Add", "todo:due:add") and out.buttons[0][1] == "todo:due:e:0"
 
-    item = (await r.on_callback("due:e:1", 9, "x", out.buttons))[0]
+    item = (await r.on_callback("todo:due:e:1", 9, "x", out.buttons))[0]
     assert "<b>Spanish homework</b>" in item.text and item.edit_message_id == 9
     assert [b[0] for b in item.buttons] == ["✅ Done", "✏️ Change", "🗑 Remove", "◀ Back"]
 
-    after = (await r.on_callback("due:done:1", 9, "x", item.buttons))[0]
+    after = (await r.on_callback("todo:due:done:1", 9, "x", item.buttons))[0]
     assert after.toast == "Done: Spanish homework" and "Spanish homework" not in after.text
     assert next(t for t in store.todos() if t.title == "Spanish homework").status == "done"
 
-    ask = (await r.on_callback("due:add", 9, "x", []))[0]
-    assert "What's due" in ask.text and state.pending_schedule == {"ui": "due", "mode": "add"}
+    ask = (await r.on_callback("todo:due:add", 9, "x", []))[0]
+    assert "What's due" in ask.text and state.pending_schedule == {"ui": "todo", "mode": "add", "scope": "due"}
     r.agent.client.responses.append(R(("add_todo", {"title": "Lab report", "priority": 2, "due": "2026-09-05", "verify": "photo"}), ("reply", {"text": "In."})))
     outs = await r.on_text("lab report, saturday")
     assert r.agent.client.calls[-1]["messages"][-1]["content"].startswith("[Adding an assignment")
@@ -285,3 +286,41 @@ async def test_week_shows_what_is_due_each_day(rig):
     text = (await r.command("week", ""))[0].text
     fri = text.split("<b>Fri Sep 4</b>")[1].split("<b>")[0]
     assert "due: Spanish homework" in fri
+
+
+async def test_courses_view_and_adding_a_course_a_test_and_an_assignment(rig):
+    r, store, state = rig
+    from bot.knowledge.models import Course
+    store.add_course(Course(path="courses/csci-2670.md", title="CSCI 2670"))
+    store.add_series(Event(path="", title="CSCI 2670", start=datetime(2026, 9, 7, 9, 55, tzinfo=NY), repeat_days=["MO"]))
+    store.commit("c")
+    out = (await r.command("courses", ""))[0]
+    assert out.buttons[0] == ("CSCI 2670", "course:view:csci-2670") and out.buttons[-1] == ("➕ Course", "course:add")
+
+    view = (await r.on_callback("course:view:csci-2670", 3, "x", out.buttons))[0]
+    assert "<b>CSCI 2670</b>" in view.text and "Mon 9:55am" in view.text
+    assert [b[0] for b in view.buttons] == ["➕ Assignment", "➕ Test", "◀ Courses"]
+
+    # a new course needs no model
+    await r.on_callback("course:add", 3, "x", [])
+    outs = await r.on_text("Spanish")
+    assert "<b>Spanish</b>" in outs[0].text and any(c.title == "Spanish" for c in store.courses())
+
+    # a test goes in as an exam event on the course
+    ask = (await r.on_callback("course:addtest:csci-2670", 3, "x", []))[0]
+    assert "Test or quiz" in ask.text
+    r.agent.client.responses.append(R(("add_event", {"title": "CSCI 2670 midterm", "start": "2026-10-14T09:00:00-04:00", "kind": "exam", "course": "csci-2670"}),
+                                      ("reply", {"text": "In."})))
+    outs = await r.on_text("midterm oct 14 9am")
+    assert any('kind exam or quiz, course "csci-2670"' in m["content"] for c in r.agent.client.calls for m in c["messages"])
+    assert "<b>Tests</b>" in outs[1].text and "CSCI 2670 midterm" in outs[1].text
+
+    # an assignment goes in as a todo on the course, and shows in the course view and in /due
+    ask = (await r.on_callback("todo:course:csci-2670:add", 3, "x", []))[0]
+    assert "assignment" in ask.text
+    r.agent.client.responses.append(R(("add_todo", {"title": "Homework 3", "priority": 2, "due": "2026-09-10", "course": "csci-2670"}), ("reply", {"text": "In."})))
+    outs = await r.on_text("homework 3 due sept 10")
+    assert 'course "csci-2670"' in r.agent.client.calls[-1]["messages"][-1]["content"]
+    assert "<b>Assignments</b>" in outs[1].text and "Homework 3" in outs[1].text
+    assert "Homework 3" in (await r.command("due", ""))[0].text
+    assert "Homework 3" not in (await r.command("todo", ""))[0].text  # course work is not the personal list

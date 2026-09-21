@@ -30,7 +30,7 @@ from bot.study.extract import (
     render_pages,
 )
 from bot.study.select import select_sources
-from bot.telegram import callbacks, commands, due_ui, schedule_ui
+from bot.telegram import callbacks, commands, courses_ui, schedule_ui, todo_ui
 from bot.telegram.markdown import md_to_html
 from bot.telegram.sender import plain_text
 
@@ -685,8 +685,16 @@ class Router:
 
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now, client=None) -> list[Outbound]:
         pending_schedule = self.state.pending_schedule
+        if pending_schedule and pending_schedule.get("mode") == "add_course":
+            # No model needed: the name is the whole input.
+            self.state.pending_schedule = None
+            course = self._course_named(text)
+            self.store.commit(f"course: {course.title}")
+            self._remember("user", text)
+            self._remember("assistant", f"Added course {course.title}.")
+            return [courses_ui.course_view(self.store, now, course.slug)]
         if pending_schedule:
-            ui = due_ui if pending_schedule.get("ui") == "due" else schedule_ui
+            ui = {"todo": todo_ui, "course": courses_ui}.get(pending_schedule.get("ui"), schedule_ui)
             model_text = ui.hint(pending_schedule, text)
         else:
             model_text = text
@@ -773,8 +781,14 @@ class Router:
         if sum(1 for a in result.actions if a.name == "add_event") >= 3:
             # A whole schedule went in: show the week back so he can check it at a glance.
             lines.append(render_week(self.store.events(), self.store.profile(), now, self.store.todos()))
-        if pending_schedule and pending_schedule.get("ui") == "due" and any(a.name in ("add_todo", "update_todo") for a in result.actions):
-            return [Outbound("\n".join(line for line in lines if line), kind="reply"), due_ui.list_view(self.store, now)]
+        if pending_schedule and pending_schedule.get("ui") == "todo" and any(a.name in ("add_todo", "update_todo") for a in result.actions):
+            scope = pending_schedule.get("scope", "personal")
+            view = (courses_ui.course_view(self.store, now, scope.split(":", 1)[1]) if scope.startswith("course:")
+                    else todo_ui.list_view(self.store, now, scope))
+            return [Outbound("\n".join(line for line in lines if line), kind="reply"), view]
+        if pending_schedule and pending_schedule.get("ui") == "course" and any(a.name == "add_event" for a in result.actions):
+            return [Outbound("\n".join(line for line in lines if line), kind="reply"),
+                    courses_ui.course_view(self.store, now, pending_schedule.get("course", ""))]
         if pending_schedule and pending_schedule.get("ui") != "due" and any(a.name in ("add_event", "update_event") for a in result.actions):
             day = pending_schedule.get("day") or next(
                 (d for d in schedule_ui._WEEKDAYS

@@ -26,13 +26,14 @@ HARD_UNCONFIGURED_REPLY = "No hard model configured. Set HARD_MODEL in .env."
 HARD_OFFLINE_REPLY = "The hard model didn't answer; try again."
 
 COMMANDS: list[tuple[str, str, bool]] = [
-    ("todo", "Top 5", True),
+    ("todo", "Your personal list", True),
     ("backlog", "Parked todos, not on the list", False),
     ("today", "Today", True),
     ("week", "This week", True),
     ("now", "Do this next", True),
     ("brief", "Briefing", True),
-    ("due", "Assignments by due date", True),
+    ("due", "What's due, soonest first", True),
+    ("courses", "Each class: slots, tests, assignments", True),
     ("schedule", "Your classes, day by day", True),
     ("goals", "Your goals and where you stand", True),
     ("pause", "Quiet for 2h", True),
@@ -69,10 +70,14 @@ async def handle(
     today = now.date()
 
     if name == "todo":
-        todos = store.todos()
-        text = render_todo(todos, today, show_all=arg.lower() == "all")
-        buttons = [("✅ " + t.title[:24], f"done:{t.path}") for t in top(todos, today)]
-        return [Outbound(text, buttons=buttons, kind="reply")]
+        from bot.telegram.todo_ui import list_view
+        if arg.lower() == "all":
+            return [Outbound(render_todo(store.todos(), today, show_all=True), kind="reply")]
+        return [list_view(store, now, "personal")]
+
+    if name == "courses":
+        from bot.telegram.courses_ui import list_view
+        return [list_view(store)]
 
     if name == "backlog":
         return [Outbound(render_backlog([t for t in store.todos(include_backlog=True) if t.in_backlog]), kind="reply")]
@@ -128,8 +133,8 @@ async def handle(
         return [days_view(store)]
 
     if name == "due":
-        from bot.telegram.due_ui import list_view
-        return [list_view(store, now)]
+        from bot.telegram.todo_ui import list_view
+        return [list_view(store, now, "due")]
 
     if name == "queue":
         if cluster is None:
