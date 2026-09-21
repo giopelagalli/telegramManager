@@ -8,6 +8,7 @@ from bot.knowledge.views import esc
 from bot.scheduler.chains import close_chain
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.state import PendingVerify
+from bot.telegram import schedule_ui
 from bot.telegram.markdown import md_to_html
 
 SNOOZE_MINUTES = 30
@@ -38,6 +39,8 @@ async def handle(
         return _ack(arg, store, state, now, message_id, message_html)
     if action == "sprint":
         return _sprint(arg, store, state, now)
+    if action == "sched":
+        return schedule_ui.handle(arg, store, state, now, message_id)
     if action == "resume":
         state.pause_until = None
         return [Outbound("Back on.", kind="reply")]

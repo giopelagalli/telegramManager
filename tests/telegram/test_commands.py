@@ -277,3 +277,55 @@ async def test_voice_command_switches_reply_mode(rig):
     assert store.profile().voice_reply_mode == "always"
     await r.command("voice", "off")
     assert store.profile().voice_reply_mode == "on_voice"
+
+
+async def test_schedule_is_day_buttons_then_entries_then_change_or_remove(rig):
+    r, store, state = rig
+    from bot.knowledge.models import Event
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    NY = ZoneInfo("America/New_York")
+    store.add_series(Event(path="", title="CSCI 2670", start=datetime(2026, 9, 7, 9, 55, tzinfo=NY),
+                           end=datetime(2026, 9, 7, 10, 50, tzinfo=NY), location="Dawson Hall", travel_minutes=30, repeat_days=["MO"]))
+    store.add_series(Event(path="", title="Spanish", start=datetime(2026, 9, 7, 13, 15, tzinfo=NY), repeat_days=["MO", "FR"]))
+    store.commit("classes")
+    days = (await r.command("schedule", ""))[0]
+    assert [b[0] for b in days.buttons] == ["Mon · 2", "Tue", "Wed", "Thu", "Fri · 1", "Sat", "Sun"]
+
+    monday = (await r.on_callback("sched:day:MO", 5, "x", days.buttons))[0]
+    assert monday.edit_message_id == 5 and "<b>Monday</b>" in monday.text and "9:55am–10:50am CSCI 2670 · Dawson Hall" in monday.text
+    assert monday.buttons[0][0].startswith("9:55am CSCI 2670") and monday.buttons[-2][0] == "➕ Add to Monday"
+
+    entry = (await r.on_callback(monday.buttons[0][1], 5, "x", monday.buttons))[0]
+    assert "<b>CSCI 2670</b>" in entry.text and "30 min to get there" in entry.text
+    assert [b[0] for b in entry.buttons] == ["✏️ Change", "🗑 Remove", "◀ Back"]
+
+    after = (await r.on_callback(entry.buttons[1][1], 5, "x", entry.buttons))[0]
+    assert after.toast.startswith("Removed CSCI 2670") and "CSCI 2670" not in after.text and [e.title for e in store.series()] == ["Spanish"]
+
+
+async def test_schedule_add_and_change_go_through_the_model_with_a_hint(rig):
+    r, store, state = rig
+    ask = (await r.on_callback("sched:add:TU", 5, "x", []))[0]
+    assert ask.text.startswith("Tuesday:") and state.pending_schedule == {"mode": "add", "day": "TU"}
+    r.agent.client.responses.append(__import__("bot.agent.client", fromlist=["ModelResponse"]).ModelResponse(None, [
+        __import__("bot.agent.client", fromlist=["ToolCall"]).ToolCall("add_event", {"title": "CSCI 2720", "start": "2026-09-08T08:15:00-04:00", "end": "2026-09-08T09:35:00-04:00", "location": "Cedar Street Building C, UGA, Athens GA", "travel_minutes": 30, "repeat_days": ["TU"]}),
+        __import__("bot.agent.client", fromlist=["ToolCall"]).ToolCall("reply", {"text": "In."}),
+    ]))
+    outs = await r.on_text("CSCI 2720 8:15-9:35 at Cedar Street Building C, 30 min")
+    sent = r.agent.client.calls[-1]["messages"][-1]["content"]
+    assert sent.startswith("[Weekly schedule, adding to Tuesday") and 'repeat_days ["TU"]' in sent
+    assert state.pending_schedule is None
+    assert outs[0].text.startswith("In.") and "<b>Tuesday</b>" in outs[1].text and "CSCI 2720" in outs[1].text
+
+    entry_index = [e.title for e in store.series()].index("CSCI 2720")
+    ask = (await r.on_callback(f"sched:change:{entry_index}", 5, "x", []))[0]
+    assert "what changes?" in ask.text and state.pending_schedule["mode"] == "change"
+    path = state.pending_schedule["path"]
+    r.agent.client.responses.append(__import__("bot.agent.client", fromlist=["ModelResponse"]).ModelResponse(None, [
+        __import__("bot.agent.client", fromlist=["ToolCall"]).ToolCall("update_event", {"file": path, "travel_minutes": 25}),
+        __import__("bot.agent.client", fromlist=["ToolCall"]).ToolCall("reply", {"text": "Changed."}),
+    ]))
+    outs = await r.on_text("25 min to get there")
+    assert "editing the entry " + path in r.agent.client.calls[-1]["messages"][-1]["content"]
+    assert store.series()[entry_index].travel_minutes == 25 and "<b>Tuesday</b>" in outs[1].text

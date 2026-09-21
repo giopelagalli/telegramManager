@@ -35,6 +35,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("goals", "Your goals and where you stand", True),
     ("pause", "Quiet for 2h", True),
     ("undo", "Take back the last thing he changed", False),
+    ("schedule", "Your weekly classes, day by day, with buttons", False),
     ("queue", "What's using the Spark right now", False),
     ("voice", "Voice notes on every reply, on/off (/voice on)", False),
     ("hard", "Ask the bigger cloud model; it sees your schedule, not your notes (/hard …)", False),
@@ -120,6 +121,10 @@ async def handle(
         store.save_profile(profile)
         store.commit(f"profile: voice {word}")
         return [Outbound("Voice on every reply." if word == "on" else "Voice only when you send voice or ask for it.", kind="reply")]
+
+    if name == "schedule":
+        from bot.telegram.schedule_ui import days_view
+        return [days_view(store)]
 
     if name == "queue":
         if cluster is None:

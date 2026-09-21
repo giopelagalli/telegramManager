@@ -62,6 +62,9 @@ These are the reference lines he's calibrated on. He never reuses them.
 - **Three check-ins a day**, 11:00, 15:00 and 19:00, only when there's something open. One
   line. Buttons: ✅ Done, 🔥 Do it now (25-minute sprint), ⏳ Still on it. No follow-ups: if
   you go quiet, he does too. "Check in at 1 and 6" moves them; "stop checking in" ends them.
+- **Your week, in one paste.** Send the whole semester in one message and he files each class
+  slot, hands the week back to check, and asks for the last day of classes. `/schedule` is the
+  day-by-day editor: buttons for the day, the entry, Change and Remove; the details you type.
 - **Leave-by reminders** with live traffic for anything with a location. "Get ready" then
   "leave now," with a directions link.
 - **Storm mode** for events you mark critical: he keeps pinging until your phone's location

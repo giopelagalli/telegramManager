@@ -30,7 +30,7 @@ from bot.study.extract import (
     render_pages,
 )
 from bot.study.select import select_sources
-from bot.telegram import callbacks, commands
+from bot.telegram import callbacks, commands, schedule_ui
 from bot.telegram.markdown import md_to_html
 from bot.telegram.sender import plain_text
 
@@ -667,15 +667,19 @@ class Router:
             return []
 
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now) -> list[Outbound]:
+        pending_schedule = self.state.pending_schedule
+        model_text = schedule_ui.hint(pending_schedule, text) if pending_schedule else text
         result = await self.agent.capture(
-            text, awaiting=awaiting, recent=self._thread(), recalled=await self._recalled(text)
+            model_text, awaiting=awaiting, recent=self._thread(), recalled=await self._recalled(text)
         )
         self.last_outcome = "captured" if result.parsed else "inbox"
+        if pending_schedule and result.parsed:
+            self.state.pending_schedule = None
         if not result.parsed:
             # A failed exchange is not part of the conversation: remembered, the fallback line
             # reads as his own words and the next model copies it.
             return [Outbound(esc(result.reply), kind="reply")]
-        outs = await self._captured(text, result, awaiting, via_voice, now)
+        outs = await self._captured(text, result, awaiting, via_voice, now, pending_schedule)
         # Remember what was actually sent — the search answer, the directions line — not the
         # model's placeholder "Sending it.", or "what's the address" is forgotten a message later.
         self._remember("user", text)
@@ -683,7 +687,7 @@ class Router:
             self._remember("assistant", plain_text(outs[0].text))
         return outs
 
-    async def _captured(self, text: str, result, awaiting, via_voice: bool, now) -> list[Outbound]:
+    async def _captured(self, text: str, result, awaiting, via_voice: bool, now, pending_schedule: dict | None = None) -> list[Outbound]:
         if any(a.name == "undo" for a in result.actions):
             subject = self.store.undo()
             return [Outbound("Nothing to undo." if subject is None else f"Reverted: {esc(subject)}", kind="reply")]
@@ -746,6 +750,11 @@ class Router:
         if sum(1 for a in result.actions if a.name == "add_event") >= 3:
             # A whole schedule went in: show the week back so he can check it at a glance.
             lines.append(render_week(self.store.events(), self.store.profile(), now))
+        if pending_schedule and any(a.name in ("add_event", "update_event") for a in result.actions):
+            day = pending_schedule.get("day") or next(
+                (d for d in schedule_ui._WEEKDAYS
+                 for e in self.store.series() if e.path == pending_schedule.get("path") and d in e.repeat_days), "MO")
+            return [Outbound("\n".join(line for line in lines if line), kind="reply"), schedule_ui.day_view(self.store, day)]
         asked_voice = any(a.name == "reply" and a.arguments.get("voice") is True for a in result.actions)
         return [
             Outbound(
