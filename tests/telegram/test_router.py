@@ -842,7 +842,7 @@ async def test_asking_for_the_briefing_sends_it_with_voice_without_marking_it_fi
     assert outs[0].kind == "briefing" and outs[0].voice is True
 
 
-async def test_backup_model_coaches_on_the_cloud_and_only_photos_wait(rig):
+async def test_backup_model_coaches_and_looks_at_photos_on_the_cloud(rig):
     router, store, client, state, _ = rig
     client.breaker_open = True
     cloud = FakeModelClient([ModelResponse("Send nothing tonight.", [])], model="deepseek")
@@ -850,8 +850,13 @@ async def test_backup_model_coaches_on_the_cloud_and_only_photos_wait(rig):
     client.responses.append(R(("coach", {"thread": "x", "ask": "y"}), ("reply", {"text": "…"})))
     outs = await router.on_text("she said x what now")
     assert "Send nothing tonight." in outs[0].text and len(cloud.calls) == 1
+    class Vision:
+        async def chat(self, messages, tools=None, temperature=0.2):
+            return ModelResponse('{"kind": "photo", "description": "a dog on a couch"}', [])
+    router.agent.vision = Vision()
+    client.responses.append(R(("reply", {"text": "Good dog."})))  # the fallback client routes this to the cloud itself
     outs = await router.on_photo(b"img", "look")
-    assert outs[0].text.startswith("Spark's down. Photos wait") and store.sources() == []
+    assert "Good dog." in outs[0].text and store.sources() == []  # photos keep working on the backup
 
 
 

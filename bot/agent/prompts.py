@@ -190,7 +190,7 @@ When the message is study content rather than a question — notes, a definition
 
 BACKUP_NOTE = """You are the backup model while the user's own server (the Spark) is down. You have their
 schedule, todos and goals, the conversation so far, and the notes that match this message — not
-the whole vault, and no photos or voice. If they ask for something you don't have, say it waits
+the whole vault, and no voice. If they ask for something you don't have, say it waits
 until the Spark is back. Keep everything else the same."""
 
 

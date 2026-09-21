@@ -41,8 +41,8 @@ def _derive(e: Mapping[str, str]) -> dict[str, str]:
     spark_model = d.get("SPARK_MODEL", "").strip() or SPARK_MODEL_DEFAULT
     voice = d.get("SPARK_VOICE_URL", "").strip()
     if spark:
-        # Spark first. Fireworks is chat fallback and /hard only: photos, voice notes and the
-        # memory index never leave the house — they are off until the Spark's voice server exists.
+        # Spark first. Fireworks is the fallback for chat and photos; voice notes and the memory
+        # index stay on the Spark's voice server and are simply off without it.
         default("OPENAI_BASE_URL", spark); default("OPENAI_API_KEY", "unused")
         default("CHAT_MODEL", spark_model); default("CHAT_ENABLE_THINKING", "true")
         default("VISION_BASE_URL", spark); default("VISION_MODEL", spark_model)
@@ -50,7 +50,7 @@ def _derive(e: Mapping[str, str]) -> dict[str, str]:
         default("HARD_BASE_URL", spark); default("HARD_API_KEY", "unused")
         default("HARD_MODEL", spark_model); default("HARD_THINKING", "true")
         if key:
-            default("FALLBACK_MODEL", fw_model)
+            default("FALLBACK_MODEL", fw_model); default("FALLBACK_VISION_MODEL", fw_model)
     elif key:
         default("OPENAI_BASE_URL", FIREWORKS_URL); default("OPENAI_API_KEY", key)
         default("CHAT_MODEL", fw_model)

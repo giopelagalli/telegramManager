@@ -105,7 +105,6 @@ def _stored_reply(source: Source, course: Course) -> str:
     )
 
 
-SPARK_DOWN_WAIT = "Spark's down. Photos wait till it's back."
 
 class Router:
     """Turns a user action into a list of outbound messages. No telegram types here."""
@@ -313,9 +312,7 @@ class Router:
         if pending is not None and pending.kind == "photo":
             return [await self._verify_photo(pending, image)]
 
-        if self.agent.degraded:
-            return [Outbound(SPARK_DOWN_WAIT, kind="reply")]
-        kind, description = await self.agent.look(image)
+        kind, description = await self.agent.look(image)  # the vision client falls back to the cloud on its own
         if kind != "photo":
             return await self._ingest_photo(image, caption, None, kind=kind)
         # Just a photo: talk about it like a person would, and keep what it showed in memory.

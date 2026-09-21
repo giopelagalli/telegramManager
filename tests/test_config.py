@@ -161,8 +161,8 @@ def test_spark_plus_fireworks_derives_fallback():
     assert s.openai_base_url == "http://spark:8888/v1" and s.chat_model == "qwen3.8-flash-next"
     assert s.chat_enable_thinking is True and s.vision_base_url == "http://spark:8888/v1"
     assert s.fallback_model.endswith("deepseek-v4p1-flash")
-    # privacy: with the Spark in front, photos, voice notes and the memory index never go to Fireworks
-    assert s.fallback_vision_model is None and s.stt_provider == "local" and s.embed_base_url is None
+    # with the Spark in front, voice notes and the memory index stay home; chat and photos fall back
+    assert s.fallback_vision_model == s.fallback_model and s.stt_provider == "local" and s.embed_base_url is None
     # ...and neither does anything "hard": that is the Spark thinking harder
     assert s.hard_base_url == "http://spark:8888/v1" and s.hard_model == "qwen3.8-flash-next" and s.hard_thinking is True
 

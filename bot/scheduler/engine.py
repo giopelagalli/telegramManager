@@ -18,7 +18,7 @@ SENT_TIMES_CAP = 200
 BACKEND_PROBE_EVERY = timedelta(seconds=60)
 SPARK_DOWN_TEXT = (
     "Spark's down. Running on the backup until it's back — same as /hard, so everything works "
-    "except photos and voice. Replies start with ☁️ meanwhile."
+    "except voice. Replies start with ☁️ meanwhile."
 )
 SPARK_UP_TEXT = "Spark's back."
 
