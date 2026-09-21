@@ -62,6 +62,18 @@ class Applied:
 _RAW_CALL_RE = re.compile(r"^\w+\(\{.*\}\)$", re.DOTALL)
 
 
+def _dedupe(calls: list[ToolCall]) -> list[ToolCall]:
+    seen: set[str] = set()
+    out: list[ToolCall] = []
+    for c in calls:
+        key = c.name + json.dumps(c.arguments, sort_keys=True, default=str)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
+
+
 class Agent:
     def __init__(
         self,
@@ -150,7 +162,9 @@ class Agent:
             logger.warning("capture unparsed after retry: %s | calls: %s", errors, self._raw_calls_repr(response.tool_calls))
             return self._to_inbox(text, "Didn't catch that. Say it again, plainer.")
 
-        reply_text = self._reply_text(response.tool_calls)
+        calls = _dedupe(response.tool_calls)  # the model sometimes emits the same call twice
+        reply_text = self._reply_text(calls)
+        response.tool_calls[:] = calls
         return CaptureResult(response.tool_calls, reply_text, parsed=True)
 
     async def _chat_or_none(self, messages, tools, temperature, client: ModelClient | None = None):
@@ -767,8 +781,12 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 changed_schedule = True
             elif action.name == "remember":
                 kind = args.get("kind", "fact")
-                store.add_memory(str(args["fact"]), kind=kind)
-                summary.append("I'll keep that in mind." if kind == "state" else f"Remembered: {str(args['fact']).strip()}")
+                text = str(args["fact"]).strip()
+                if any(m.text.strip().lower() == text.lower() for m in store.memories()):
+                    summary.append("Already have that.")
+                else:
+                    store.add_memory(text, kind=kind)
+                    summary.append("I'll keep that in mind." if kind == "state" else f"Remembered: {text}")
             elif action.name in ("study", "directions", "search", "undo", "recall", "coach"):
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":

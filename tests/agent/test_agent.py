@@ -282,3 +282,16 @@ async def test_context_lists_what_was_finished_this_week(store):
     store.commit("t")
     ctx = build_context(store, NOW)
     assert "Done in the last 7 days:\n- Tue Sep 1 HW 1 [csci-2670]" in ctx and "Old thing" not in ctx
+
+
+async def test_duplicate_tool_calls_collapse_and_a_known_note_is_not_saved_twice(store):
+    client = FakeModelClient([R(("remember", {"fact": "Wants a system of agents working for him"}),
+                                 ("remember", {"fact": "Wants a system of agents working for him"}),
+                                 ("reply", {"text": "Noted."}))])
+    agent = Agent(client, None, store, lambda: NOW)
+    res = await agent.capture("note: i want agents working for me")
+    assert [a.name for a in res.actions] == ["remember", "reply"]
+    applied = apply_actions(store, res.actions, NOW)
+    assert applied.summary == ["Remembered: Wants a system of agents working for him"] and len(store.memories()) == 1
+    applied = apply_actions(store, [ToolCall("remember", {"fact": "wants a system of agents working for him"})], NOW)
+    assert applied.summary == ["Already have that."] and len(store.memories()) == 1
