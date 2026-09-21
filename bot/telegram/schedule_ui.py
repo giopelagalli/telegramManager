@@ -70,7 +70,7 @@ def handle(arg: str, store, state, now: datetime, message_id: int | None) -> lis
     if what == "e" and rest.isdigit():
         return [entry_view(store, int(rest), message_id)]
     if what == "add" and rest in DAY_NAMES:
-        state.pending_schedule = {"mode": "add", "day": rest}
+        state.pending_schedule = {"ui": "schedule", "mode": "add", "day": rest}
         return [Outbound(
             f"{DAY_NAMES[rest]}: class, time, room, how long to get there. One line, like "
             f"\"CSCI 1730 2:55–4:15 at Conner Hall 104, 20 min\".", kind="reply",
@@ -86,7 +86,7 @@ def handle(arg: str, store, state, now: datetime, message_id: int | None) -> lis
             n = store.delete_series(entry.path, now)
             store.commit(f"schedule: remove weekly {entry.title}")
             return [day_view(store, back, message_id, toast=f"Removed {entry.title} ({n} upcoming cleared)")]
-        state.pending_schedule = {"mode": "change", "path": entry.path, "title": entry.title}
+        state.pending_schedule = {"ui": "schedule", "mode": "change", "path": entry.path, "title": entry.title}
         return [Outbound(
             f"{esc(entry.title)}: what changes? \"moves to 2pm\", \"ends 4:15\", \"room is Boyd 201\", "
             f"\"25 min to get there\", \"Tue/Thu instead\".", kind="reply",

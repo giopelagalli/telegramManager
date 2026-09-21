@@ -32,10 +32,11 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("week", "This week", True),
     ("now", "Do this next", True),
     ("brief", "Briefing", True),
+    ("due", "Assignments by due date", True),
+    ("schedule", "Your classes, day by day", True),
     ("goals", "Your goals and where you stand", True),
     ("pause", "Quiet for 2h", True),
     ("undo", "Take back the last thing he changed", False),
-    ("schedule", "Your weekly classes, day by day, with buttons", False),
     ("queue", "What's using the Spark right now", False),
     ("voice", "Voice notes on every reply, on/off (/voice on)", False),
     ("hard", "Same JD, on the bigger cloud model (/hard …)", False),
@@ -83,7 +84,7 @@ async def handle(
         return [Outbound(render_today(store.events(), store.todos(), store.profile(), now), kind="reply")]
 
     if name == "week":
-        return [Outbound(render_week(store.events(), store.profile(), now), kind="reply")]
+        return [Outbound(render_week(store.events(), store.profile(), now, store.todos()), kind="reply")]
 
     if name == "now":
         return [_render_now(store, now)]
@@ -125,6 +126,10 @@ async def handle(
     if name == "schedule":
         from bot.telegram.schedule_ui import days_view
         return [days_view(store)]
+
+    if name == "due":
+        from bot.telegram.due_ui import list_view
+        return [list_view(store, now)]
 
     if name == "queue":
         if cluster is None:

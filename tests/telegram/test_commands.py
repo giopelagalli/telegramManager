@@ -139,7 +139,7 @@ def test_command_menu_is_the_minimal_set():
     from bot.telegram.commands import COMMANDS
 
     menu_names = {name for name, _, menu in COMMANDS if menu}
-    assert menu_names == {"todo", "now", "today", "week", "brief", "goals", "pause"}
+    assert menu_names == {"todo", "now", "today", "week", "brief", "due", "schedule", "goals", "pause"}
 
 
 async def test_help_lists_only_the_menu_commands(rig):
@@ -247,3 +247,41 @@ async def test_hard_without_a_cloud_model_still_answers_plainly(tmp_path):
     r, store, primary = _rig_with_hard(tmp_path, hard)
     out = (await r.command("hard", "what is the answer?", channel=DM))[0]
     assert "42" in out.text and "glm-5.3" in out.text
+
+
+async def test_due_lists_by_date_and_buttons_finish_change_or_remove(rig):
+    r, store, state = rig
+    from datetime import date
+    for t in store.todos():
+        store.delete(t.path)
+    store.add(Todo(path="", title="Spanish homework", priority=2, due=date(2026, 9, 4)))
+    store.add(Todo(path="", title="CS project", priority=1, due=date(2026, 9, 3)))
+    store.add(Todo(path="", title="Someday thing", priority=3))
+    store.commit("t")
+    out = (await r.command("due", ""))[0]
+    assert out.text.splitlines()[1:] == ["today — CS project", "Fri Sep 4 — Spanish homework"]
+    assert out.buttons[-1] == ("➕ Add", "due:add") and out.buttons[0][1] == "due:e:0"
+
+    item = (await r.on_callback("due:e:1", 9, "x", out.buttons))[0]
+    assert "<b>Spanish homework</b>" in item.text and item.edit_message_id == 9
+    assert [b[0] for b in item.buttons] == ["✅ Done", "✏️ Change", "🗑 Remove", "◀ Back"]
+
+    after = (await r.on_callback("due:done:1", 9, "x", item.buttons))[0]
+    assert after.toast == "Done: Spanish homework" and "Spanish homework" not in after.text
+    assert next(t for t in store.todos() if t.title == "Spanish homework").status == "done"
+
+    ask = (await r.on_callback("due:add", 9, "x", []))[0]
+    assert "What's due" in ask.text and state.pending_schedule == {"ui": "due", "mode": "add"}
+    r.agent.client.responses.append(R(("add_todo", {"title": "Lab report", "priority": 2, "due": "2026-09-05", "verify": "photo"}), ("reply", {"text": "In."})))
+    outs = await r.on_text("lab report, saturday")
+    assert r.agent.client.calls[-1]["messages"][-1]["content"].startswith("[Adding an assignment")
+    assert outs[0].text.startswith("In.") and "Sat Sep 5 — Lab report" in outs[1].text and state.pending_schedule is None
+
+
+async def test_week_shows_what_is_due_each_day(rig):
+    r, store, state = rig
+    from datetime import date
+    store.add(Todo(path="", title="Spanish homework", priority=2, due=date(2026, 9, 4))); store.commit("t")
+    text = (await r.command("week", ""))[0].text
+    fri = text.split("<b>Fri Sep 4</b>")[1].split("<b>")[0]
+    assert "due: Spanish homework" in fri

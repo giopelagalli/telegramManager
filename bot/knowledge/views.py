@@ -103,21 +103,23 @@ def render_today(events: list[Event], todos: list[Todo], profile: Profile, now: 
     return "\n".join(lines) + "\n\n" + top_block
 
 
-def render_week(events: list[Event], profile: Profile, now: datetime) -> str:
+def render_week(events: list[Event], profile: Profile, now: datetime, todos: list[Todo] | None = None) -> str:
     today = now.date()
     days = [today + timedelta(days=i) for i in range(7)]
 
     blocks = []
     for d in days:
         day_events = sorted((e for e in events if e.start.date() == d), key=lambda e: e.start)
+        due = sorted((t for t in (todos or []) if t.status == "open" and t.due == d), key=lambda t: (t.priority, t.title))
         lines = [f"<b>{fmt_day(d)}</b>"]
-        if not day_events:
+        if not day_events and not due:
             lines.append("  free")
-        else:
-            for e in day_events:
-                times = e.times(profile)
-                time_range = fmt_time(e.start) + (f"–{fmt_time(e.end)}" if e.end else "")
-                critical = " ‼️" if e.importance == "critical" else ""
-                lines.append(f"  {time_range} {esc(e.title)} — leave by {fmt_time(times.leave_by)}{critical}")
+        for e in day_events:
+            times = e.times(profile)
+            time_range = fmt_time(e.start) + (f"–{fmt_time(e.end)}" if e.end else "")
+            critical = " ‼️" if e.importance == "critical" else ""
+            lines.append(f"  {time_range} {esc(e.title)} — leave by {fmt_time(times.leave_by)}{critical}")
+        for t in due:
+            lines.append(f"  due: {esc(t.title)}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)

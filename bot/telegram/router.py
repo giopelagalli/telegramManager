@@ -30,7 +30,7 @@ from bot.study.extract import (
     render_pages,
 )
 from bot.study.select import select_sources
-from bot.telegram import callbacks, commands, schedule_ui
+from bot.telegram import callbacks, commands, due_ui, schedule_ui
 from bot.telegram.markdown import md_to_html
 from bot.telegram.sender import plain_text
 
@@ -685,7 +685,11 @@ class Router:
 
     async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now, client=None) -> list[Outbound]:
         pending_schedule = self.state.pending_schedule
-        model_text = schedule_ui.hint(pending_schedule, text) if pending_schedule else text
+        if pending_schedule:
+            ui = due_ui if pending_schedule.get("ui") == "due" else schedule_ui
+            model_text = ui.hint(pending_schedule, text)
+        else:
+            model_text = text
         result = await self.agent.capture(
             model_text, awaiting=awaiting, recent=self._thread(), recalled=await self._recalled(text), client=client
         )
@@ -768,8 +772,10 @@ class Router:
                 ask_location = ask_location or need_location
         if sum(1 for a in result.actions if a.name == "add_event") >= 3:
             # A whole schedule went in: show the week back so he can check it at a glance.
-            lines.append(render_week(self.store.events(), self.store.profile(), now))
-        if pending_schedule and any(a.name in ("add_event", "update_event") for a in result.actions):
+            lines.append(render_week(self.store.events(), self.store.profile(), now, self.store.todos()))
+        if pending_schedule and pending_schedule.get("ui") == "due" and any(a.name in ("add_todo", "update_todo") for a in result.actions):
+            return [Outbound("\n".join(line for line in lines if line), kind="reply"), due_ui.list_view(self.store, now)]
+        if pending_schedule and pending_schedule.get("ui") != "due" and any(a.name in ("add_event", "update_event") for a in result.actions):
             day = pending_schedule.get("day") or next(
                 (d for d in schedule_ui._WEEKDAYS
                  for e in self.store.series() if e.path == pending_schedule.get("path") and d in e.repeat_days), "MO")
