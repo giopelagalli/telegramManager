@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from bot.scheduler.checkins import due_sprint
-from bot.scheduler import briefings, chains, checkins, critical, review
+from bot.scheduler import briefings, chains, checkins, critical, reflect, review
 from bot.scheduler.budget import budget_ok, record_send
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import LATE_WINDOW, MISSED_AFTER, due_reminders
@@ -64,6 +64,7 @@ class Engine:
             self._sprint,
             self._critical_leave,
             self._briefings,
+            self._reflect,
             self._checkin,
             self._followup,
             self._expire_pending_verify,
@@ -149,6 +150,11 @@ class Engine:
 
     async def _briefings(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await briefings.due_briefings(now, self.store, self.state, self.agent):
+            await self._send(out, now, sent)
+
+    async def _reflect(self, now: datetime, sent: list[Outbound]) -> None:
+        out = reflect.due_reflection(now, self.store, self.state, self.agent)
+        if out is not None:
             await self._send(out, now, sent)
 
     async def _review(self, now: datetime, sent: list[Outbound]) -> None:
