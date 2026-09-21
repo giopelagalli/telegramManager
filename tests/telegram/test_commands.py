@@ -342,19 +342,20 @@ async def test_course_due_list(rig):
     assert lst.buttons[-1] == ("◀ Course", "course:view:csci-2670")
 
 
-async def test_food_is_logged_and_shown_against_the_target(rig):
+async def test_food_is_logged_with_macros_and_shown_against_the_target(rig):
     r, store, state = rig
     p = store.profile(); p.calorie_target = 2800; p.protein_target = 180; store.save_profile(p)
-    r.agent.client.responses.append(R(("log_food", {"item": "Zaxby's Great 8 boneless meal", "kcal": 1240, "protein_g": 58, "estimate": True}),
+    r.agent.client.responses.append(R(("log_food", {"item": "Zaxby's Great 8 boneless meal", "kcal": 1240, "protein_g": 58, "carbs_g": 110, "fat_g": 62, "estimate": True}),
                                       ("reply", {"text": "Logged."})))
     outs = await r.on_text("just ate a zaxby's great 8 meal")
-    assert "Logged: Zaxby's Great 8 boneless meal ~1240 kcal, 58 g protein. Today: 1240 / 2800 kcal, 58 / 180 g protein." in outs[0].text
+    assert "Logged: Zaxby's Great 8 boneless meal ~1240 kcal, 58 g protein, 110 g carbs, 62 g fat. Today: 1240 / 2800 kcal, 58 / 180 g protein, 110 g carbs, 62 g fat." in outs[0].text
     out = (await r.command("calories", ""))[0]
-    assert "<b>1240</b> / 2800 kcal · <b>58</b> / 180 g protein" in out.text and "~1240 kcal, 58 g" in out.text
+    assert "<b>1240</b> / 2800 kcal · <b>58</b> / 180 g protein\n110 g carbs · 62 g fat" in out.text and "~1240 kcal · 58p 110c 62f" in out.text
     r.agent.client.responses.append(R(("reply", {"text": "You're at 1240."})))
     await r.on_text("how am i doing on food")
     sent = "\n".join(m["content"] for m in r.agent.client.calls[-1]["messages"])
-    assert "Food today: 1240 of 2800 kcal, 58 of 180 g protein — Zaxby's Great 8 boneless meal 1240" in sent
+    assert "Food today: 1240 of 2800 kcal, 58 of 180 g protein, 110 g carbs, 62 g fat — Zaxby's Great 8 boneless meal 1240" in sent
     item = (await r.on_callback(out.buttons[0][1], 3, "x", out.buttons))[0]
+    assert "62 g fat" in item.text
     after = (await r.on_callback(item.buttons[0][1], 3, "x", item.buttons))[0]
     assert after.toast == "Removed." and "<b>0</b> / 2800 kcal" in after.text

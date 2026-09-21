@@ -357,6 +357,8 @@ TOOL_SCHEMAS: list[dict] = [
                     "item": {"type": "string", "description": "what and how much, e.g. 'Zaxby's Great 8 boneless meal'"},
                     "kcal": {"type": "integer"},
                     "protein_g": {"type": "integer"},
+                    "carbs_g": {"type": "integer"},
+                    "fat_g": {"type": "integer"},
                     "estimate": {"type": "boolean"},
                 },
                 "required": ["item", "kcal"],

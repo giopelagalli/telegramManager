@@ -12,13 +12,18 @@ def day_view(store, now: datetime, message_id: int | None = None, toast: str | N
     items = store.food(now.date())
     total = sum(f["kcal"] for f in items)
     prot = sum(f["protein_g"] or 0 for f in items)
+    carbs = sum(f["carbs_g"] or 0 for f in items)
+    fat = sum(f["fat_g"] or 0 for f in items)
     head = f"<b>{total}</b>" + (f" / {profile.calorie_target}" if profile.calorie_target else "") + " kcal"
     if prot or profile.protein_target:
         head += f" · <b>{prot}</b>" + (f" / {profile.protein_target}" if profile.protein_target else "") + " g protein"
-    lines = ["<b>Today</b>", head]
+    macros = f"{carbs} g carbs · {fat} g fat" if (carbs or fat) else ""
+    lines = ["<b>Today</b>", head] + ([macros] if macros else [])
     for f in items:
-        p = f", {f['protein_g']} g" if f["protein_g"] is not None else ""
-        lines.append(f"• {f['time']} {esc(f['item'])} — {'~' if f['estimate'] else ''}{f['kcal']} kcal{p}")
+        bits = [f"{f['protein_g']}p" if f["protein_g"] is not None else "", f"{f['carbs_g']}c" if f["carbs_g"] is not None else "",
+                f"{f['fat_g']}f" if f["fat_g"] is not None else ""]
+        m = " · " + " ".join(b for b in bits if b) if any(bits) else ""
+        lines.append(f"• {f['time']} {esc(f['item'])} — {'~' if f['estimate'] else ''}{f['kcal']} kcal{m}")
     if not items:
         lines.append("• Nothing logged. Say what you ate.")
     if not profile.calorie_target:
@@ -32,7 +37,8 @@ def item_view(store, now: datetime, index: int, message_id: int | None = None) -
     if index < 0 or index >= len(items):
         return day_view(store, now, message_id)
     f = items[index]
-    text = f"<b>{esc(f['item'])}</b>\n{'~' if f['estimate'] else ''}{f['kcal']} kcal" + (f", {f['protein_g']} g protein" if f["protein_g"] is not None else "")
+    text = f"<b>{esc(f['item'])}</b>\n{'~' if f['estimate'] else ''}{f['kcal']} kcal" + "".join(
+        f", {f[k]} g {label}" for k, label in (("protein_g", "protein"), ("carbs_g", "carbs"), ("fat_g", "fat")) if f[k] is not None)
     return Outbound(text, buttons=[("🗑 Remove", f"food:remove:{index}"), ("◀ Back", "food:day")],
                     kind="edit" if message_id else "reply", edit_message_id=message_id)
 

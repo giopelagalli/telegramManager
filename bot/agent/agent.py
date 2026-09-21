@@ -62,6 +62,22 @@ class Applied:
 _RAW_CALL_RE = re.compile(r"^\w+\(\{.*\}\)$", re.DOTALL)
 
 
+def food_totals(items: list[dict], profile) -> str:
+    """'1950 / 3000 kcal, 85 / 180 g protein, 120 g carbs, 70 g fat'."""
+    kcal = sum(f["kcal"] for f in items)
+    prot = sum(f.get("protein_g") or 0 for f in items)
+    carbs = sum(f.get("carbs_g") or 0 for f in items)
+    fat = sum(f.get("fat_g") or 0 for f in items)
+    parts = [f"{kcal}" + (f" / {profile.calorie_target}" if profile.calorie_target else "") + " kcal"]
+    if prot or profile.protein_target:
+        parts.append(f"{prot}" + (f" / {profile.protein_target}" if profile.protein_target else "") + " g protein")
+    if carbs:
+        parts.append(f"{carbs} g carbs")
+    if fat:
+        parts.append(f"{fat} g fat")
+    return ", ".join(parts)
+
+
 def _dedupe(calls: list[ToolCall]) -> list[ToolCall]:
     seen: set[str] = set()
     out: list[ToolCall] = []
@@ -753,7 +769,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 coerced = _coerce_profile_value(current, args["value"])
                 setattr(profile, field_name, coerced)
                 store.save_profile(profile)
-                summary.append(f"Set {field_name} = {coerced}")
+                summary.append(f"{field_name.replace('_', ' ').capitalize()}: {coerced}.")
                 changed_schedule = True
 
             elif action.name == "save_place":
@@ -780,19 +796,14 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 summary.append(f"Home is now: {name}")
                 changed_schedule = True
             elif action.name == "log_food":
-                store.add_food(str(args["item"]), int(args["kcal"]), args.get("protein_g"), bool(args.get("estimate")))
+                store.add_food(str(args["item"]), int(args["kcal"]), args.get("protein_g"), bool(args.get("estimate")),
+                               carbs_g=args.get("carbs_g"), fat_g=args.get("fat_g"))
                 today = store.food(now.date())
-                total = sum(f["kcal"] for f in today)
-                prot = sum(f["protein_g"] or 0 for f in today)
                 profile = store.profile()
                 approx = "~" if args.get("estimate") else ""
-                line = f"Logged: {str(args['item']).strip()} {approx}{int(args['kcal'])} kcal"
-                if args.get("protein_g") is not None:
-                    line += f", {int(args['protein_g'])} g protein"
-                line += f". Today: {total}" + (f" / {profile.calorie_target}" if profile.calorie_target else "") + " kcal"
-                if prot:
-                    line += f", {prot}" + (f" / {profile.protein_target}" if profile.protein_target else "") + " g protein"
-                summary.append(line + ".")
+                macros = [f"{int(args[k])} g {label}" for k, label in (("protein_g", "protein"), ("carbs_g", "carbs"), ("fat_g", "fat")) if args.get(k) is not None]
+                line = f"Logged: {str(args['item']).strip()} {approx}{int(args['kcal'])} kcal" + (", " + ", ".join(macros) if macros else "")
+                summary.append(line + ". Today: " + food_totals(today, profile) + ".")
             elif action.name == "remember":
                 kind = args.get("kind", "fact")
                 text = str(args["fact"]).strip()

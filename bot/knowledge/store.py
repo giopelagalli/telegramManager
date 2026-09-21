@@ -223,16 +223,23 @@ class KnowledgeStore:
         with (folder / f"{now:%Y-%m-%d}.md").open("a", encoding="utf-8") as f:
             f.write(f"- {now:%H:%M} {role}: {one_line}\n")
 
-    _FOOD_RE = re.compile(r"^- (\d{2}:\d{2}) (.+?) — (\d+) kcal(?:, (\d+) g protein)?(?: \((~)\))?$")
+    _FOOD_RE = re.compile(
+        r"^- (\d{2}:\d{2}) (.+?) — (\d+) kcal(?:, (\d+) g protein)?(?:, (\d+) g carbs)?(?:, (\d+) g fat)?(?: \((~)\))?$"
+    )
 
-    def add_food(self, item: str, kcal: int, protein_g: int | None = None, estimate: bool = False) -> None:
-        """One meal on today's food log (food/YYYY-MM-DD.md)."""
+    def add_food(self, item: str, kcal: int, protein_g: int | None = None, estimate: bool = False,
+                 carbs_g: int | None = None, fat_g: int | None = None) -> None:
+        """One meal on today's food log (food/YYYY-MM-DD.md): calories and the three macros."""
         now = self.clock()
         folder = self.root / "food"
         folder.mkdir(exist_ok=True)
         line = f"- {now:%H:%M} {' '.join(item.split())} — {int(kcal)} kcal"
         if protein_g is not None:
             line += f", {int(protein_g)} g protein"
+        if carbs_g is not None:
+            line += f", {int(carbs_g)} g carbs"
+        if fat_g is not None:
+            line += f", {int(fat_g)} g fat"
         if estimate:
             line += " (~)"
         with (folder / f"{now:%Y-%m-%d}.md").open("a", encoding="utf-8") as f:
@@ -248,7 +255,10 @@ class KnowledgeStore:
             m = self._FOOD_RE.match(line)
             if m:
                 out.append({"time": m.group(1), "item": m.group(2), "kcal": int(m.group(3)),
-                            "protein_g": int(m.group(4)) if m.group(4) else None, "estimate": bool(m.group(5)), "line": line})
+                            "protein_g": int(m.group(4)) if m.group(4) else None,
+                            "carbs_g": int(m.group(5)) if m.group(5) else None,
+                            "fat_g": int(m.group(6)) if m.group(6) else None,
+                            "estimate": bool(m.group(7)), "line": line})
         return out
 
     def remove_food(self, day, line: str) -> None:

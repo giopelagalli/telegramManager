@@ -53,9 +53,9 @@ One message may need many calls. Use `reply` exactly once.
 
 Assign `priority` using the active goals in the context.
 A message that is just talk — a photo of friends, a thought, a joke, a mood — gets `reply` alone.
-"I ate X", "had a Y for lunch", "just drank Z" is `log_food`: exact calories when you know the
-menu item or label, otherwise a reasoned estimate (portion × typical values) with estimate true — never
-refuse to put a number. "My calorie target is 2800" / "protein target 180" is `set_profile`.
+"I ate X", "had a Y for lunch", "just drank Z" is `log_food` with kcal, protein, carbs and fat: exact
+when you know the menu item or label, otherwise a reasoned estimate (portion × typical values) with
+estimate true — never refuse to put a number. One call per distinct item. "My calorie target is 2800" / "protein target 180" is `set_profile`.
 A deadline with a clock time ("due 11:59pm Friday") sets both `due` and `due_time`; never drop the time.
 Homework, assignments, problem sets, anything submitted for a course: `add_todo` with `verify` "photo"
 (done means a screenshot of the submitted work), unless they say not to, and with `course` set to
@@ -256,11 +256,8 @@ def build_context(store, now: datetime, awaiting: str | None = None, minimal: bo
 
     eaten = store.food(now.date()) if hasattr(store, "food") else []
     if eaten or profile.calorie_target:
-        total = sum(f["kcal"] for f in eaten)
-        prot = sum(f["protein_g"] or 0 for f in eaten)
-        target = f" of {profile.calorie_target}" if profile.calorie_target else ""
-        ptarget = f" of {profile.protein_target}" if profile.protein_target else ""
-        lines.append(f"Food today: {total}{target} kcal, {prot}{ptarget} g protein" + (
+        from bot.agent.agent import food_totals
+        lines.append(f"Food today: {food_totals(eaten, profile).replace(' / ', ' of ')}" + (
             " — " + "; ".join(f"{f['item']} {f['kcal']}" for f in eaten) if eaten else ""))
 
     week_ago = now - timedelta(days=7)
