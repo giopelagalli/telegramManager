@@ -208,23 +208,19 @@ async def test_capture_keeps_prose_alongside_tool_calls_without_a_reply_call(sto
     assert res.parsed and res.reply == "Added." and res.actions[0].name == "add_todo"
 
 
-async def test_backup_model_gets_the_minimal_view_and_no_history(store):
-    from bot.knowledge.models import Memory
-    store.add_memory("Sister is Anna", kind="fact"); store.commit("m")
+async def test_backup_model_gets_the_hard_view_conversation_and_matching_notes(store):
+    store.add_memory("Sister is Anna", kind="fact"); store.add_memory("Ally is the girl from Saturday", kind="fact"); store.commit("m")
     client = FakeModelClient([R(("reply", {"text": "Ok."}))])
     client.breaker_open = True
     agent = Agent(client, None, store, lambda: NOW)
     assert agent.degraded
-    res = await agent.capture("hey", recent=[["user", "secret earlier thing"], ["assistant", "…"]])
-    msgs = client.calls[0]["messages"]
-    joined = "\n".join(m["content"] for m in msgs)
-    assert "Anna" not in joined and "secret earlier thing" not in joined
+    res = await agent.capture("what about ally", recent=[["user", "earlier thing"], ["assistant", "…"]],
+                              recalled=["(2026-09-03) Ally is the girl from Saturday"])
+    joined = "\n".join(m["content"] for m in client.calls[0]["messages"])
     assert "Backup model: schedule, todos and goals only." in joined and "Spark is back" in joined
-    client.breaker_open = False
-    client.responses.append(R(("reply", {"text": "Ok."})))
-    await agent.capture("hey", recent=[["user", "secret earlier thing"], ["assistant", "…"]])
-    joined = "\n".join(m["content"] for m in client.calls[1]["messages"])
-    assert "Anna" in joined and "secret earlier thing" in joined
+    assert "earlier thing" in joined and "Ally is the girl" in joined  # conversation and matching notes
+    assert "Sister is Anna" not in joined  # not the vault
+
 
 
 async def test_consolidate_parses_notes_skips_known_and_never_runs_on_the_backup(store):

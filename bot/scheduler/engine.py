@@ -17,8 +17,8 @@ PENDING_VERIFY_TTL = timedelta(minutes=10)
 SENT_TIMES_CAP = 200
 BACKEND_PROBE_EVERY = timedelta(seconds=60)
 SPARK_DOWN_TEXT = (
-    "Spark's down. Running on the backup until it's back: schedule, todos, goals, lookups and "
-    "directions work as normal. Memory, notes, photos and voice wait. Replies start with ☁️ meanwhile."
+    "Spark's down. Running on the backup until it's back — same as /hard, so everything works "
+    "except photos and voice. Replies start with ☁️ meanwhile."
 )
 SPARK_UP_TEXT = "Spark's back."
 

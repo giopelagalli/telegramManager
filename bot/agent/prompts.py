@@ -188,9 +188,10 @@ When the message is study content rather than a question — notes, a definition
 {name} wants kept — call `save_note` with the text and its topics instead of answering."""
 
 
-BACKUP_NOTE = """You are the backup model while the user's own server (the Spark) is down. You have only
-their schedule, todos and goals — no memories, notes, files or history, on purpose. If they ask
-about any of those, say it waits until the Spark is back. Keep everything else the same."""
+BACKUP_NOTE = """You are the backup model while the user's own server (the Spark) is down. You have their
+schedule, todos and goals, the conversation so far, and the notes that match this message — not
+the whole vault, and no photos or voice. If they ask for something you don't have, say it waits
+until the Spark is back. Keep everything else the same."""
 
 
 def location_line(state, now: datetime) -> str | None:

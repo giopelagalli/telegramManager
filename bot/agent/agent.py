@@ -81,6 +81,12 @@ class Agent:
         self.clock = clock
         self.hard = hard
 
+    def _heavy(self):
+        """The model for coaching, plans and tutoring: the Spark thinking harder, or the cloud while it's down."""
+        if self.degraded and self.cloud is not None:
+            return self.cloud
+        return self.hard or None
+
     @property
     def degraded(self) -> bool:
         """True while the primary model is unreachable and the backup is answering."""
@@ -100,8 +106,7 @@ class Agent:
         profile = self.store.profile()
         system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat(), voice=VOICE)
         if self.degraded:
-            system += "\n\n" + BACKUP_NOTE
-            recent, recalled = [], []  # the conversation and the vault stay home
+            system += "\n\n" + BACKUP_NOTE  # same view as /hard: conversation + matching notes, not the vault
         context = self.context(now, awaiting, remote=client is not None and client is not self.client)
         if recalled:
             context += "\nFrom memory, possibly relevant:\n" + "\n".join(f"- {r}" for r in recalled)
@@ -296,7 +301,7 @@ class Agent:
             f"Sources:\n{listing}"
         )
         messages = [{"role": "system", "content": PLAN_SYSTEM}, {"role": "user", "content": user}]
-        response = await self._chat_or_none(messages, None, 0.3, client=self.hard or None)
+        response = await self._chat_or_none(messages, None, 0.3, client=self._heavy())
         if response is None:
             return None
         match = re.search(r"\{.*\}", response.text or "", re.DOTALL)
@@ -325,7 +330,7 @@ class Agent:
             {"role": "system", "content": CARDS_SYSTEM.format(n=n)},
             {"role": "user", "content": f"Topic: {topic}\n\n{body or '(no sources)'}"},
         ]
-        response = await self._chat_or_none(messages, None, 0.4, client=self.hard or None)
+        response = await self._chat_or_none(messages, None, 0.4, client=self._heavy())
         data = _json_block(response.text if response else "")
         cards = data.get("cards") if isinstance(data, dict) else None
         out = []
@@ -366,7 +371,7 @@ class Agent:
             *[{"role": r, "content": b} for r, b in (recent or [])],
             {"role": "user", "content": f"Thread:\n{thread}\n\nAsk: {ask or 'what do I send?'}"},
         ]
-        response = await self._chat_or_none(messages, None, 0.5, client=self.hard or None)
+        response = await self._chat_or_none(messages, None, 0.5, client=self._heavy())
         return (response.text or "").strip() or None if response else None
 
     async def consolidate(self, thread: list, known: list[str]) -> list[dict]:

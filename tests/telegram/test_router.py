@@ -842,14 +842,17 @@ async def test_asking_for_the_briefing_sends_it_with_voice_without_marking_it_fi
     assert outs[0].kind == "briefing" and outs[0].voice is True
 
 
-async def test_backup_model_declines_coaching_recall_study_and_photos(rig):
+async def test_backup_model_coaches_on_the_cloud_and_only_photos_wait(rig):
     router, store, client, state, _ = rig
     client.breaker_open = True
+    cloud = FakeModelClient([ModelResponse("Send nothing tonight.", [])], model="deepseek")
+    router.agent.cloud = cloud
     client.responses.append(R(("coach", {"thread": "x", "ask": "y"}), ("reply", {"text": "…"})))
     outs = await router.on_text("she said x what now")
-    assert outs[0].text.startswith("Spark's down.")
+    assert "Send nothing tonight." in outs[0].text and len(cloud.calls) == 1
     outs = await router.on_photo(b"img", "look")
-    assert outs[0].text.startswith("Spark's down.") and store.sources() == []
+    assert outs[0].text.startswith("Spark's down. Photos wait") and store.sources() == []
+
 
 
 async def test_fallback_lines_are_not_remembered_as_his_own_words(rig):
