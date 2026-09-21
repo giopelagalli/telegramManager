@@ -42,13 +42,14 @@ class BraveSearch:
         # Snippets rarely hold the number; the pages do. Read the top few.
         pages = []
         for r in results[:READ_PAGES]:
-            text = await self.read(r.get("url", ""))
+            text = await self.read(r.get("url", ""), query=query)
             if text:
                 pages.append(f"=== {r.get('title', '')} ({r.get('url', '')}) ===\n{text}")
         return "\n".join(lines) + ("\n\nPage contents:\n" + "\n\n".join(pages) if pages else "")
 
-    async def read(self, url: str, limit: int = PAGE_CHARS) -> str | None:
-        """The readable text of a page (HTML or PDF), trimmed; None on any failure."""
+    async def read(self, url: str, limit: int = PAGE_CHARS, query: str | None = None) -> str | None:
+        """The readable text of a page (HTML or PDF): the passages around the query's words when
+        it is long (a 40-page nutrition PDF), else the start. None on any failure."""
         if not url.startswith("http"):
             return None
         try:
@@ -68,7 +69,44 @@ class BraveSearch:
             logger.info("read %s could not extract: %s", url, type(exc).__name__)
             return None
         text = text.strip()
-        return text[:limit] + ("…" if len(text) > limit else "") if text else None
+        if not text:
+            return None
+        if len(text) <= limit:
+            return text
+        return focus(text, query or "", limit)
+
+
+def focus(text: str, query: str, limit: int) -> str:
+    """Windows of text around lines that mention the query's words, most-matching first;
+    the head of the document when nothing matches."""
+    words = [w for w in re.findall(r"[a-z0-9]{3,}", query.lower()) if w not in _STOP]
+    lines = text.splitlines()
+    if not words:
+        return text[:limit] + "…"
+    scored = []
+    for i, line in enumerate(lines):
+        low = line.lower()
+        score = sum(1 for w in words if w in low)
+        if score:
+            scored.append((-score, i))
+    if not scored:
+        return text[:limit] + "…"
+    scored.sort()
+    chosen: list[int] = []
+    for _, i in scored:
+        if all(abs(i - j) > 6 for j in chosen):
+            chosen.append(i)
+        if len(chosen) >= 8:
+            break
+    out: list[str] = []
+    for i in sorted(chosen):
+        window = "\n".join(lines[max(0, i - 3): i + 4])
+        out.append(window)
+    joined = "\n…\n".join(out)
+    return joined[:limit] + ("…" if len(joined) > limit else "")
+
+
+_STOP = {"the", "and", "for", "how", "many", "much", "what", "does", "with", "are", "is", "calories", "calorie", "nutrition"}
 
 
 _SCRIPT_RE = re.compile(r"<(script|style|noscript|svg|nav|footer|header)[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE)
