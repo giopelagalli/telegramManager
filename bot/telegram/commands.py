@@ -37,6 +37,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("schedule", "Your classes, day by day", True),
     ("goals", "Your goals and where you stand", True),
     ("reflect", "The week in numbers, and the weeks before", False),
+    ("notes", "What he's kept for you, by day", False),
     ("pause", "Quiet for 2h", True),
     ("undo", "Take back the last thing he changed", False),
     ("queue", "What's using the Spark right now", False),
@@ -136,6 +137,10 @@ async def handle(
     if name == "due":
         from bot.telegram.todo_ui import list_view
         return [list_view(store, now, "due")]
+
+    if name == "notes":
+        from bot.telegram.notes_ui import list_view
+        return [list_view(store, now)]
 
     if name == "reflect":
         from bot.scheduler.reflect import reflect_text

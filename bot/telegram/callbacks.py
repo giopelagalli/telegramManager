@@ -8,7 +8,7 @@ from bot.knowledge.views import esc
 from bot.scheduler.chains import close_chain
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.state import PendingVerify
-from bot.telegram import courses_ui, schedule_ui, todo_ui
+from bot.telegram import courses_ui, notes_ui, schedule_ui, todo_ui
 from bot.telegram.markdown import md_to_html
 
 SNOOZE_MINUTES = 30
@@ -45,6 +45,8 @@ async def handle(
         return todo_ui.handle(arg, store, state, now, message_id)
     if action == "course":
         return courses_ui.handle(arg, store, state, now, message_id)
+    if action == "note":
+        return notes_ui.handle(arg, store, state, now, message_id)
     if action == "resume":
         state.pause_until = None
         return [Outbound("Back on.", kind="reply")]

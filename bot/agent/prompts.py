@@ -71,6 +71,9 @@ call `study` with the question and the course when it is clear, instead of `repl
 "Move that to <course>" after a file was stored means `move_source`.
 When the message contains a pasted conversation with someone (their texts and the user's), or
 asks what to text someone, call `coach` with the thread and what they're asking.
+"Yesterday's notes", "what did we talk about Tuesday", "what did I say about X", "what have I
+noted" is `recall` (the context then carries that day's notes and transcript) — never `remember`:
+a question about notes reads them, it doesn't write one. "Keep this", "note: …", "remember …" is `remember`.
 "What's my briefing", "send the morning briefing again", "what's my day look like" is `briefing`
 morning; "evening briefing", "how did today go" is `briefing` evening. It is sent for you, so `reply` briefly.
 "How far is X", "how far is X from me", "directions to X (near me)", "how do I get to X" is ALWAYS

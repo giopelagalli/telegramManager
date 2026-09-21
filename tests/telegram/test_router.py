@@ -1083,3 +1083,33 @@ async def test_walking_to_class_changes_the_estimate_and_the_link(rig):
     assert tpl.travel_mode == "walk" and all(e.travel_mode == "walk" for e in store.events() if e.series == tpl.path)
     from bot.scheduler.reminders import _directions_suffix
     assert "travelmode=walking" in _directions_suffix(store.events()[0])
+
+
+async def test_yesterdays_notes_come_from_that_day_verbatim(rig):
+    router, store, client, state, clock = rig
+    clock._now = clock.now().replace(day=4)  # Sep 4; yesterday is Sep 3
+    store.clock = lambda: clock.now().replace(day=3)
+    store.add_memory("Ally is the girl from Saturday", kind="fact")
+    store.log_chat("user", "ally left me on read")
+    store.log_chat("assistant", "Then don't double text.")
+    store.clock = clock.now
+    store.commit("yesterday", include_chat=True)
+    client.responses.append(R(("recall", {"query": "yesterday's notes"}), ("reply", {"text": "…"})))
+    client.responses.append(ModelResponse("Yesterday: Ally went quiet; you said don't double text.", []))
+    outs = await router.on_text("yesterdays notes")
+    assert "Ally went quiet" in outs[0].text
+    sent = "\n".join(m["content"] for m in client.calls[-1]["messages"])
+    assert "note (2026-09-03): Ally is the girl from Saturday" in sent
+    assert "(2026-09-03" in sent and "ally left me on read" in sent and "don't double text" in sent
+
+
+async def test_notes_command_lists_by_day_and_removes(rig):
+    router, store, client, state, clock = rig
+    store.add_memory("Wire the learning app in", kind="fact"); store.add_memory("Gym feels good lately", kind="state"); store.commit("m")
+    out = await router.command("notes", "")
+    text = out[0].text
+    assert text.startswith("<b>Notes</b>") and "• Wire the learning app in" in text and "Gym feels good lately <i>(on your mind)</i>" in text
+    item = (await router.on_callback(out[0].buttons[0][1], 7, "x", out[0].buttons))[0]
+    assert item.buttons[0][0] == "🗑 Remove"
+    after = (await router.on_callback(item.buttons[0][1], 7, "x", item.buttons))[0]
+    assert after.toast == "Removed." and len(store.memories()) == 1

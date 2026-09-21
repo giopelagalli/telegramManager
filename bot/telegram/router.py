@@ -13,6 +13,7 @@ from bot.knowledge.views import esc, render_week
 from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
 from bot.scheduler.briefings import evening_outbound, morning_outbound
+from bot.memory.days import dates_in
 from bot.memory.thread import remember, thread
 from bot.scheduler.critical import leave_on_location, leave_on_text
 from bot.scheduler import review
@@ -30,7 +31,7 @@ from bot.study.extract import (
     render_pages,
 )
 from bot.study.select import select_sources
-from bot.telegram import callbacks, commands, courses_ui, schedule_ui, todo_ui
+from bot.telegram import callbacks, commands, courses_ui, notes_ui, schedule_ui, todo_ui
 from bot.telegram.markdown import md_to_html
 from bot.telegram.sender import plain_text
 
@@ -514,8 +515,9 @@ class Router:
         return lines
 
     async def _recall(self, query: str) -> list[str]:
-        """Keyword hits plus, when an index exists, semantic hits over the same corpus."""
-        hits = self.store.recall(query)
+        """Days named in the question first (their notes and transcript, verbatim), then keyword
+        hits and, when an index exists, semantic hits over the same corpus."""
+        hits = self._by_day(query) + self.store.recall(query)
         if self.index is None:
             return hits
         try:
@@ -525,7 +527,19 @@ class Router:
                     hits.append(line)
         except Exception:
             logger.exception("semantic recall failed; keyword hits only")
-        return hits[:16]
+        keep = len(self._by_day(query))
+        return hits[:max(16, keep + 8)]
+
+    def _by_day(self, query: str, cap: int = 60) -> list[str]:
+        days = dates_in(query, self.clock.now())
+        if not days:
+            return []
+        wanted = {d.isoformat() for d in days}
+        out = [f"note ({m.day}): {m.text}" for m in self.store.memories() if m.day.isoformat() in wanted]
+        chat = [line for line in self.store.chat_lines() if line[1:11] in wanted]
+        if len(chat) > cap:
+            chat = chat[:cap // 2] + ["…"] + chat[-cap // 2:]
+        return out + chat
 
     async def _search(self, query: str, question: str, via_voice: bool, client=None) -> list[Outbound]:
         results = await self.search.search(query)
@@ -672,10 +686,11 @@ class Router:
 
     async def _recalled(self, text: str) -> list[str]:
         """A few things from the vault that match this message, so old context resurfaces on its own."""
-        if self.agent.degraded or len(text) < 12:
+        if len(text) < 12:
             return []
         try:
-            return (await self._recall(text))[:5]
+            by_day = self._by_day(text, cap=40)
+            return by_day + [h for h in await self._recall(text) if h not in by_day][:5]
         except Exception:
             logger.exception("recall before capture failed")
             return []
