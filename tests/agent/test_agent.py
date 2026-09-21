@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import pytest
 from bot.agent.client import FakeModelClient, ModelResponse, ToolCall
@@ -273,3 +273,12 @@ async def test_a_todo_can_be_renamed(store):
     path = store.todos()[0].path
     apply_actions(store, [ToolCall("update_todo", {"file": path, "title": "CSCI 2670 hw"})], NOW)
     assert store.get_todo(path).title == "CSCI 2670 hw"
+
+
+async def test_context_lists_what_was_finished_this_week(store):
+    from bot.agent.prompts import build_context
+    store.add(Todo(path="", title="HW 1", priority=2, course="csci-2670", status="done", done_at=NOW - timedelta(days=2)))
+    store.add(Todo(path="", title="Old thing", priority=2, status="done", done_at=NOW - timedelta(days=20)))
+    store.commit("t")
+    ctx = build_context(store, NOW)
+    assert "Done in the last 7 days:\n- Tue Sep 1 HW 1 [csci-2670]" in ctx and "Old thing" not in ctx

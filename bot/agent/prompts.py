@@ -246,6 +246,14 @@ def build_context(store, now: datetime, awaiting: str | None = None, minimal: bo
     else:
         lines.append("- none")
 
+    week_ago = now - timedelta(days=7)
+    done = sorted((t for t in store.todos() if t.status == "done" and t.done_at and t.done_at >= week_ago),
+                  key=lambda t: t.done_at, reverse=True)
+    if done:
+        lines.append("Done in the last 7 days:")
+        for t in done[:30]:
+            lines.append(f"- {t.done_at:%a %b %-d} {t.title}" + (f" [{t.course}]" if t.course else ""))
+
     goals = [g for g in store.goals() if g.status == "active"]
     lines.append("Active goals:")
     if goals:
