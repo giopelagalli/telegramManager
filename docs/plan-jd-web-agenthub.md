@@ -122,21 +122,49 @@ becomes the orchestrator brain for project work; the local Qwen does the volume.
 - **Acceptance:** one real feature goes from "JD, add …" in Telegram to running on the Spark with
   you tapping exactly one button.
 
+### Phase 0b — the 7900 XTX box joins as the second node (your install, my JD tools)
+
+The desktop (Radeon 7900 XTX 24 GB, i7 14th gen, 128 GB RAM, Linux) is the right home for two
+things the Spark shouldn't carry:
+
+- **Worker-tier LLM.** AgentHub's own AMD playbook (`deploy/amd/README.md`): llama.cpp with the
+  HIP build serving `Qwen3.6-35B-A3B` Q4 (~23 GB, ~65 tok/s, 4 parallel streams). Every subagent
+  turn lands here instead of on the Spark, so the Spark's KV cache is JD's and the orchestrator's
+  alone. This is the real concurrency win; priority scheduling is the backstop.
+- **Image and video.** For anything that fits in 24 GB the 7900 XTX is several times faster per
+  step than the Spark (≈960 GB/s memory bandwidth vs ≈270, and far more FP16 compute). The Spark's
+  128 GB only helps for models bigger than 24 GB, which it would then run slowly and which don't fit
+  next to Flash-Next anyway. So: ComfyUI on ROCm on the PC, `video-gen` and an `image-gen` job type
+  here, none on the Spark.
+- **Which model:** not MiniMax-H3. AgentHub's notes record two blockers: the ROCm noise bug
+  (Comfy-Org/ComfyUI#15314) and a license that excludes US use. Wan 2.2 (5B, or 14B in fp8/GGUF)
+  and LTX-2 both have native ComfyUI support and run on RDNA3; Flux for stills. Verify on the box
+  before wiring the job type: one clip by hand through ComfyUI's UI first.
+- **JD side:** "make me a 6-second clip of …" / "generate an image of …" → an AgentHub job → the
+  result arrives as a Telegram video/photo (the hub's `/video` path already does this) or in the
+  web page. Reported like any other job: once, when it lands.
+- **Acceptance:** `/api/nodes` shows `amd` online with a worker endpoint; a project turn's
+  subagents run there (visible in `/queue`: Spark streams stay low); one clip rendered on the PC
+  and delivered to Telegram.
+
+Box-level for the PC: Ubuntu 24.04, ROCm (current stable), Tailscale, always on, the daemon under
+systemd per the playbook. Power: it's a desktop GPU running around the clock; budget for it.
+
 ### Not in this plan, on purpose
 
-- Video generation on the Spark (no memory next to Flash-Next; decide separately).
 - Rosenroot the learning app; the apex domain is reserved for it.
 - Replacing Telegram; it stays the phone-side surface for good.
+- MiniMax-H3 anywhere (ROCm bug + license); revisit if both change.
 
 ## Risks I want on the record
 
-- **KV cache is the shared resource.** ~1M tokens in flight across JD and every agent. Priority
-  puts JD first, but "first" still waits when it's full. `maxStreams` 3 + 2 is the starting point;
-  we tune from `/queue`.
+- **KV cache is the shared resource.** ~1M tokens in flight on the Spark. With the worker tier on
+  the PC only JD and the orchestrator share it; if the PC is off, workers fall back to the Spark at
+  priority 10 and "first" still waits when it's full. `/queue` is where you see it.
 - **Model reloads.** ~10 minutes, during which JD falls back to Fireworks and AgentHub turns fail
   or wait. Recipe updates happen on your schedule, not auto.
-- **One box.** When the Spark or your home internet is down, everything is down except the
-  droplet's login page. The droplet-as-blind-failover idea from before is still available if that
+- **Two boxes at home, one internet connection.** When home internet is down, everything is down
+  except the droplet's login page. The droplet-as-blind-failover idea from before is still available if that
   ever bites.
 - **The AgentHub attach-mode change** is small but it's in a codebase I've only read pieces of;
   its 773 tests are the safety net.
@@ -147,6 +175,7 @@ becomes the orchestrator brain for project work; the local Qwen does the volume.
 |---|---|
 | Confirm decisions 1 and 2 | Attach mode + priority merge in AgentHub |
 | Node + AgentHub install on the Spark, env, systemd | JD ↔ AgentHub tools, context, `/projects`, reporting |
+| The PC: Linux, ROCm, Tailscale, llama.cpp worker, ComfyUI, one clip by hand | Image/video request tools in JD, delivery to Telegram and web |
 | `ant auth login` on the Spark | Connector layer, JD web API, hub JD page |
 | Droplet, Tailscale, Caddy, DNS for `hub.rosenroot.com` | Call mode |
 | Try each phase for a day before the next | Discord, email, the self-improvement loop |
