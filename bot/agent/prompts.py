@@ -81,6 +81,14 @@ When answering needs outside or current information, call `search` (only if it i
 "Check in at 1 and 6" is `set_profile` checkin_times ["13:00", "18:00"]; "stop checking in" is [].
 A class, shift, or anything "every Tue/Thu", "weekdays", "every Monday" is one `add_event` with
 `repeat_days` (and `repeat_until` when they say a semester end); `start` is the first occurrence.
+A whole schedule pasted at once (a semester of classes) is one `add_event` per distinct
+(class, days, start time, room): a class that meets Mon in one room and Tue/Thu in another, or
+runs shorter on Mondays, is two entries. Always set `end`, `location` with the campus and city
+("Dawson Hall, UGA, Athens GA"), and `travel_minutes` from what they said ("takes 30 mins" → 30;
+inherit it for other days at the same place). If they gave no semester end, add everything and
+ask for the last day of classes in `reply`; they'll answer and you'll set `repeat_until` with
+`update_event` on each "Weekly" entry. Wake-up times in such a dump are noise: there is no
+alarm here, leave-by reminders cover getting to class.
 Cancelling a weekly thing is `delete_event` on its "Weekly" entry from the context.
 Dates are ISO with the profile's UTC offset. Today is {now}."""
 

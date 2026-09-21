@@ -1004,3 +1004,32 @@ async def test_asking_for_a_voice_note_makes_the_reply_voice(rig):
     assert outs[0].voice is True
     client.responses.append(R(("reply", {"text": "Ok."})))
     assert (await router.on_text("thanks"))[0].voice is False
+
+
+async def test_a_pasted_schedule_comes_back_as_the_week(rig):
+    router, store, client, state, clock = rig
+    client.responses.append(R(
+        ("add_event", {"title": "CSCI 2670", "start": "2026-09-07T09:55:00-04:00", "end": "2026-09-07T10:50:00-04:00",
+                       "location": "Dawson Hall, UGA, Athens GA", "travel_minutes": 30, "repeat_days": ["MO"]}),
+        ("add_event", {"title": "CSCI 2670", "start": "2026-09-08T09:55:00-04:00", "end": "2026-09-08T11:15:00-04:00",
+                       "location": "Geography Building, UGA, Athens GA", "travel_minutes": 30, "repeat_days": ["TU", "TH"]}),
+        ("add_event", {"title": "Spanish", "start": "2026-09-07T13:15:00-04:00", "end": "2026-09-07T14:10:00-04:00",
+                       "location": "MLC, UGA, Athens GA", "travel_minutes": 17, "repeat_days": ["MO", "FR"]}),
+        ("reply", {"text": "In. Last day of classes?"}),
+    ))
+    outs = await router.on_text("my classes: ...")
+    text = outs[0].text
+    assert "Added weekly: CSCI 2670 Mo" in text and "Added weekly: Spanish Mo/Fr" in text
+    assert "<b>" in text and "CSCI 2670 — leave by 9:25am" in text and "Spanish — leave by 12:58pm" in text
+    assert "free" in text  # the week view, days with nothing included
+
+
+async def test_semester_end_lands_on_the_weekly_entry(rig):
+    router, store, client, state, clock = rig
+    client.responses.append(R(("add_event", {"title": "Spanish", "start": "2026-09-07T13:15:00-04:00",
+                                              "repeat_days": ["MO", "FR"]}), ("reply", {"text": "Ok."})))
+    await router.on_text("spanish mon/fri 1:15")
+    tpl = store.series()[0]
+    client.responses.append(R(("update_event", {"file": tpl.path, "repeat_until": "2026-12-08"}), ("reply", {"text": "Set."})))
+    await router.on_text("last day is dec 8")
+    assert str(store.series()[0].repeat_until) == "2026-12-08"

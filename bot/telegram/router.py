@@ -9,7 +9,7 @@ from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
 from bot.agent.prompts import build_context
 from bot.knowledge.models import Todo, UNBOUND, Channel, Course, Source, channel_key, slugify
-from bot.knowledge.views import esc
+from bot.knowledge.views import esc, render_week
 from bot.maps.client import directions_url, distance_m
 from bot.scheduler.chains import close_chain
 from bot.scheduler.briefings import evening_outbound, morning_outbound
@@ -743,6 +743,9 @@ class Router:
                 )
                 lines.append(line)
                 ask_location = ask_location or need_location
+        if sum(1 for a in result.actions if a.name == "add_event") >= 3:
+            # A whole schedule went in: show the week back so he can check it at a glance.
+            lines.append(render_week(self.store.events(), self.store.profile(), now))
         asked_voice = any(a.name == "reply" and a.arguments.get("voice") is True for a in result.actions)
         return [
             Outbound(

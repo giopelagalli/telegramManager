@@ -673,6 +673,8 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                     event.start = datetime.fromisoformat(args["start"])
                 if "end" in args:
                     event.end = datetime.fromisoformat(args["end"]) if args["end"] else None
+                if "repeat_until" in args:
+                    event.repeat_until = date.fromisoformat(args["repeat_until"]) if args["repeat_until"] else None
                 if "location" in args:
                     event.location = args["location"]
                 if "travel_minutes" in args:

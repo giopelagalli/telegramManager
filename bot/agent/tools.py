@@ -113,6 +113,7 @@ TOOL_SCHEMAS: list[dict] = [
                     "location": {"type": "string"},
                     "travel_minutes": {"type": "integer"},
                     "prep_minutes": {"type": "integer"},
+                    "repeat_until": {"type": "string", "format": "date", "description": "last day of a weekly series (a class's semester end)"},
                     "importance": {"type": "string", "enum": ["normal", "critical"]},
                     "status": {"type": "string", "enum": ["upcoming", "left", "arrived", "done", "missed"]},
                 },
