@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from bot.knowledge.store import _WEEKDAYS
-from bot.knowledge.views import esc, fmt_day, fmt_time
+from datetime import date, timedelta
+
+from bot.knowledge.views import esc, fmt_clock, fmt_day, fmt_time
 from bot.scheduler.outbound import Outbound
 from bot.telegram import todo_ui
 
@@ -27,9 +29,39 @@ def _tests(store, course, now: datetime) -> list:
                    and e.status == "upcoming" and e.start >= now), key=lambda e: e.start)
 
 
-def list_view(store, message_id: int | None = None, toast: str | None = None) -> Outbound:
+def _relative(d: date, today: date) -> str:
+    if d == today:
+        return "today"
+    if d == today + timedelta(days=1):
+        return "tomorrow"
+    if d < today:
+        return "overdue"
+    if d - today <= timedelta(days=6):
+        return d.strftime("%a")
+    return fmt_day(d)
+
+
+def next_due(store, course, now: datetime) -> str:
+    """One line: the soonest assignment or test for a course, plus how many more are behind it."""
+    today = now.date()
+    items = []
+    for t in todo_ui.items(store, f"course:{course.slug}", now):
+        if t.due is not None:
+            when = _relative(t.due, today) + (f" {fmt_clock(t.due_time)}" if t.due_time else "")
+            items.append((t.due, t.due_time or "24:00", f"{esc(t.title)} due <b>{when}</b>"))
+    for e in _tests(store, course, now):
+        items.append((e.start.date(), e.start.strftime("%H:%M"), f"{esc(e.title)} <b>{_relative(e.start.date(), today)}</b>"))
+    if not items:
+        return "nothing due"
+    items.sort(key=lambda x: (x[0], x[1]))
+    more = f" (+{len(items) - 1} more)" if len(items) > 1 else ""
+    return items[0][2] + more
+
+
+def list_view(store, message_id: int | None = None, toast: str | None = None, now: datetime | None = None) -> Outbound:
     courses = store.courses()
-    lines = ["<b>Courses</b>"] + ([esc(c.title) for c in courses] or ["None yet."])
+    now = now or datetime.now()
+    lines = ["<b>Courses</b>"] + ([f"• <b>{esc(c.title)}</b> — {next_due(store, c, now)}" for c in courses] or ["None yet."])
     buttons = [(c.title[:40], f"course:view:{c.slug}") for c in courses] + [("➕ Course", "course:add")]
     return Outbound("\n".join(lines), buttons=buttons, kind="edit" if message_id else "reply", edit_message_id=message_id, toast=toast)
 
@@ -37,7 +69,7 @@ def list_view(store, message_id: int | None = None, toast: str | None = None) ->
 def course_view(store, now: datetime, slug: str, message_id: int | None = None, toast: str | None = None) -> Outbound:
     course = _course(store, slug)
     if course is None:
-        return list_view(store, message_id)
+        return list_view(store, message_id, now=now)
     lines = [f"<b>{esc(course.title)}</b>"]
     slots = _slots(store, course)
     for e in slots:
@@ -83,7 +115,7 @@ def handle(arg: str, store, state, now: datetime, message_id: int | None) -> lis
     parts = arg.split(":")
     what = parts[0]
     if what == "list":
-        return [list_view(store, message_id)]
+        return [list_view(store, message_id, now=now)]
     if what == "add":
         state.pending_schedule = {"ui": "course", "mode": "add_course"}
         return [Outbound("Course name? Like \"CSCI 2670\" or \"Spanish\".", kind="reply")]
@@ -104,7 +136,7 @@ def handle(arg: str, store, state, now: datetime, message_id: int | None) -> lis
         state.pending_schedule = {"ui": "course", "mode": "add_test", "course": parts[1]}
         return [Outbound("Test or quiz: what, when, and the topics if you know them. One line, like "
                          "\"midterm Oct 14 9am, chapters 1-5\".", kind="reply")]
-    return [list_view(store, message_id)]
+    return [list_view(store, message_id, now=now)]
 
 
 def hint(pending: dict, text: str) -> str:

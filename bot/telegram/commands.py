@@ -77,7 +77,7 @@ async def handle(
 
     if name == "courses":
         from bot.telegram.courses_ui import list_view
-        return [list_view(store)]
+        return [list_view(store, now=now)]
 
     if name == "backlog":
         return [Outbound(render_backlog([t for t in store.todos(include_backlog=True) if t.in_backlog]), kind="reply")]

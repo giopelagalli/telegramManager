@@ -296,6 +296,7 @@ async def test_courses_view_and_adding_a_course_a_test_and_an_assignment(rig):
     store.commit("c")
     out = (await r.command("courses", ""))[0]
     assert out.buttons[0] == ("CSCI 2670", "course:view:csci-2670") and out.buttons[-1] == ("➕ Course", "course:add")
+    assert "• <b>CSCI 2670</b> — nothing due" in out.text
 
     view = (await r.on_callback("course:view:csci-2670", 3, "x", out.buttons))[0]
     assert "<b>CSCI 2670</b>" in view.text and "Mon 9:55am" in view.text
@@ -323,4 +324,6 @@ async def test_courses_view_and_adding_a_course_a_test_and_an_assignment(rig):
     assert 'course "csci-2670"' in r.agent.client.calls[-1]["messages"][-1]["content"]
     assert "<b>Assignments</b>" in outs[1].text and "Homework 3" in outs[1].text
     assert "Homework 3" in (await r.command("due", ""))[0].text
+    listing = (await r.command("courses", ""))[0].text
+    assert "• <b>CSCI 2670</b> — Homework 3 due <b>Sep 10</b> (+1 more)" in listing.replace("Thu Sep 10", "Sep 10")
     assert "Homework 3" not in (await r.command("todo", ""))[0].text  # course work is not the personal list
