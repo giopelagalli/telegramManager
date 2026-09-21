@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
 
 EARTH_RADIUS_M = 6371000
 
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
-DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"
-PLACES_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
+PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
 TIMEZONE_URL = "https://maps.googleapis.com/maps/api/timezone/json"
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,27 @@ class MapsClient:
             logger.warning("maps.%s failed: %s", what, type(exc).__name__)
             return None
 
+    async def _post_json(self, url: str, body: dict, field_mask: str, what: str) -> dict | None:
+        """The newer Google APIs (Places New, Routes) are JSON POSTs with the key and a field mask in headers."""
+        try:
+            resp = await self._http.post(
+                url, json=body,
+                headers={"X-Goog-Api-Key": self._api_key, "X-Goog-FieldMask": field_mask, "Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as exc:
+            detail = ""
+            try:
+                detail = exc.response.json().get("error", {}).get("message", "")
+            except ValueError:
+                pass
+            logger.warning("maps.%s failed: HTTP %s %s", what, exc.response.status_code, detail)
+            return None
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("maps.%s failed: %s", what, type(exc).__name__)
+            return None
+
     async def geocode(self, address: str) -> tuple[float, float] | None:
         data = await self._get_json(
             GEOCODE_URL, {"address": address, "key": self._api_key}, "geocode"
@@ -73,23 +94,26 @@ class MapsClient:
             return None
 
     async def find_place(self, query: str, near: tuple[float, float] | None = None) -> dict | None:
-        """What "mags" means around here: {"name", "address", "latlng"} for the best match near `near`."""
-        params = {"query": query, "key": self._api_key}
+        """What "mags" means around here: {"name", "address", "latlng"} for the best match near `near`.
+        Places API (New), text search."""
+        body: dict = {"textQuery": query, "maxResultCount": 1}
         if near is not None:
-            params["location"] = f"{near[0]},{near[1]}"
-            params["radius"] = 25000
-        data = await self._get_json(PLACES_URL, params, "find_place")
+            body["locationBias"] = {"circle": {"center": {"latitude": near[0], "longitude": near[1]}, "radius": 25000.0}}
+        data = await self._post_json(
+            PLACES_URL, body, "places.displayName,places.formattedAddress,places.location", "find_place"
+        )
         if data is None:
             return None
-        if not data.get("results"):
-            # ZERO_RESULTS is a real miss; REQUEST_DENIED means the Places API is not enabled on the key.
-            logger.warning("maps.find_place: no results for %r: %s %s", query, data.get("status"), data.get("error_message", ""))
+        places = data.get("places") or []
+        if not places:
+            logger.warning("maps.find_place: no results for %r", query)
             return None
         try:
-            hit = data["results"][0]
-            loc = hit["geometry"]["location"]
-            return {"name": hit["name"], "address": hit.get("formatted_address", ""), "latlng": (loc["lat"], loc["lng"])}
-        except (KeyError, IndexError, TypeError) as exc:
+            hit = places[0]
+            loc = hit["location"]
+            name = hit.get("displayName", {}).get("text") or query
+            return {"name": name, "address": hit.get("formattedAddress", ""), "latlng": (loc["latitude"], loc["longitude"])}
+        except (KeyError, TypeError) as exc:
             logger.warning("maps.find_place failed: %s", type(exc).__name__)
             return None
 
@@ -106,25 +130,26 @@ class MapsClient:
         return data.get("timeZoneId") or None
 
     async def route(
-        self, origin: tuple[float, float], dest: tuple[float, float], mode: str = "drive"
+        self, origin: tuple[float, float], dest: tuple[float, float], mode: str = "drive", depart_at: datetime | None = None
     ) -> tuple[int, int] | None:
-        """(minutes, meters) from origin to dest, walking or driving with live traffic."""
-        params = {
-            "origin": f"{origin[0]},{origin[1]}",
-            "destination": f"{dest[0]},{dest[1]}",
-            "mode": "walking" if mode == "walk" else "driving",
-            "key": self._api_key,
+        """(minutes, meters) from origin to dest, walking or driving with live traffic. Routes API."""
+        body: dict = {
+            "origin": {"location": {"latLng": {"latitude": origin[0], "longitude": origin[1]}}},
+            "destination": {"location": {"latLng": {"latitude": dest[0], "longitude": dest[1]}}},
+            "travelMode": "WALK" if mode == "walk" else "DRIVE",
         }
         if mode != "walk":
-            params["departure_time"] = "now"
-        data = await self._get_json(DIRECTIONS_URL, params, "route")
+            body["routingPreference"] = "TRAFFIC_AWARE"
+            if depart_at is not None and depart_at > datetime.now(timezone.utc):
+                body["departureTime"] = depart_at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        data = await self._post_json(ROUTES_URL, body, "routes.duration,routes.distanceMeters", "route")
         if data is None:
             return None
         try:
-            leg = data["routes"][0]["legs"][0]
-            duration = leg.get("duration_in_traffic", leg["duration"])
-            return math.ceil(duration["value"] / 60), int(leg["distance"]["value"])
-        except (KeyError, IndexError, TypeError) as exc:
+            r = data["routes"][0]
+            seconds = int(str(r["duration"]).rstrip("s"))
+            return math.ceil(seconds / 60), int(r.get("distanceMeters", 0))
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
             logger.warning("maps.route failed: %s", type(exc).__name__)
             return None
 
@@ -134,24 +159,6 @@ class MapsClient:
         dest: tuple[float, float],
         depart_at: datetime,
     ) -> int | None:
-        data = await self._get_json(
-            DIRECTIONS_URL,
-            {
-                "origin": f"{origin[0]},{origin[1]}",
-                "destination": f"{dest[0]},{dest[1]}",
-                "departure_time": int(depart_at.timestamp()),
-                "mode": "driving",
-                "key": self._api_key,
-            },
-            "travel_minutes",
-        )
-        if data is None:
-            return None
-        try:
-            leg = data["routes"][0]["legs"][0]
-            duration = leg.get("duration_in_traffic", leg["duration"])
-            seconds = duration["value"]
-            return math.ceil(seconds / 60)
-        except (KeyError, IndexError, TypeError) as exc:
-            logger.warning("maps.travel_minutes failed: %s", type(exc).__name__)
-            return None
+        """Driving minutes with traffic at `depart_at`; the leave-by refresh."""
+        r = await self.route(origin, dest, "drive", depart_at=depart_at)
+        return None if r is None else r[0]

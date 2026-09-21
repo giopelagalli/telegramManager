@@ -17,13 +17,39 @@ async def test_geocode_ok_and_error():
     async def bad(req): return httpx.Response(500)
     assert await client(bad).geocode("x") is None
 
-async def test_travel_minutes_prefers_traffic():
+async def test_travel_minutes_uses_routes_api_with_traffic():
+    seen = {}
     async def h(req):
-        assert "departure_time=" in str(req.url)
-        return httpx.Response(200, json={"status": "OK", "routes": [{"legs": [{"duration": {"value": 600}, "duration_in_traffic": {"value": 1501}}]}]})
-    assert await client(h).travel_minutes((0, 0), (1, 1), datetime(2026, 9, 4, 17, 0, tzinfo=timezone.utc)) == 26
+        seen["url"] = str(req.url); seen["body"] = __import__("json").loads(req.content); seen["mask"] = req.headers.get("x-goog-fieldmask")
+        assert req.headers.get("x-goog-api-key") == "k"
+        return httpx.Response(200, json={"routes": [{"duration": "1501s", "distanceMeters": 4200}]})
+    assert await client(h).travel_minutes((0, 0), (1, 1), datetime(2099, 9, 4, 17, 0, tzinfo=timezone.utc)) == 26
+    assert seen["url"].endswith("directions/v2:computeRoutes") and seen["mask"] == "routes.duration,routes.distanceMeters"
+    assert seen["body"]["travelMode"] == "DRIVE" and seen["body"]["routingPreference"] == "TRAFFIC_AWARE"
+    assert seen["body"]["departureTime"] == "2099-09-04T17:00:00Z"
     async def boom(req): raise httpx.ConnectError("x")
     assert await client(boom).travel_minutes((0, 0), (1, 1), datetime.now(timezone.utc)) is None
+
+
+async def test_walking_route_has_no_traffic_preference():
+    bodies = []
+    async def h(req):
+        bodies.append(__import__("json").loads(req.content))
+        return httpx.Response(200, json={"routes": [{"duration": "720s", "distanceMeters": 900}]})
+    assert await client(h).route((0, 0), (1, 1), "walk") == (12, 900)
+    assert bodies[0]["travelMode"] == "WALK" and "routingPreference" not in bodies[0] and "departureTime" not in bodies[0]
+
+
+async def test_find_place_uses_places_new_text_search():
+    seen = {}
+    async def h(req):
+        seen["url"] = str(req.url); seen["body"] = __import__("json").loads(req.content); seen["mask"] = req.headers.get("x-goog-fieldmask")
+        return httpx.Response(200, json={"places": [{"displayName": {"text": "Magnolias"}, "formattedAddress": "312 E Broad St, Athens, GA 30601", "location": {"latitude": 33.958, "longitude": -83.376}}]})
+    place = await client(h).find_place("mags", near=(33.95, -83.38))
+    assert place == {"name": "Magnolias", "address": "312 E Broad St, Athens, GA 30601", "latlng": (33.958, -83.376)}
+    assert seen["url"].endswith("v1/places:searchText") and "places.displayName" in seen["mask"]
+    assert seen["body"]["textQuery"] == "mags" and seen["body"]["locationBias"]["circle"]["center"]["latitude"] == 33.95
+
 
 async def test_non_json_body_returns_none():
     async def h(req): return httpx.Response(200, text="<html>oops</html>")
@@ -42,15 +68,16 @@ async def test_aclose_closes_owned_client_only():
     await injected_http.aclose()
 
 
-async def test_find_place_reports_googles_status_on_an_empty_result():
+async def test_find_place_logs_googles_error_message():
     import logging
     seen = []
     def handler(req):
-        return httpx.Response(200, json={"results": [], "status": "REQUEST_DENIED", "error_message": "Places API not enabled"})
+        return httpx.Response(403, json={"error": {"message": "Places API (New) has not been used in project", "status": "PERMISSION_DENIED"}})
     c = MapsClient("k", http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-    logger = logging.getLogger("bot.maps.client")
     class Grab(logging.Handler):
         def emit(self, record): seen.append(record.getMessage())
-    logger.addHandler(Grab())
+    logging.getLogger("bot.maps.client").addHandler(Grab())
     assert await c.find_place("mags", near=(33.9, -83.3)) is None
-    assert any("REQUEST_DENIED" in m and "Places API not enabled" in m for m in seen)
+    assert any("HTTP 403" in m and "has not been used" in m for m in seen)
+    empty = MapsClient("k", http=httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))))
+    assert await empty.find_place("nowhere") is None
