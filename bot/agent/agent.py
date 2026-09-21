@@ -91,15 +91,18 @@ class Agent:
         return build_context(self.store, now, awaiting, minimal=self.degraded or remote)
 
     async def capture(
-        self, text: str, awaiting: str | None = None, recent: list | None = None, recalled: list[str] | None = None
+        self, text: str, awaiting: str | None = None, recent: list | None = None, recalled: list[str] | None = None,
+        client: ModelClient | None = None,
     ) -> CaptureResult:
+        """The main loop. `client` runs it on another model (/hard → the cloud) with the remote
+        view: schedule, todos, goals, the conversation and the memories that match — not the vault."""
         now = self.clock()
         profile = self.store.profile()
         system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat(), voice=VOICE)
         if self.degraded:
             system += "\n\n" + BACKUP_NOTE
             recent, recalled = [], []  # the conversation and the vault stay home
-        context = self.context(now, awaiting)
+        context = self.context(now, awaiting, remote=client is not None and client is not self.client)
         if recalled:
             context += "\nFrom memory, possibly relevant:\n" + "\n".join(f"- {r}" for r in recalled)
         messages = [
@@ -109,7 +112,7 @@ class Agent:
             {"role": "user", "content": text},
         ]
 
-        response = await self._chat_or_none(messages, self.tools, 0.1)
+        response = await self._chat_or_none(messages, self.tools, 0.1, client=client)
         if response is None:
             return self._to_inbox(text, "Model's down. Saved it, say it again in a bit.")
 
@@ -125,7 +128,7 @@ class Agent:
                     + ". Resend ALL tool calls, fixed, and include exactly one reply call.",
                 },
             ]
-            response = await self._chat_or_none(retry_messages, self.tools, 0.1)
+            response = await self._chat_or_none(retry_messages, self.tools, 0.1, client=client)
             if response is None:
                 return self._to_inbox(text, "Model's down. Saved it, say it again in a bit.")
             self._adopt_text_as_reply(response)
@@ -134,7 +137,7 @@ class Agent:
         if errors == ["no tool calls and no text"]:
             # The model went silent (Qwen does this now and then with tools attached). Ask again
             # with no tools: it then just answers in prose.
-            plain = await self._chat_or_none(messages, None, 0.3)
+            plain = await self._chat_or_none(messages, None, 0.3, client=client)
             if plain is not None and (plain.text or "").strip():
                 return CaptureResult([ToolCall("reply", {"text": plain.text.strip()})], plain.text.strip(), parsed=True)
 

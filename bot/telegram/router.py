@@ -522,7 +522,7 @@ class Router:
             logger.exception("semantic recall failed; keyword hits only")
         return hits[:16]
 
-    async def _search(self, query: str, question: str, via_voice: bool) -> list[Outbound]:
+    async def _search(self, query: str, question: str, via_voice: bool, client=None) -> list[Outbound]:
         results = await self.search.search(query)
         if results is None:
             return [Outbound("Search isn't answering right now.", kind="reply")]
@@ -530,6 +530,7 @@ class Router:
             question,
             f"Live web search results fetched just now for \"{query}\" (you DO have current information — "
             f"never say you lack internet access or a knowledge cutoff; answer from these and cite the URL used):\n{results}",
+            client=client,
         )
         if answer is None:
             return [Outbound(TUTOR_OFFLINE_REPLY, kind="reply")]
@@ -606,14 +607,18 @@ class Router:
     ) -> list[Outbound]:
         now = self._touch()
         close_chain(self.state)
+        if name == "hard" and self.agent.cloud is not None and arg.strip() and not _is_course(channel):
+            # /hard is JD on the bigger cloud model: same tools, same pipeline, the remote view.
+            awaiting = self.state.chain.item if self.state.chain is not None else None
+            outs = await self._capture(arg.strip(), awaiting, False, now, client=self.agent.cloud)
+            model_name = str(getattr(self.agent.cloud, "model", "cloud")).rsplit("/", 1)[-1]
+            if outs and outs[0].text:
+                outs[0].text = f"<i>via {esc(model_name)}</i>\n{outs[0].text}"
+            return self._tag(outs, channel)
         outs = await commands.handle(
             name, arg, self.store, self.agent, self.state, now, channel,
             recall=self._recall, recent=self._thread(), search=self.search, cluster=self.cluster,
         )
-        if name == "hard" and outs and outs[0].text:
-            # A /hard exchange is part of the conversation; the Spark model must see it next turn.
-            self._remember("user", f"/hard {arg}".strip())
-            self._remember("assistant", plain_text(outs[0].text))
         return self._tag(outs, channel)
 
     # -- helpers ---------------------------------------------------------
@@ -670,11 +675,11 @@ class Router:
             logger.exception("recall before capture failed")
             return []
 
-    async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now) -> list[Outbound]:
+    async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now, client=None) -> list[Outbound]:
         pending_schedule = self.state.pending_schedule
         model_text = schedule_ui.hint(pending_schedule, text) if pending_schedule else text
         result = await self.agent.capture(
-            model_text, awaiting=awaiting, recent=self._thread(), recalled=await self._recalled(text)
+            model_text, awaiting=awaiting, recent=self._thread(), recalled=await self._recalled(text), client=client
         )
         self.last_outcome = "captured" if result.parsed else "inbox"
         if pending_schedule and result.parsed:
@@ -683,7 +688,7 @@ class Router:
             # A failed exchange is not part of the conversation: remembered, the fallback line
             # reads as his own words and the next model copies it.
             return [Outbound(esc(result.reply), kind="reply")]
-        outs = await self._captured(text, result, awaiting, via_voice, now, pending_schedule)
+        outs = await self._captured(text, result, awaiting, via_voice, now, pending_schedule, client=client)
         # Remember what was actually sent — the search answer, the directions line — not the
         # model's placeholder "Sending it.", or "what's the address" is forgotten a message later.
         self._remember("user", text)
@@ -691,7 +696,9 @@ class Router:
             self._remember("assistant", plain_text(outs[0].text))
         return outs
 
-    async def _captured(self, text: str, result, awaiting, via_voice: bool, now, pending_schedule: dict | None = None) -> list[Outbound]:
+    async def _captured(
+        self, text: str, result, awaiting, via_voice: bool, now, pending_schedule: dict | None = None, client=None
+    ) -> list[Outbound]:
         if any(a.name == "undo" for a in result.actions):
             subject = self.store.undo()
             return [Outbound("Nothing to undo." if subject is None else f"Reverted: {esc(subject)}", kind="reply")]
@@ -726,12 +733,12 @@ class Router:
         if recall is not None:
             hits = await self._recall(str(recall.arguments.get("query", text)))
             context = "What I have on that:\n" + ("\n".join(f"- {h}" for h in hits) if hits else "- nothing")
-            answer = await self.agent.answer(text, context)
+            answer = await self.agent.answer(text, context, client=client)
             return [Outbound(md_to_html(answer) if answer else esc(context), voice=self._voice_reply(via_voice), kind="reply")]
 
         search = next((a for a in result.actions if a.name == "search"), None)
         if search is not None and self.search is not None:
-            return await self._search(str(search.arguments.get("query", text)), text, via_voice)
+            return await self._search(str(search.arguments.get("query", text)), text, via_voice, client=client)
 
         study = next((a for a in result.actions if a.name == "study"), None)
         if study is not None:

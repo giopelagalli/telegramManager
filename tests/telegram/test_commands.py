@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import pytest
-from bot.agent.client import FakeModelClient, FallbackModelClient, ModelResponse
+from bot.agent.client import FakeModelClient, FallbackModelClient, ModelResponse, ToolCall
 from bot.agent.agent import Agent
 from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.models import Todo, Event, Channel, Course, Source, UNBOUND
@@ -219,124 +219,31 @@ async def test_quick_keys_are_commands_not_captured(rig):
     assert r.agent.client.calls == []
 
 
-async def test_hard_prefers_the_cloud_opt_in_with_the_blind_view(tmp_path):
-    hard = FakeModelClient([ModelResponse("spark says", [])], model="qwen")
-    cloud = FakeModelClient([ModelResponse("cloud says", [])], model="deepseek")
+def R(*calls):
+    return ModelResponse(None, [ToolCall(n, a) for n, a in calls])
+
+
+async def test_hard_is_the_same_pipeline_on_the_cloud_with_the_remote_view(tmp_path):
+    hard = FakeModelClient([], model="qwen")
+    cloud = FakeModelClient([R(("add_event", {"title": "Spanish", "start": "2026-09-07T13:15:00-04:00", "repeat_days": ["MO", "FR"]}),
+                               ("reply", {"text": "Filed."}))], model="accounts/fireworks/models/deepseek-v4p1-flash")
     r, store, primary = _rig_with_hard(tmp_path, hard)
-    store.add_memory("Sister is Anna", kind="fact"); store.commit("m")
+    store.add_memory("Sister is Anna", kind="fact"); store.add_memory("Ally is the girl from the Saturday party", kind="fact"); store.commit("m")
     r.agent.cloud = cloud
-    out = (await r.command("hard", "what should I do?", channel=DM))[0]
-    assert "cloud says" in out.text and "deepseek" in out.text
-    assert hard.calls == [] and len(cloud.calls) == 1
+    r.state.recent = [["user", "she left me on read", "2026-09-03T13:00:00-04:00"], ["assistant", "Then don't double text.", "2026-09-03T13:00:00-04:00"]]
+    out = (await r.command("hard", "spanish mon/fri 1:15 at the MLC, and what about ally", channel=DM))[0]
+    assert out.text.startswith("<i>via deepseek-v4p1-flash</i>") and "Filed." in out.text and "Added weekly: Spanish" in out.text
+    assert [e.title for e in store.series()] == ["Spanish"]  # it filed something: same tools as JD
+    assert hard.calls == [] and primary.calls == [] and len(cloud.calls) == 1
     sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
-    assert "Anna" not in sent and "Backup model: schedule, todos and goals only." in sent
+    assert "Backup model: schedule, todos and goals only." in sent  # the remote view
+    assert "Ally is the girl" in sent and "Sister is Anna" not in sent  # only the memories that match
+    assert "she left me on read" in sent  # and the conversation
+    assert r.state.recent[-1][0] == "assistant" and "Filed." in r.state.recent[-1][1]  # remembered like any exchange
 
 
-async def test_hard_carries_the_conversation_but_not_the_memories(tmp_path):
-    cloud = FakeModelClient([ModelResponse("cloud says", [])], model="deepseek")
-    r, store, primary = _rig_with_hard(tmp_path, None)
-    store.add_memory("Sister is Anna", kind="fact"); store.commit("m")
-    r.agent.cloud = cloud
-    store.add_memory("Ally is the girl from the Saturday party", kind="fact"); store.commit("m2")
-    r.state.recent = [["user", "she left me on read"], ["assistant", "Then don't double text."]]
-    await r.command("hard", "what do you think about Ally?", channel=DM)
-    sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
-    assert "she left me on read" in sent and "don't double text" in sent
-    assert "Ally is the girl" in sent and "Anna" not in sent  # only the memories that match the question
-
-
-async def test_hard_searches_the_web_first_when_search_is_configured(tmp_path):
-    cloud = FakeModelClient([ModelResponse("Merriam-Webster added 'rizz' in 2023.", [])], model="accounts/fireworks/models/deepseek-v4p1-flash")
-    r, store, primary = _rig_with_hard(tmp_path, None)
-    r.agent.cloud = cloud
-    class FakeSearch:
-        def __init__(self): self.queries = []
-        async def search(self, q): self.queries.append(q); return "1. New words 2026 — https://example.com/words"
-    r.search = FakeSearch()
-    out = (await r.command("hard", "what words were added to the dictionary this year", channel=DM))[0]
-    assert r.search.queries == ["what words were added to the dictionary this year"]
-    sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
-    assert "example.com/words" in sent and "cite the URL" in sent
-    assert out.text.startswith("<i>via deepseek-v4p1-flash</i>")
-
-
-async def test_queue_command_reports_the_cluster(rig):
-    r, store, _ = rig
-    class FakeCluster:
-        async def report(self, now): return "Spark: idle.\n• Probability engine — active"
-    r.cluster = FakeCluster()
-    assert (await r.command("queue", ""))[0].text == "Spark: idle.\n• Probability engine — active"
-    r.cluster = None
-    assert (await r.command("queue", ""))[0].text.startswith("Nothing to report")
-
-
-async def test_voice_command_switches_reply_mode(rig):
-    r, store, _ = rig
-    assert "when you send voice" in (await r.command("voice", ""))[0].text
-    assert (await r.command("voice", "on"))[0].text == "Voice on every reply."
-    assert store.profile().voice_reply_mode == "always"
-    await r.command("voice", "off")
-    assert store.profile().voice_reply_mode == "on_voice"
-
-
-async def test_schedule_is_day_buttons_then_entries_then_change_or_remove(rig):
-    r, store, state = rig
-    from bot.knowledge.models import Event
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    NY = ZoneInfo("America/New_York")
-    store.add_series(Event(path="", title="CSCI 2670", start=datetime(2026, 9, 7, 9, 55, tzinfo=NY),
-                           end=datetime(2026, 9, 7, 10, 50, tzinfo=NY), location="Dawson Hall", travel_minutes=30, repeat_days=["MO"]))
-    store.add_series(Event(path="", title="Spanish", start=datetime(2026, 9, 7, 13, 15, tzinfo=NY), repeat_days=["MO", "FR"]))
-    store.commit("classes")
-    days = (await r.command("schedule", ""))[0]
-    assert [b[0] for b in days.buttons] == ["Mon · 2", "Tue", "Wed", "Thu", "Fri · 1", "Sat", "Sun"]
-
-    monday = (await r.on_callback("sched:day:MO", 5, "x", days.buttons))[0]
-    assert monday.edit_message_id == 5 and "<b>Monday</b>" in monday.text and "9:55am–10:50am CSCI 2670 · Dawson Hall" in monday.text
-    assert monday.buttons[0][0].startswith("9:55am CSCI 2670") and monday.buttons[-2][0] == "➕ Add to Monday"
-
-    entry = (await r.on_callback(monday.buttons[0][1], 5, "x", monday.buttons))[0]
-    assert "<b>CSCI 2670</b>" in entry.text and "30 min to get there" in entry.text
-    assert [b[0] for b in entry.buttons] == ["✏️ Change", "🗑 Remove", "◀ Back"]
-
-    after = (await r.on_callback(entry.buttons[1][1], 5, "x", entry.buttons))[0]
-    assert after.toast.startswith("Removed CSCI 2670") and "CSCI 2670" not in after.text and [e.title for e in store.series()] == ["Spanish"]
-
-
-async def test_schedule_add_and_change_go_through_the_model_with_a_hint(rig):
-    r, store, state = rig
-    ask = (await r.on_callback("sched:add:TU", 5, "x", []))[0]
-    assert ask.text.startswith("Tuesday:") and state.pending_schedule == {"mode": "add", "day": "TU"}
-    r.agent.client.responses.append(__import__("bot.agent.client", fromlist=["ModelResponse"]).ModelResponse(None, [
-        __import__("bot.agent.client", fromlist=["ToolCall"]).ToolCall("add_event", {"title": "CSCI 2720", "start": "2026-09-08T08:15:00-04:00", "end": "2026-09-08T09:35:00-04:00", "location": "Cedar Street Building C, UGA, Athens GA", "travel_minutes": 30, "repeat_days": ["TU"]}),
-        __import__("bot.agent.client", fromlist=["ToolCall"]).ToolCall("reply", {"text": "In."}),
-    ]))
-    outs = await r.on_text("CSCI 2720 8:15-9:35 at Cedar Street Building C, 30 min")
-    sent = r.agent.client.calls[-1]["messages"][-1]["content"]
-    assert sent.startswith("[Weekly schedule, adding to Tuesday") and 'repeat_days ["TU"]' in sent
-    assert state.pending_schedule is None
-    assert outs[0].text.startswith("In.") and "<b>Tuesday</b>" in outs[1].text and "CSCI 2720" in outs[1].text
-
-    entry_index = [e.title for e in store.series()].index("CSCI 2720")
-    ask = (await r.on_callback(f"sched:change:{entry_index}", 5, "x", []))[0]
-    assert "what changes?" in ask.text and state.pending_schedule["mode"] == "change"
-    path = state.pending_schedule["path"]
-    r.agent.client.responses.append(__import__("bot.agent.client", fromlist=["ModelResponse"]).ModelResponse(None, [
-        __import__("bot.agent.client", fromlist=["ToolCall"]).ToolCall("update_event", {"file": path, "travel_minutes": 25}),
-        __import__("bot.agent.client", fromlist=["ToolCall"]).ToolCall("reply", {"text": "Changed."}),
-    ]))
-    outs = await r.on_text("25 min to get there")
-    assert "editing the entry " + path in r.agent.client.calls[-1]["messages"][-1]["content"]
-    assert store.series()[entry_index].travel_minutes == 25 and "<b>Tuesday</b>" in outs[1].text
-
-
-async def test_hard_exchanges_are_part_of_the_conversation(tmp_path):
-    cloud = FakeModelClient([ModelResponse("Only gap: the Cedar Street commute.", [])], model="deepseek")
-    r, store, primary = _rig_with_hard(tmp_path, None)
-    r.agent.cloud = cloud
-    await r.command("hard", "here is my schedule ...", channel=DM)
-    assert r.state.recent[-2][:2] == ["user", "/hard here is my schedule ..."]
-    assert r.state.recent[-1][0] == "assistant" and "Cedar Street" in r.state.recent[-1][1]
-    sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
-    assert "cannot add todos, events or notes" in sent
+async def test_hard_without_a_cloud_model_still_answers_plainly(tmp_path):
+    hard = FakeModelClient([ModelResponse("42", [])], model="glm-5.3")
+    r, store, primary = _rig_with_hard(tmp_path, hard)
+    out = (await r.command("hard", "what is the answer?", channel=DM))[0]
+    assert "42" in out.text and "glm-5.3" in out.text

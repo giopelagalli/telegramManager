@@ -38,7 +38,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("schedule", "Your weekly classes, day by day, with buttons", False),
     ("queue", "What's using the Spark right now", False),
     ("voice", "Voice notes on every reply, on/off (/voice on)", False),
-    ("hard", "Ask the bigger cloud model a question; it can't file anything (/hard …)", False),
+    ("hard", "Same JD, on the bigger cloud model (/hard …)", False),
     ("think", "Slower, more careful answers on/off (/think on)", False),
     ("help", "List commands", False),
 ]
@@ -194,9 +194,6 @@ async def _hard(
             results = await search.search(text)  # one web search per /hard, so "what's new" questions have something real
             if results:
                 context += f"\n\nWeb search results for the question (use if relevant, cite the URL you used):\n{results}"
-        context += ("\n\nYou are answering a one-off question. You cannot add todos, events or notes: "
-                    "if they ask you to file, schedule or remember something, answer briefly and tell them "
-                    "to send it as a normal message so JD files it.")
         answer = await agent.answer(text, context, client=client)
 
     if answer is None:
