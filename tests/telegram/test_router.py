@@ -1033,3 +1033,26 @@ async def test_semester_end_lands_on_the_weekly_entry(rig):
     client.responses.append(R(("update_event", {"file": tpl.path, "repeat_until": "2026-12-08"}), ("reply", {"text": "Set."})))
     await router.on_text("last day is dec 8")
     assert str(store.series()[0].repeat_until) == "2026-12-08"
+
+
+async def test_after_sharing_a_location_the_model_is_told_it_has_one(rig):
+    router, store, client, state, clock = rig
+    router.maps = FakeMaps({})
+    await router.on_location(33.95, -83.38)
+    assert state.recent[-2][:2] == ["user", "[shared my location]"] and state.recent[-1][0] == "assistant"
+    client.responses.append(R(("reply", {"text": "Meaning I've got it. Ask me how far."})))
+    await router.on_text("wdym")
+    sent = "\n".join(m["content"] for m in client.calls[-1]["messages"])
+    assert "Location: he shared it 0 min ago" in sent and "[shared my location]" in sent
+
+
+async def test_live_location_updates_quietly(rig):
+    router, store, client, state, clock = rig
+    router.maps = FakeMaps({})
+    assert await router.on_location(33.95, -83.38, silent=True) == []
+    assert state.last_location["live"] is True and state.recent == []
+    clock.advance(minutes=200)
+    client.responses.append(R(("reply", {"text": "ok"})))
+    await router.on_text("hey")
+    sent = "\n".join(m["content"] for m in client.calls[-1]["messages"])
+    assert "he shared it" not in sent  # stale after three hours

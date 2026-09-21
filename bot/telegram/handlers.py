@@ -164,6 +164,12 @@ class Handlers:
         )
         await self._send(outs)
 
+    async def on_live_location(self, update, context) -> None:
+        location = update.effective_message.location
+        await self.router.on_location(
+            location.latitude, location.longitude, channel=self._channel(update), silent=True
+        )
+
     async def on_forum_topic_created(self, update, context) -> None:
         message = update.effective_message
         outs = self.router.on_topic_named(

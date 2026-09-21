@@ -119,6 +119,7 @@ class Router:
         self.search = search
         self.index = index
         self.cluster = cluster
+        build_context.state = state  # lets the context builder mention his last shared location
         self.last_outcome = "handled"
         self._warned_threads: set[str] = set()
 
@@ -170,15 +171,20 @@ class Router:
         return self._tag([out], channel)
 
     async def on_location(
-        self, lat: float, lng: float, *, channel: Channel | None = None
+        self, lat: float, lng: float, *, channel: Channel | None = None, silent: bool = False
     ) -> list[Outbound]:
         ignored = self._ignore_unbound(channel)
         if ignored is not None:
             return ignored
-        return self._tag(await self._location(lat, lng), channel)
+        return self._tag(await self._location(lat, lng, silent=silent), channel)
 
-    async def _location(self, lat: float, lng: float) -> list[Outbound]:
+    async def _location(self, lat: float, lng: float, silent: bool = False) -> list[Outbound]:
+        """A shared location. `silent` is a live-location update: keep the position, say nothing."""
         now = self._touch()
+        if silent:
+            self.state.last_location = {"lat": lat, "lng": lng, "at": now.isoformat(), "live": True}
+            await self._follow_timezone((lat, lng), now)
+            return []
         close_chain(self.state)
 
         if self.state.critical is not None:
@@ -197,6 +203,8 @@ class Router:
         text = "Got it. I'll go off this for \"how far\" until you move."
         if moved:
             text += f" You're on {moved} time now, clock switched."
+        self._remember("user", "[shared my location]")
+        self._remember("assistant", text)
         return [Outbound(text, kind="reply")]
 
     async def _follow_timezone(self, latlng, now) -> str | None:

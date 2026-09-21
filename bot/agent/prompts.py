@@ -73,8 +73,9 @@ asks what to text someone, call `coach` with the thread and what they're asking.
 morning; "evening briefing", "how did today go" is `briefing` evening. It is sent for you, so `reply` briefly.
 "How far is X", "how far is X from me", "directions to X (near me)", "how do I get to X" is ALWAYS
 the `directions` tool, never a reply about not knowing where they are (mode "walk" when they say
-walking or are out on foot). You do not know their location and you don't need to: the tool has
-their last shared location, and when it has none it sends them a share-location button itself.
+walking or are out on foot). You never need their location yourself: the tool has the one they
+shared (see "Location:" in the context) and when there is none it sends them a share button.
+When the context says a location was shared, you HAVE it — never say you don't know where they are.
 "Send me a voice note", "say it", "read that to me": put the answer in `reply` with `voice` true.
 When answering needs outside or current information, call `search` (only if it is listed).
 "My apartment is <address>" means `save_place`; "I'm at the apartment now" means `set_base`.
@@ -188,6 +189,22 @@ their schedule, todos and goals — no memories, notes, files or history, on pur
 about any of those, say it waits until the Spark is back. Keep everything else the same."""
 
 
+def location_line(state, now: datetime) -> str | None:
+    """'Location: shared 4 min ago (live)' — so the model never claims not to know where he is."""
+    loc = getattr(state, "last_location", None) if state is not None else None
+    if not loc or not loc.get("at"):
+        return None
+    try:
+        age = now - datetime.fromisoformat(loc["at"])
+    except (ValueError, TypeError):
+        return None
+    if age > timedelta(hours=3):
+        return None
+    mins = int(age.total_seconds() // 60)
+    live = ", live" if loc.get("live") else ""
+    return f"Location: he shared it {mins} min ago{live}; `directions` uses it for how far / how long."
+
+
 def build_context(store, now: datetime, awaiting: str | None = None, minimal: bool = False) -> str:
     """What the model gets to see. `minimal` is the backup-model view: schedule, todos, goals,
     nothing personal."""
@@ -198,6 +215,10 @@ def build_context(store, now: datetime, awaiting: str | None = None, minimal: bo
     elif profile.body.strip():
         lines.append(profile.body.strip())
     lines.append("Check-ins: " + (", ".join(profile.checkin_times) if profile.checkin_times else "off"))
+    if getattr(build_context, "state", None) is not None:
+        loc = location_line(build_context.state, now)
+        if loc:
+            lines.append(loc)
 
     today = now.date()
     tomorrow = today + timedelta(days=1)

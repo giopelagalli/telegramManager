@@ -54,7 +54,9 @@ def build_application(settings, router, sender, transcriber=None) -> Application
     app.add_handler(MessageHandler(only_me & filters.VOICE, handlers.on_voice))
     app.add_handler(MessageHandler(only_me & filters.PHOTO, handlers.on_photo))
     app.add_handler(MessageHandler(only_me & filters.Document.ALL, handlers.on_document))
-    app.add_handler(MessageHandler(only_me & filters.LOCATION, handlers.on_location))
+    app.add_handler(MessageHandler(only_me & filters.LOCATION & filters.UpdateType.MESSAGE, handlers.on_location))
+    # Live location: Telegram sends every move as an edit of the original location message.
+    app.add_handler(MessageHandler(only_me & filters.LOCATION & filters.UpdateType.EDITED_MESSAGE, handlers.on_live_location))
     app.add_handler(
         MessageHandler(only_me & filters.StatusUpdate.FORUM_TOPIC_CREATED, handlers.on_forum_topic_created)
     )

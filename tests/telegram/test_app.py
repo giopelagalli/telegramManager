@@ -45,9 +45,9 @@ def _update(user_id: int, **content) -> Update:
 def test_build_application_registers_every_handler():
     app = build_application(FakeSettings(), router=None, sender=None)
     registered = app.handlers[0]
-    # one per command, plus text, voice, photo, document, location, forum topic
-    # created, forum topic edited, callback, and the stranger logger
-    assert len(registered) == len(COMMANDS) + 9
+    # one per command, plus text, voice, photo, document, location, live location, forum
+    # topic created, forum topic edited, callback, and the stranger logger
+    assert len(registered) == len(COMMANDS) + 10
     assert app.error_handlers
 
 
@@ -65,7 +65,7 @@ def test_stranger_messages_are_only_logged():
 def test_message_handlers_accept_only_the_owner():
     app = build_application(FakeSettings(), router=None, sender=None)
     message_handlers = _answering(app)
-    assert len(message_handlers) == 7
+    assert len(message_handlers) == 8
 
     for kind, content in CONTENT.items():
         mine = _update(MINE, **content)
@@ -179,3 +179,12 @@ def test_forum_topic_created_reaches_the_handler_owner_only():
     foreign = _group_update(FOREIGN, thread_id=45, **created)
     assert sum(1 for h in message_handlers if h.check_update(mine)) == 1
     assert not any(h.check_update(foreign) for h in message_handlers)
+
+
+def test_live_location_edits_reach_the_quiet_handler_only():
+    from telegram import Location
+    app = build_application(FakeSettings(), router=None, sender=None)
+    handlers_ = [h for h in app.handlers[0] if isinstance(h, MessageHandler)]
+    fresh = _update(MINE, location=Location(longitude=-83.38, latitude=33.95))
+    names = [h.callback.__name__ for h in handlers_ if h.check_update(fresh)]
+    assert names == ["on_location"]
