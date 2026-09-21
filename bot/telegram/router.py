@@ -610,6 +610,10 @@ class Router:
             name, arg, self.store, self.agent, self.state, now, channel,
             recall=self._recall, recent=self._thread(), search=self.search, cluster=self.cluster,
         )
+        if name == "hard" and outs and outs[0].text:
+            # A /hard exchange is part of the conversation; the Spark model must see it next turn.
+            self._remember("user", f"/hard {arg}".strip())
+            self._remember("assistant", plain_text(outs[0].text))
         return self._tag(outs, channel)
 
     # -- helpers ---------------------------------------------------------

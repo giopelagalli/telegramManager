@@ -329,3 +329,14 @@ async def test_schedule_add_and_change_go_through_the_model_with_a_hint(rig):
     outs = await r.on_text("25 min to get there")
     assert "editing the entry " + path in r.agent.client.calls[-1]["messages"][-1]["content"]
     assert store.series()[entry_index].travel_minutes == 25 and "<b>Tuesday</b>" in outs[1].text
+
+
+async def test_hard_exchanges_are_part_of_the_conversation(tmp_path):
+    cloud = FakeModelClient([ModelResponse("Only gap: the Cedar Street commute.", [])], model="deepseek")
+    r, store, primary = _rig_with_hard(tmp_path, None)
+    r.agent.cloud = cloud
+    await r.command("hard", "here is my schedule ...", channel=DM)
+    assert r.state.recent[-2][:2] == ["user", "/hard here is my schedule ..."]
+    assert r.state.recent[-1][0] == "assistant" and "Cedar Street" in r.state.recent[-1][1]
+    sent = "\n".join(m["content"] for m in cloud.calls[0]["messages"])
+    assert "cannot add todos, events or notes" in sent
