@@ -36,7 +36,7 @@ async def test_todo_top5_with_buttons(rig):
 
 async def test_today_week_goals_backlog(rig):
     r, *_ = rig
-    assert "leave by 5:40pm" in (await r.command("today", ""))[0].text
+    assert "leave by <b>5:40pm</b>" in (await r.command("today", ""))[0].text
     assert "free" in (await r.command("week", ""))[0].text
     assert "No goals" in (await r.command("goals", ""))[0].text
     assert "empty" in (await r.command("backlog", ""))[0].text.lower()
@@ -109,15 +109,15 @@ async def test_now_prefers_an_event_starting_within_90_minutes(rig):
     r, store, _ = rig
     store.add(Event(path="", title="Lab", start=NOW.replace(hour=15), travel_minutes=20))
     store.commit("e")
-    assert (await r.command("now", ""))[0].text == "Get ready: Lab at 3:00pm, leave by 2:40pm."
+    assert (await r.command("now", ""))[0].text == "Get ready: <b>Lab</b> at 3:00pm, leave by <b>2:40pm</b>."
 
 
 async def test_now_falls_back_to_the_top_todo(rig):
     r, store, _ = rig
-    assert (await r.command("now", ""))[0].text == "Do this: T0"
+    assert (await r.command("now", ""))[0].text == "Do this: <b>T0</b>"
     store.add(Todo(path="", title="Paper", priority=1, due=NOW.date()))
     store.commit("t")
-    assert (await r.command("now", ""))[0].text == "Do this: Paper (due Thu Sep 3)"
+    assert (await r.command("now", ""))[0].text == "Do this: <b>Paper</b> (due Thu Sep 3)"
 
 
 async def test_now_when_nothing_is_pending(tmp_path):
@@ -206,7 +206,7 @@ async def test_hard_model_offline(tmp_path):
 async def test_now_carries_done_and_sprint_buttons_for_a_todo(rig):
     r, store, _ = rig
     out = (await r.command("now", ""))[0]
-    assert out.text == "Do this: T0"
+    assert out.text == "Do this: <b>T0</b>"
     assert [label for label, _ in out.buttons] == ["✅ Done", "🔥 Do it now"]
     assert out.buttons[0][1].startswith("done:todos/") and out.buttons[1][1].startswith("sprint:todos/")
 
@@ -214,7 +214,7 @@ async def test_now_carries_done_and_sprint_buttons_for_a_todo(rig):
 async def test_quick_keys_are_commands_not_captured(rig):
     r, store, _ = rig
     outs = await r.on_text("Now")
-    assert outs[0].text == "Do this: T0" and outs[0].buttons
+    assert outs[0].text == "Do this: <b>T0</b>" and outs[0].buttons
     outs = await r.on_text("today")
     assert "T0" in outs[0].text
     assert r.agent.client.calls == []

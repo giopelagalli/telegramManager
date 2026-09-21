@@ -241,7 +241,7 @@ def _render_now(store, now: datetime) -> Outbound:
         event = min(soon, key=lambda e: e.start)
         leave_by = event.times(profile).leave_by
         return Outbound(
-            f"Get ready: {esc(event.title)} at {fmt_time(event.start)}, leave by {fmt_time(leave_by)}.", kind="reply"
+            f"Get ready: <b>{esc(event.title)}</b> at {fmt_time(event.start)}, leave by <b>{fmt_time(leave_by)}</b>.", kind="reply"
         )
 
     ranked = top(store.todos(), now.date(), 1)
@@ -249,7 +249,7 @@ def _render_now(store, now: datetime) -> Outbound:
         todo = ranked[0]
         due = f" (due {fmt_day(todo.due)})" if todo.due else ""
         return Outbound(
-            f"Do this: {esc(todo.title)}{due}",
+            f"Do this: <b>{esc(todo.title)}</b>{due}",
             buttons=[("✅ Done", f"done:{todo.path}"), ("🔥 Do it now", f"sprint:{todo.path}")],
             kind="reply",
         )

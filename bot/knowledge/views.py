@@ -52,8 +52,8 @@ def render_todo(todos: Iterable[Todo], today: date, show_all: bool = False) -> s
     lines = [header]
     for i, t in enumerate(selected, 1):
         overdue = "⚠️ " if t.due and t.due < today else ""
-        due_part = f", due {fmt_due(t)}" if t.due else ""
-        lines.append(f"{i}. {overdue}{esc(t.title)} — P{t.priority}{due_part}")
+        due_part = f" — due <b>{fmt_due(t)}</b>" if t.due else ""
+        lines.append(f"{i}. {overdue}<b>{esc(t.title)}</b> (P{t.priority}){due_part}")
     return "\n".join(lines)
 
 
@@ -114,7 +114,7 @@ def render_today(events: list[Event], todos: list[Todo], profile: Profile, now: 
             times = e.times(profile)
             loc = f" ({esc(e.location)})" if e.location else ""
             critical = " ‼️" if e.importance == "critical" else ""
-            lines.append(f"• {fmt_time(e.start)} {esc(e.title)}{loc} — leave by {fmt_time(times.leave_by)}{critical}")
+            lines.append(f"• <b>{fmt_time(e.start)}</b> {esc(e.title)}{loc} — leave by <b>{fmt_time(times.leave_by)}</b>{critical}")
 
     top_block = render_todo(todos, today)
     return "\n".join(lines) + "\n\n" + top_block

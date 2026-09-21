@@ -35,7 +35,7 @@ def test_briefing_time_override():
 
 def test_morning_text(store):
     t = morning_text(store, T(8))
-    assert t.startswith("<b>Good morning, Giovanni.</b>") and "Gym" in t and "leave by 5:40pm" in t and "Health week" in t
+    assert t.startswith("<b>Good morning, Giovanni.</b>") and "Gym" in t and "leave by <b>5:40pm</b>" in t and "Health week" in t
 
 def test_evening_text_sections_and_buttons(store):
     text, buttons = evening_text(store, T(21))
