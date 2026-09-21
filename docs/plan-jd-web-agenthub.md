@@ -130,7 +130,14 @@ things the Spark shouldn't carry:
 - **Worker-tier LLM.** AgentHub's own AMD playbook (`deploy/amd/README.md`): llama.cpp with the
   HIP build serving `Qwen3.6-35B-A3B` Q4 (~23 GB, ~65 tok/s, 4 parallel streams). Every subagent
   turn lands here instead of on the Spark, so the Spark's KV cache is JD's and the orchestrator's
-  alone. This is the real concurrency win; priority scheduling is the backstop.
+  alone. This is the real concurrency win; priority scheduling is the backstop. llama.cpp ignores
+  the `priority` field, so the AMD entry doesn't set one.
+- **A second serving profile: one big model, slowly.** The same box can run a 100–235B-class MoE
+  with experts in the 128 GB of system RAM and attention/KV on the GPU (llama.cpp `--n-cpu-moe`,
+  or KTransformers' ROCm beta). Decode is bound by RAM bandwidth — dual-channel DDR5 is ~80–95 GB/s,
+  so a model with ~20 B active parameters at Q4 lands around 5–8 tok/s. Fine for a private local
+  fallback when the Spark reloads, or a second opinion; not for a worker pool. The GPU can't hold
+  both at once, so this is an AgentHub *profile* the hub switches to on purpose, not the default.
 - **Image and video.** For anything that fits in 24 GB the 7900 XTX is several times faster per
   step than the Spark (≈960 GB/s memory bandwidth vs ≈270, and far more FP16 compute). The Spark's
   128 GB only helps for models bigger than 24 GB, which it would then run slowly and which don't fit
