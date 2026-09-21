@@ -299,8 +299,8 @@ async def test_courses_view_and_adding_a_course_a_test_and_an_assignment(rig):
     assert "• <b>CSCI 2670</b> — nothing due" in out.text
 
     view = (await r.on_callback("course:view:csci-2670", 3, "x", out.buttons))[0]
-    assert "<b>CSCI 2670</b>" in view.text and "Mon 9:55am" in view.text
-    assert [b[0] for b in view.buttons] == ["➕ Assignment", "➕ Test", "◀ Courses"]
+    assert "<b>CSCI 2670</b>" in view.text and "• <b>Mon 9:55am</b>" in view.text
+    assert [b[0] for b in view.buttons] == ["➕ Assignment", "➕ Test", "📋 Due list", "✔ Turned in", "◀ Courses"]
 
     # a new course needs no model
     await r.on_callback("course:add", 3, "x", [])
@@ -327,3 +327,18 @@ async def test_courses_view_and_adding_a_course_a_test_and_an_assignment(rig):
     listing = (await r.command("courses", ""))[0].text
     assert "• <b>CSCI 2670</b> — Homework 3 due <b>Sep 10</b> (+1 more)" in listing.replace("Thu Sep 10", "Sep 10")
     assert "Homework 3" not in (await r.command("todo", ""))[0].text  # course work is not the personal list
+
+
+async def test_course_due_list_and_turned_in(rig):
+    r, store, state = rig
+    from bot.knowledge.models import Course
+    from datetime import date
+    store.add_course(Course(path="courses/csci-2670.md", title="CSCI 2670"))
+    store.add(Todo(path="", title="HW 1", priority=2, course="csci-2670", status="done", done_at=datetime(2026, 9, 2, 20, 0, tzinfo=NY)))
+    store.add(Todo(path="", title="HW 2", priority=2, course="csci-2670", due=date(2026, 9, 10)))
+    store.commit("c")
+    lst = (await r.on_callback("todo:course:csci-2670:list", 4, "x", []))[0]
+    assert lst.text.startswith("<b>csci-2670</b>") and "HW 2" in lst.text and "HW 1" not in lst.text
+    assert lst.buttons[-1] == ("◀ Course", "course:view:csci-2670")
+    done = (await r.on_callback("course:done:csci-2670", 4, "x", []))[0]
+    assert "turned in" in done.text and "• <b>Wed Sep 2</b> — HW 1" in done.text and "HW 2" not in done.text
