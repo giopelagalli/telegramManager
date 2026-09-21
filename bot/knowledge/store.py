@@ -223,6 +223,41 @@ class KnowledgeStore:
         with (folder / f"{now:%Y-%m-%d}.md").open("a", encoding="utf-8") as f:
             f.write(f"- {now:%H:%M} {role}: {one_line}\n")
 
+    _FOOD_RE = re.compile(r"^- (\d{2}:\d{2}) (.+?) — (\d+) kcal(?:, (\d+) g protein)?(?: \((~)\))?$")
+
+    def add_food(self, item: str, kcal: int, protein_g: int | None = None, estimate: bool = False) -> None:
+        """One meal on today's food log (food/YYYY-MM-DD.md)."""
+        now = self.clock()
+        folder = self.root / "food"
+        folder.mkdir(exist_ok=True)
+        line = f"- {now:%H:%M} {' '.join(item.split())} — {int(kcal)} kcal"
+        if protein_g is not None:
+            line += f", {int(protein_g)} g protein"
+        if estimate:
+            line += " (~)"
+        with (folder / f"{now:%Y-%m-%d}.md").open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+        self.log("food", f"{now:%Y-%m-%d}")
+
+    def food(self, day) -> list[dict]:
+        path = self.root / "food" / f"{day.isoformat()}.md"
+        if not path.exists():
+            return []
+        out = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            m = self._FOOD_RE.match(line)
+            if m:
+                out.append({"time": m.group(1), "item": m.group(2), "kcal": int(m.group(3)),
+                            "protein_g": int(m.group(4)) if m.group(4) else None, "estimate": bool(m.group(5)), "line": line})
+        return out
+
+    def remove_food(self, day, line: str) -> None:
+        path = self.root / "food" / f"{day.isoformat()}.md"
+        if path.exists():
+            kept = [l for l in path.read_text(encoding="utf-8").splitlines() if l != line]
+            path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+            self.log("food-remove", f"{day.isoformat()}")
+
     def chat_lines(self, days: int | None = None) -> list[str]:
         """Transcript lines as '(YYYY-MM-DD HH:MM) role: text', oldest first."""
         folder = self.root / "chat"

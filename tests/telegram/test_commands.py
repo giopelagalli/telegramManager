@@ -140,7 +140,7 @@ def test_command_menu_is_the_minimal_set():
     from bot.telegram.commands import COMMANDS
 
     menu_names = {name for name, _, menu in COMMANDS if menu}
-    assert menu_names == {"todo", "now", "today", "week", "brief", "due", "courses", "schedule", "goals", "pause"}
+    assert menu_names == {"todo", "now", "today", "week", "brief", "due", "courses", "schedule", "goals", "pause", "calories"}
 
 
 async def test_help_lists_only_the_menu_commands(rig):
@@ -340,3 +340,21 @@ async def test_course_due_list(rig):
     lst = (await r.on_callback("todo:course:csci-2670:list", 4, "x", []))[0]
     assert lst.text.startswith("<b>csci-2670</b>") and "HW 2" in lst.text and "HW 1" not in lst.text
     assert lst.buttons[-1] == ("◀ Course", "course:view:csci-2670")
+
+
+async def test_food_is_logged_and_shown_against_the_target(rig):
+    r, store, state = rig
+    p = store.profile(); p.calorie_target = 2800; p.protein_target = 180; store.save_profile(p)
+    r.agent.client.responses.append(R(("log_food", {"item": "Zaxby's Great 8 boneless meal", "kcal": 1240, "protein_g": 58, "estimate": True}),
+                                      ("reply", {"text": "Logged."})))
+    outs = await r.on_text("just ate a zaxby's great 8 meal")
+    assert "Logged: Zaxby's Great 8 boneless meal ~1240 kcal, 58 g protein. Today: 1240 / 2800 kcal, 58 / 180 g protein." in outs[0].text
+    out = (await r.command("calories", ""))[0]
+    assert "<b>1240</b> / 2800 kcal · <b>58</b> / 180 g protein" in out.text and "~1240 kcal, 58 g" in out.text
+    r.agent.client.responses.append(R(("reply", {"text": "You're at 1240."})))
+    await r.on_text("how am i doing on food")
+    sent = "\n".join(m["content"] for m in r.agent.client.calls[-1]["messages"])
+    assert "Food today: 1240 of 2800 kcal, 58 of 180 g protein — Zaxby's Great 8 boneless meal 1240" in sent
+    item = (await r.on_callback(out.buttons[0][1], 3, "x", out.buttons))[0]
+    after = (await r.on_callback(item.buttons[0][1], 3, "x", item.buttons))[0]
+    assert after.toast == "Removed." and "<b>0</b> / 2800 kcal" in after.text

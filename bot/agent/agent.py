@@ -779,6 +779,20 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 store.save_profile(profile)
                 summary.append(f"Home is now: {name}")
                 changed_schedule = True
+            elif action.name == "log_food":
+                store.add_food(str(args["item"]), int(args["kcal"]), args.get("protein_g"), bool(args.get("estimate")))
+                today = store.food(now.date())
+                total = sum(f["kcal"] for f in today)
+                prot = sum(f["protein_g"] or 0 for f in today)
+                profile = store.profile()
+                approx = "~" if args.get("estimate") else ""
+                line = f"Logged: {str(args['item']).strip()} {approx}{int(args['kcal'])} kcal"
+                if args.get("protein_g") is not None:
+                    line += f", {int(args['protein_g'])} g protein"
+                line += f". Today: {total}" + (f" / {profile.calorie_target}" if profile.calorie_target else "") + " kcal"
+                if prot:
+                    line += f", {prot}" + (f" / {profile.protein_target}" if profile.protein_target else "") + " g protein"
+                summary.append(line + ".")
             elif action.name == "remember":
                 kind = args.get("kind", "fact")
                 text = str(args["fact"]).strip()

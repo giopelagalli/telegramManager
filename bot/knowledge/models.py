@@ -544,6 +544,8 @@ class Profile:
     default_prep_minutes: int = 15
     leave_lead_minutes: int = 10
     travel_mode: str = "drive"  # how he usually gets places: walk | drive
+    calorie_target: int = 0  # 0 = not set
+    protein_target: int = 0
     critical_leave_cap_minutes: int = 20
     voice_on_proactive: bool = True
     voice_reply_mode: str = "on_voice"
@@ -594,6 +596,8 @@ class Profile:
             "default_prep_minutes": self.default_prep_minutes,
             "leave_lead_minutes": self.leave_lead_minutes,
             "travel_mode": self.travel_mode,
+            "calorie_target": self.calorie_target,
+            "protein_target": self.protein_target,
             "critical_leave_cap_minutes": self.critical_leave_cap_minutes,
             "voice_on_proactive": self.voice_on_proactive,
             "voice_reply_mode": self.voice_reply_mode,

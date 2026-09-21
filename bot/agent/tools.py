@@ -348,6 +348,25 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "log_food",
+            "description": "They ate or drank something: log it with calories (and protein when you can). Exact from a "
+            "menu/label when known; otherwise your best estimate from similar items and portions, with estimate=true.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "item": {"type": "string", "description": "what and how much, e.g. 'Zaxby's Great 8 boneless meal'"},
+                    "kcal": {"type": "integer"},
+                    "protein_g": {"type": "integer"},
+                    "estimate": {"type": "boolean"},
+                },
+                "required": ["item", "kcal"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "briefing",
             "description": "Send the morning or evening briefing now, on request (with voice).",
             "parameters": {

@@ -53,6 +53,9 @@ One message may need many calls. Use `reply` exactly once.
 
 Assign `priority` using the active goals in the context.
 A message that is just talk — a photo of friends, a thought, a joke, a mood — gets `reply` alone.
+"I ate X", "had a Y for lunch", "just drank Z" is `log_food`: exact calories when you know the
+menu item or label, otherwise a reasoned estimate (portion × typical values) with estimate true — never
+refuse to put a number. "My calorie target is 2800" / "protein target 180" is `set_profile`.
 A deadline with a clock time ("due 11:59pm Friday") sets both `due` and `due_time`; never drop the time.
 Homework, assignments, problem sets, anything submitted for a course: `add_todo` with `verify` "photo"
 (done means a screenshot of the submitted work), unless they say not to, and with `course` set to
@@ -180,10 +183,12 @@ Notes are about {name} and his world only — never about {assistant}: not the a
 and balances unless he said they matter. At most 8. Strict JSON, nothing else: {{"memories": [{{"kind": "fact", "text": "..."}}]}}
 {{"memories": []}} if nothing is worth keeping."""
 
-ANSWER_SYSTEM = """Answer the question directly and accurately, grounded in the context
-below. Markdown is fine. If the context doesn't cover it, say so rather than guessing. The
-context is what you have, fetched for you right now; never answer with a disclaimer about
-lacking live data, internet access or a knowledge cutoff."""
+ANSWER_SYSTEM = """Answer the question directly and accurately, grounded in the context below.
+This is Telegram: short, plain, bullets at most — never a table, never headers, never a
+narration of what the results do or don't contain. Lead with the answer. If the exact figure
+isn't in the context, give your best estimate from what is there (similar items, standard
+portions) and mark it with ~ and one word saying it's an estimate. The context is what you
+have, fetched for you right now; never disclaim live data, internet access or a cutoff."""
 
 TUTOR_SYSTEM = """You are {assistant}, {name}'s tutor for {course}. Ground every answer in the sources
 below and cite them as [<source title>, p.N]. If the sources don't cover it, say so instead
@@ -248,6 +253,15 @@ def build_context(store, now: datetime, awaiting: str | None = None, minimal: bo
             lines.append(f"- [{t.path}] {t.title} P{t.priority} due {due}")
     else:
         lines.append("- none")
+
+    eaten = store.food(now.date()) if hasattr(store, "food") else []
+    if eaten or profile.calorie_target:
+        total = sum(f["kcal"] for f in eaten)
+        prot = sum(f["protein_g"] or 0 for f in eaten)
+        target = f" of {profile.calorie_target}" if profile.calorie_target else ""
+        ptarget = f" of {profile.protein_target}" if profile.protein_target else ""
+        lines.append(f"Food today: {total}{target} kcal, {prot}{ptarget} g protein" + (
+            " — " + "; ".join(f"{f['item']} {f['kcal']}" for f in eaten) if eaten else ""))
 
     week_ago = now - timedelta(days=7)
     done = sorted((t for t in store.todos() if t.status == "done" and t.done_at and t.done_at >= week_ago),
