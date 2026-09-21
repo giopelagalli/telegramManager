@@ -95,19 +95,8 @@ def course_view(store, now: datetime, slug: str, message_id: int | None = None, 
             lines.append(f"• <b>{when}</b> — {esc(t.title)}" if when else f"• {esc(t.title)}")
             buttons.append((f"{when + ' · ' if when else ''}{t.title}"[:40], f"todo:course:{slug}:e:{i}"))
     buttons += [("➕ Assignment", f"todo:course:{slug}:add"), ("➕ Test", f"course:addtest:{slug}"),
-                ("📋 Due list", f"todo:course:{slug}:list"), ("✔ Turned in", f"course:done:{slug}"), ("◀ Courses", "course:list")]
+                ("📋 Due list", f"todo:course:{slug}:list"), ("◀ Courses", "course:list")]
     return Outbound("\n".join(lines), buttons=buttons, kind="edit" if message_id else "reply", edit_message_id=message_id, toast=toast)
-
-
-def done_view(store, now: datetime, slug: str, message_id: int | None = None) -> Outbound:
-    course = _course(store, slug)
-    if course is None:
-        return list_view(store, message_id, now=now)
-    done = sorted((t for t in store.todos() if t.course == slug and t.status == "done"),
-                  key=lambda t: t.done_at or now, reverse=True)
-    lines = [f"<b>{esc(course.title)} — turned in</b>"] + (
-        [f"• <b>{fmt_day(t.done_at.date()) if t.done_at else '?'}</b> — {esc(t.title)}" for t in done[:20]] or ["• Nothing yet."])
-    return Outbound("\n".join(lines), buttons=[("◀ Back", f"course:view:{slug}")], kind="edit" if message_id else "reply", edit_message_id=message_id)
 
 
 def test_view(store, now: datetime, slug: str, index: int, message_id: int | None = None) -> Outbound:
@@ -133,8 +122,6 @@ def handle(arg: str, store, state, now: datetime, message_id: int | None) -> lis
         return [Outbound("Course name? Like \"CSCI 2670\" or \"Spanish\".", kind="reply")]
     if what == "view" and len(parts) > 1:
         return [course_view(store, now, parts[1], message_id)]
-    if what == "done" and len(parts) > 1:
-        return [done_view(store, now, parts[1], message_id)]
     if what == "test" and len(parts) > 2 and parts[2].isdigit():
         return [test_view(store, now, parts[1], int(parts[2]), message_id)]
     if what == "rmtest" and len(parts) > 2 and parts[2].isdigit():

@@ -300,7 +300,7 @@ async def test_courses_view_and_adding_a_course_a_test_and_an_assignment(rig):
 
     view = (await r.on_callback("course:view:csci-2670", 3, "x", out.buttons))[0]
     assert "<b>CSCI 2670</b>" in view.text and "• <b>Mon 9:55am</b>" in view.text
-    assert [b[0] for b in view.buttons] == ["➕ Assignment", "➕ Test", "📋 Due list", "✔ Turned in", "◀ Courses"]
+    assert [b[0] for b in view.buttons] == ["➕ Assignment", "➕ Test", "📋 Due list", "◀ Courses"]
 
     # a new course needs no model
     await r.on_callback("course:add", 3, "x", [])
@@ -329,7 +329,7 @@ async def test_courses_view_and_adding_a_course_a_test_and_an_assignment(rig):
     assert "Homework 3" not in (await r.command("todo", ""))[0].text  # course work is not the personal list
 
 
-async def test_course_due_list_and_turned_in(rig):
+async def test_course_due_list(rig):
     r, store, state = rig
     from bot.knowledge.models import Course
     from datetime import date
@@ -340,5 +340,3 @@ async def test_course_due_list_and_turned_in(rig):
     lst = (await r.on_callback("todo:course:csci-2670:list", 4, "x", []))[0]
     assert lst.text.startswith("<b>csci-2670</b>") and "HW 2" in lst.text and "HW 1" not in lst.text
     assert lst.buttons[-1] == ("◀ Course", "course:view:csci-2670")
-    done = (await r.on_callback("course:done:csci-2670", 4, "x", []))[0]
-    assert "turned in" in done.text and "• <b>Wed Sep 2</b> — HW 1" in done.text and "HW 2" not in done.text
