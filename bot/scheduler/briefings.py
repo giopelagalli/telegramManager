@@ -175,8 +175,7 @@ async def morning_outbound(store: KnowledgeStore, now: datetime, agent, note: st
 async def evening_outbound(store: KnowledgeStore, now: datetime, agent, notes: list[str] | None = None) -> Outbound:
     body, buttons = evening_text(store, now)
     prose = await _compose_prose(store, now, agent)
-    noted = ("\n\nNoted today:\n" + "\n".join(f"• {esc(n)}" for n in notes)) if notes else ""
-    text = f"{body}{noted}\n\n{md_to_html(prose)}"
+    text = f"{body}\n\n{md_to_html(prose)}"  # nightly notes are written quietly, not read back
     return Outbound(text, voice=store.profile().voice_on_proactive, buttons=buttons, kind="briefing")
 
 

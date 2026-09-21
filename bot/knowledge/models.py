@@ -550,7 +550,7 @@ class Profile:
     exam_focus_days: int = 7
     digest_time: str = "08:30"
     digest_cadence: str = "daily"
-    thinking: bool = False
+    thinking: bool = True  # Spark model: thinking on reads far better; /think off for speed
     body: str = ""
 
     @property

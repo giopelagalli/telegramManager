@@ -79,7 +79,9 @@ def main() -> None:
         settings.openai_base_url,
         settings.openai_api_key,
         settings.chat_model,
-        enable_thinking=True if profile.thinking else settings.chat_enable_thinking,
+        # The backend either has a thinking switch (Qwen on vLLM) or it doesn't; when it does,
+        # the profile decides, so /think on|off is the one control.
+        enable_thinking=profile.thinking if settings.chat_enable_thinking is not None else None,
         extra_body=settings.chat_extra_body,
     )
     if settings.fallback_model:

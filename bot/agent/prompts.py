@@ -75,6 +75,7 @@ morning; "evening briefing", "how did today go" is `briefing` evening. It is sen
 the `directions` tool, never a reply about not knowing where they are (mode "walk" when they say
 walking or are out on foot). You do not know their location and you don't need to: the tool has
 their last shared location, and when it has none it sends them a share-location button itself.
+"Send me a voice note", "say it", "read that to me": put the answer in `reply` with `voice` true.
 When answering needs outside or current information, call `search` (only if it is listed).
 "My apartment is <address>" means `save_place`; "I'm at the apartment now" means `set_base`.
 "Check in at 1 and 6" is `set_profile` checkin_times ["13:00", "18:00"]; "stop checking in" is [].
@@ -157,7 +158,9 @@ people and what happened with them, decisions, situations still in motion, thing
 about. Not todos or schedule (kept elsewhere), not small talk, nothing already in "Already known".
 Each note is one plain sentence with names and specifics. kind "fact" = durable (who someone is,
 a preference, a habit, a decision); kind "state" = what is on his mind right now (fades in a month).
-At most 8. Strict JSON, nothing else: {{"memories": [{{"kind": "fact", "text": "..."}}]}}
+Notes are about {name} and his world only — never about {assistant}: not the advice given, not
+{assistant}'s mistakes, not what {assistant} can or cannot do. Skip screenshots' passing numbers
+and balances unless he said they matter. At most 8. Strict JSON, nothing else: {{"memories": [{{"kind": "fact", "text": "..."}}]}}
 {{"memories": []}} if nothing is worth keeping."""
 
 ANSWER_SYSTEM = """Answer the question directly and accurately, grounded in the context

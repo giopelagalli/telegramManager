@@ -36,6 +36,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("pause", "Quiet for 2h", True),
     ("undo", "Take back the last thing he changed", False),
     ("queue", "What's using the Spark right now", False),
+    ("voice", "Voice notes on every reply, on/off (/voice on)", False),
     ("hard", "Ask the bigger cloud model; it sees your schedule, not your notes (/hard …)", False),
     ("think", "Slower, more careful answers on/off (/think on)", False),
     ("help", "List commands", False),
@@ -108,6 +109,17 @@ async def handle(
         )]
 
 
+
+    if name == "voice":
+        profile = store.profile()
+        word = arg.lower()
+        if word not in ("on", "off"):
+            mode = "on every reply" if profile.voice_reply_mode == "always" else "when you send voice, or when you ask"
+            return [Outbound(f"Voice is {mode}. /voice on or /voice off.", kind="reply")]
+        profile.voice_reply_mode = "always" if word == "on" else "on_voice"
+        store.save_profile(profile)
+        store.commit(f"profile: voice {word}")
+        return [Outbound("Voice on every reply." if word == "on" else "Voice only when you send voice or ask for it.", kind="reply")]
 
     if name == "queue":
         if cluster is None:

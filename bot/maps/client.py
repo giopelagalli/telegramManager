@@ -11,6 +11,7 @@ EARTH_RADIUS_M = 6371000
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 DIRECTIONS_URL = "https://maps.googleapis.com/maps/api/directions/json"
 PLACES_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+TIMEZONE_URL = "https://maps.googleapis.com/maps/api/timezone/json"
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,18 @@ class MapsClient:
         except (KeyError, IndexError, TypeError) as exc:
             logger.warning("maps.find_place failed: %s", type(exc).__name__)
             return None
+
+    async def timezone(self, latlng: tuple[float, float], at: datetime) -> str | None:
+        """IANA zone id for a point, e.g. 'America/Los_Angeles'."""
+        data = await self._get_json(
+            TIMEZONE_URL,
+            {"location": f"{latlng[0]},{latlng[1]}", "timestamp": int(at.timestamp()), "key": self._api_key},
+            "timezone",
+        )
+        if not data or data.get("status") != "OK":
+            logger.warning("maps.timezone: %s", (data or {}).get("status"))
+            return None
+        return data.get("timeZoneId") or None
 
     async def route(
         self, origin: tuple[float, float], dest: tuple[float, float], mode: str = "drive"

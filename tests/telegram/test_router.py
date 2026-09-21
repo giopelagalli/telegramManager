@@ -44,6 +44,9 @@ class FakeMaps:
         self.calls.append(("route", origin, dest, mode))
         return self.routes.get(mode)
 
+    async def timezone(self, latlng, at):
+        return None
+
 
 @pytest.fixture
 def rig(tmp_path):
@@ -979,3 +982,25 @@ async def test_the_search_answer_is_what_he_remembers_saying(rig):
     assert "Looking." not in state.recent[-1][1]
     sent = "\n".join(m["content"] for m in client.calls[-1]["messages"])
     assert "fetched just now" in sent and "never say you lack internet" in sent
+
+
+async def test_sharing_a_location_moves_the_clock_to_that_timezone(rig):
+    router, store, client, state, clock = rig
+    class TzMaps(FakeMaps):
+        async def timezone(self, latlng, at): return "America/Los_Angeles"
+    router.maps = TzMaps({})
+    outs = await router.on_location(34.05, -118.24)
+    assert "Los Angeles time now" in outs[0].text
+    assert store.profile().timezone == "America/Los_Angeles"
+    assert getattr(router.clock, "tz", None) is None or str(router.clock.tz) == "America/Los_Angeles"
+    outs = await router.on_location(34.06, -118.25)  # same zone: no announcement
+    assert "time now" not in outs[0].text
+
+
+async def test_asking_for_a_voice_note_makes_the_reply_voice(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("reply", {"text": "Height matters less than you think.", "voice": True})))
+    outs = await router.on_text("send me a voice note explaining why height matters")
+    assert outs[0].voice is True
+    client.responses.append(R(("reply", {"text": "Ok."})))
+    assert (await router.on_text("thanks"))[0].voice is False

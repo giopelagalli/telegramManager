@@ -159,7 +159,7 @@ def test_minimal_fireworks_only_derives_everything():
 def test_spark_plus_fireworks_derives_fallback():
     s = Settings.from_env(dict(MIN, SPARK_URL="http://spark:8888/v1"))
     assert s.openai_base_url == "http://spark:8888/v1" and s.chat_model == "qwen3.8-flash-next"
-    assert s.chat_enable_thinking is False and s.vision_base_url == "http://spark:8888/v1"
+    assert s.chat_enable_thinking is True and s.vision_base_url == "http://spark:8888/v1"
     assert s.fallback_model.endswith("deepseek-v4p1-flash")
     # privacy: with the Spark in front, photos, voice notes and the memory index never go to Fireworks
     assert s.fallback_vision_model is None and s.stt_provider == "local" and s.embed_base_url is None

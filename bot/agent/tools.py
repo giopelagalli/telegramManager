@@ -354,10 +354,13 @@ TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "reply",
-            "description": "The message to send back to the user. Required exactly once.",
+            "description": "The message to send back to the user. At most once.",
             "parameters": {
                 "type": "object",
-                "properties": {"text": {"type": "string"}},
+                "properties": {
+                    "text": {"type": "string"},
+                    "voice": {"type": "boolean", "description": "true when they asked for a voice note / to hear it"},
+                },
                 "required": ["text"],
                 "additionalProperties": False,
             },

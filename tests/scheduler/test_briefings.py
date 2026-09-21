@@ -140,7 +140,7 @@ async def test_evening_writes_nightly_notes_from_the_days_conversation(store):
         remember(s, "user", line, T(12 + i)); remember(s, "assistant", "…", T(12 + i))
     out = await due_briefings(T(21), store, s, Notebook())
     text = out[-1].text
-    assert "Noted today:" in text and "Ally is the girl from Saturday" in text
+    assert "Noted today" not in text  # written, not read back
     kinds = {m.text: m.kind for m in store.memories()}
     assert kinds["Ally is the girl from Saturday; she went quiet Wednesday"] == "fact"
     assert kinds["Spanish class is wearing on him"] == "state"

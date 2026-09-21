@@ -61,6 +61,13 @@ async def test_brief_now_and_shift(rig):
 
 async def test_think_reports_state_and_toggles(rig):
     r, store, state = rig
+    assert (await r.command("think", ""))[0].text == "Thinking is on."  # the Spark default
+
+    o = (await r.command("think", "off"))[0]
+    assert o.text == "Thinking off — fast mode."
+    assert store.profile().thinking is False
+    assert r.agent.client.enable_thinking is False
+    assert _subject(store) == "profile: thinking off"
     assert (await r.command("think", ""))[0].text == "Thinking is off."
 
     o = (await r.command("think", "on"))[0]
@@ -68,13 +75,6 @@ async def test_think_reports_state_and_toggles(rig):
     assert store.profile().thinking is True
     assert r.agent.client.enable_thinking is True
     assert _subject(store) == "profile: thinking on"
-    assert (await r.command("think", ""))[0].text == "Thinking is on."
-
-    o = (await r.command("think", "off"))[0]
-    assert o.text == "Thinking off — fast mode."
-    assert store.profile().thinking is False
-    assert r.agent.client.enable_thinking is False
-    assert _subject(store) == "profile: thinking off"
 
 
 async def test_think_unwraps_fallback_client_primary(rig):
@@ -268,3 +268,12 @@ async def test_queue_command_reports_the_cluster(rig):
     assert (await r.command("queue", ""))[0].text == "Spark: idle.\n• Probability engine — active"
     r.cluster = None
     assert (await r.command("queue", ""))[0].text.startswith("Nothing to report")
+
+
+async def test_voice_command_switches_reply_mode(rig):
+    r, store, _ = rig
+    assert "when you send voice" in (await r.command("voice", ""))[0].text
+    assert (await r.command("voice", "on"))[0].text == "Voice on every reply."
+    assert store.profile().voice_reply_mode == "always"
+    await r.command("voice", "off")
+    assert store.profile().voice_reply_mode == "on_voice"

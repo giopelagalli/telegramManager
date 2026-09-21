@@ -270,5 +270,5 @@ def test_commit_with_only_an_unsaved_transcript_is_a_noop_not_an_error(tmp_path)
     s = KnowledgeStore(tmp_path / "k", clock=lambda: datetime(2026, 9, 10, 12, 5, tzinfo=ZoneInfo("America/New_York"))); s.init()
     s.log_chat("user", "hey")
     assert s.commit("profile: thinking off") is None
-    p = s.profile(); p.thinking = True; s.save_profile(p)
-    assert s.commit("profile: thinking on") is not None
+    p = s.profile(); p.thinking = False; s.save_profile(p)
+    assert s.commit("profile: thinking off") is not None

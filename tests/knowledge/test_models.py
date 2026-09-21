@@ -100,8 +100,8 @@ def test_profile_study_defaults():
 
 def test_profile_thinking_round_trip():
     p = Profile()
-    assert p.thinking is False
-    p.thinking = True
+    assert p.thinking is True
+    p.thinking = False
     assert Profile.from_markdown(p.to_markdown()) == p
 
 def test_channel_key_and_name():

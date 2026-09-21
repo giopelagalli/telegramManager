@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
@@ -190,9 +191,32 @@ class Router:
 
         out = leave_on_location(now, self.state, self.store, lat, lng)
         self.state.last_location = {"lat": lat, "lng": lng, "at": now.isoformat()}
+        moved = await self._follow_timezone((lat, lng), now)
         if out is not None:
             return [out]
-        return [Outbound("Got it. I'll go off this for \"how far\" until you move.", kind="reply")]
+        text = "Got it. I'll go off this for \"how far\" until you move."
+        if moved:
+            text += f" You're on {moved} time now, clock switched."
+        return [Outbound(text, kind="reply")]
+
+    async def _follow_timezone(self, latlng, now) -> str | None:
+        """The phone's timezone is wherever the phone is: a shared location moves JD's clock too."""
+        if self.maps is None:
+            return None
+        zone = await self.maps.timezone(latlng, now)
+        profile = self.store.profile()
+        if not zone or zone == profile.timezone:
+            return None
+        try:
+            tz = ZoneInfo(zone)
+        except (KeyError, ValueError):
+            return None
+        profile.timezone = zone
+        self.store.save_profile(profile)
+        self.store.commit(f"profile: timezone {zone}")
+        if hasattr(self.clock, "tz"):
+            self.clock.tz = tz
+        return zone.rsplit("/", 1)[-1].replace("_", " ")
 
     def on_topic_named(self, chat_id: int, thread_id: int, name: str) -> list[Outbound]:
         """A forum topic was created or renamed: bind it from its own name."""
@@ -719,10 +743,11 @@ class Router:
                 )
                 lines.append(line)
                 ask_location = ask_location or need_location
+        asked_voice = any(a.name == "reply" and a.arguments.get("voice") is True for a in result.actions)
         return [
             Outbound(
                 "\n".join(line for line in lines if line),
-                voice=self._voice_reply(via_voice),
+                voice=self._voice_reply(via_voice) or asked_voice,
                 location_button=ask_location,
                 kind="reply",
             )
