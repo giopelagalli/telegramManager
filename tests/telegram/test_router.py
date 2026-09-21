@@ -1103,13 +1103,14 @@ async def test_yesterdays_notes_come_from_that_day_verbatim(rig):
     assert "(2026-09-03" in sent and "ally left me on read" in sent and "don't double text" in sent
 
 
-async def test_notes_command_lists_by_day_and_removes(rig):
+async def test_notes_is_a_week_of_day_buttons_then_a_day_then_remove(rig):
     router, store, client, state, clock = rig
     store.add_memory("Wire the learning app in", kind="fact"); store.add_memory("Gym feels good lately", kind="state"); store.commit("m")
-    out = await router.command("notes", "")
-    text = out[0].text
-    assert text.startswith("<b>Notes</b>") and "• Wire the learning app in" in text and "Gym feels good lately <i>(on your mind)</i>" in text
-    item = (await router.on_callback(out[0].buttons[0][1], 7, "x", out[0].buttons))[0]
-    assert item.buttons[0][0] == "🗑 Remove"
+    out = (await router.command("notes", ""))[0]
+    assert out.text == "<b>Notes</b>" and out.buttons[0][0] == "Today · 2" and out.buttons[1][0] == "Yesterday" and len(out.buttons) == 7
+    day = (await router.on_callback(out.buttons[0][1], 7, "x", out.buttons))[0]
+    assert day.text.startswith("<b>Today</b>") and "• Wire the learning app in" in day.text and "<i>(on your mind)</i>" in day.text
+    assert day.buttons[-1] == ("◀ Days", "note:days")
+    item = (await router.on_callback(day.buttons[0][1], 7, "x", day.buttons))[0]
     after = (await router.on_callback(item.buttons[0][1], 7, "x", item.buttons))[0]
-    assert after.toast == "Removed." and len(store.memories()) == 1
+    assert after.toast == "Removed." and len(store.memories()) == 1 and after.text.startswith("<b>Today</b>")
