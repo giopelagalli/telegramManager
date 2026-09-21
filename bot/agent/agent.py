@@ -598,6 +598,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                     title=args["title"],
                     priority=args["priority"],
                     due=date.fromisoformat(args["due"]) if args.get("due") else None,
+                    due_time=args.get("due_time") or None,
                     goal=args.get("goal"),
                     verify=args.get("verify", "none"),
                     body=args.get("notes", ""),
@@ -611,6 +612,8 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 todo = store.get_todo(args["file"])
                 if "priority" in args:
                     todo.priority = args["priority"]
+                if "due_time" in args:
+                    todo.due_time = args["due_time"] or None
                 if "due" in args:
                     todo.due = date.fromisoformat(args["due"]) if args["due"] else None
                 if "goal" in args:

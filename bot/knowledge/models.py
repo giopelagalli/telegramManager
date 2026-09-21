@@ -236,6 +236,7 @@ class Todo:
     title: str
     priority: int = 2
     due: date | None = None
+    due_time: str | None = None  # "23:59", when they said one
     status: str = "open"
     verify: str = "none"
     goal: str | None = None
@@ -265,6 +266,8 @@ class Todo:
         meta["priority"] = self.priority
         if self.due is not None:
             meta["due"] = self.due
+        if self.due_time:
+            meta["due_time"] = self.due_time
         meta["status"] = self.status
         meta["verify"] = self.verify
         if self.goal is not None:
@@ -293,6 +296,7 @@ class Todo:
             title=meta.get("title", ""),
             priority=meta.get("priority", 2),
             due=_parse_date(due) if due is not None else None,
+            due_time=(str(meta["due_time"]) if meta.get("due_time") else None),
             status=meta.get("status", "open"),
             verify=meta.get("verify", "none"),
             goal=meta.get("goal"),

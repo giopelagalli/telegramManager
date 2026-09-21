@@ -47,3 +47,15 @@ def test_render_goals_progress():
 
 def test_render_backlog_empty():
     assert "empty" in render_backlog([]).lower()
+
+
+def test_week_has_bullets_bold_times_and_due_with_clock():
+    from bot.knowledge.models import Todo
+    ts = [Todo(path="todos/2026-09-01-a.md", title="Discrete math assignment", priority=1, due=date(2026, 9, 3), due_time="23:59"),
+          Todo(path="todos/2026-09-01-b.md", title="Read chapter", priority=2, due=date(2026, 9, 4))]
+    text = render_week(events(), Profile(), NOW, ts)
+    thu = text.split("<b>Friday, September 4</b>")[0]
+    assert "• <b>6:00pm–7:00pm</b> Gym — leave by 5:40pm" in thu
+    assert "• <b>Due 11:59pm:</b> Discrete math assignment" in thu
+    assert "• <b>Due:</b> Read chapter" in text and "• free" in text
+    assert "due Thu Sep 3, 11:59pm" in render_todo(ts, date(2026, 9, 1))

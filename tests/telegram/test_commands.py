@@ -284,8 +284,8 @@ async def test_week_shows_what_is_due_each_day(rig):
     from datetime import date
     store.add(Todo(path="", title="Spanish homework", priority=2, due=date(2026, 9, 4))); store.commit("t")
     text = (await r.command("week", ""))[0].text
-    fri = text.split("<b>Fri Sep 4</b>")[1].split("<b>")[0]
-    assert "due: Spanish homework" in fri
+    fri = text.split("<b>Friday, September 4</b>")[1].split("<b>Sat")[0]
+    assert "<b>Due:</b> Spanish homework" in fri
 
 
 async def test_courses_view_and_adding_a_course_a_test_and_an_assignment(rig):

@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from bot.knowledge.ranking import rank_todos
-from bot.knowledge.views import esc, fmt_day
+from bot.knowledge.views import esc, fmt_clock, fmt_day, fmt_due
 from bot.scheduler.outbound import Outbound
 
 TITLES = {"personal": "To do", "due": "Due"}
@@ -25,7 +25,8 @@ def items(store, scope: str, now: datetime) -> list:
 def _when(t, today) -> str:
     if t.due is None:
         return ""
-    return "today" if t.due == today else ("overdue" if t.due < today else fmt_day(t.due))
+    day = "today" if t.due == today else ("overdue" if t.due < today else fmt_day(t.due))
+    return f"{day} {fmt_clock(t.due_time)}" if t.due_time else day
 
 
 def list_view(store, now: datetime, scope: str = "personal", message_id: int | None = None,
@@ -52,7 +53,7 @@ def item_view(store, now: datetime, scope: str, index: int, message_id: int | No
     if index < 0 or index >= len(todos):
         return list_view(store, now, scope, message_id)
     t = todos[index]
-    lines = [f"<b>{esc(t.title)}</b>", f"P{t.priority}" + (f", due {fmt_day(t.due)}" if t.due else "")]
+    lines = [f"<b>{esc(t.title)}</b>", f"P{t.priority}" + (f", due {fmt_due(t)}" if t.due else "")]
     if t.course:
         lines.append(esc(t.course))
     buttons = [("✅ Done", f"todo:{scope}:done:{index}"), ("✏️ Change", f"todo:{scope}:change:{index}"),

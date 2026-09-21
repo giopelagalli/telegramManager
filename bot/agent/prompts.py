@@ -53,6 +53,7 @@ One message may need many calls. Use `reply` exactly once.
 
 Assign `priority` using the active goals in the context.
 A message that is just talk — a photo of friends, a thought, a joke, a mood — gets `reply` alone.
+A deadline with a clock time ("due 11:59pm Friday") sets both `due` and `due_time`; never drop the time.
 Homework, assignments, problem sets, anything submitted for a course: `add_todo` with `verify` "photo"
 (done means a screenshot of the submitted work), unless they say not to, and with `course` set to
 the course's slug from the context when it is clear which class it is for.
@@ -240,6 +241,7 @@ def build_context(store, now: datetime, awaiting: str | None = None, minimal: bo
     if todos:
         for t in todos:
             due = t.due.isoformat() if t.due else "none"
+            due = f"{due} {t.due_time}" if t.due_time else due
             lines.append(f"- [{t.path}] {t.title} P{t.priority} due {due}")
     else:
         lines.append("- none")

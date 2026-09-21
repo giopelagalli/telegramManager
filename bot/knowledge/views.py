@@ -24,6 +24,19 @@ def fmt_long_day(d: date) -> str:
     return d.strftime("%A, %B %-d")
 
 
+def fmt_due(t: "Todo") -> str:
+    """'Sep 21' or 'Sep 21, 11:59pm'."""
+    if t.due is None:
+        return ""
+    day = fmt_day(t.due)
+    return f"{day}, {fmt_clock(t.due_time)}" if t.due_time else day
+
+
+def fmt_clock(hhmm: str) -> str:
+    h, m = hhmm.split(":")
+    return datetime(2000, 1, 1, int(h), int(m)).strftime("%-I:%M%p").lower()
+
+
 def render_todo(todos: Iterable[Todo], today: date, show_all: bool = False) -> str:
     open_todos = rank_todos(todos, today)
     if show_all:
@@ -39,7 +52,7 @@ def render_todo(todos: Iterable[Todo], today: date, show_all: bool = False) -> s
     lines = [header]
     for i, t in enumerate(selected, 1):
         overdue = "⚠️ " if t.due and t.due < today else ""
-        due_part = f", due {fmt_day(t.due)}" if t.due else ""
+        due_part = f", due {fmt_due(t)}" if t.due else ""
         lines.append(f"{i}. {overdue}{esc(t.title)} — P{t.priority}{due_part}")
     return "\n".join(lines)
 
@@ -115,15 +128,16 @@ def render_week(events: list[Event], profile: Profile, now: datetime, todos: lis
     for d in days:
         day_events = sorted((e for e in events if e.start.date() == d), key=lambda e: e.start)
         due = sorted((t for t in (todos or []) if t.status == "open" and t.due == d), key=lambda t: (t.priority, t.title))
-        lines = [f"<b>{fmt_day(d)}</b>"]
+        lines = [f"<b>{fmt_long_day(d)}</b>"]
         if not day_events and not due:
-            lines.append("  free")
+            lines.append("• free")
         for e in day_events:
             times = e.times(profile)
             time_range = fmt_time(e.start) + (f"–{fmt_time(e.end)}" if e.end else "")
             critical = " ‼️" if e.importance == "critical" else ""
-            lines.append(f"  {time_range} {esc(e.title)} — leave by {fmt_time(times.leave_by)}{critical}")
+            lines.append(f"• <b>{time_range}</b> {esc(e.title)} — leave by {fmt_time(times.leave_by)}{critical}")
         for t in due:
-            lines.append(f"  due: {esc(t.title)}")
+            when = f" {fmt_clock(t.due_time)}" if t.due_time else ""
+            lines.append(f"• <b>Due{when}:</b> {esc(t.title)}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)

@@ -255,3 +255,14 @@ async def test_a_silent_model_is_asked_again_without_tools(store):
     res = await agent.capture("why does height matter so much to girls")
     assert res.parsed and res.reply.startswith("Because most")
     assert client.calls[-1]["tools"] is None and len(client.calls) == 3
+
+
+async def test_a_deadline_keeps_its_clock_time(store):
+    client = FakeModelClient([R(("add_todo", {"title": "Discrete math assignment", "priority": 1, "due": "2026-09-03", "due_time": "23:59"}),
+                                 ("reply", {"text": "In."}))])
+    agent = Agent(client, None, store, lambda: NOW)
+    res = await agent.capture("discrete math assignment due 11:59pm today")
+    apply_actions(store, res.actions, NOW)
+    t = store.todos()[0]
+    assert t.due_time == "23:59" and "due 2026-09-03 23:59" in __import__("bot.agent.prompts", fromlist=["build_context"]).build_context(store, NOW)
+    assert Todo.from_markdown(t.path, (store.root / t.path).read_text()).due_time == "23:59"
