@@ -18,7 +18,10 @@ def day_view(store, now: datetime, message_id: int | None = None, toast: str | N
     if prot or profile.protein_target:
         head += f" · <b>{prot}</b>" + (f" / {profile.protein_target}" if profile.protein_target else "") + " g protein"
     macros = f"{carbs} g carbs · {fat} g fat" if (carbs or fat) else ""
-    lines = ["<b>Today</b>", head] + ([macros] if macros else [])
+    sodium = sum(f["sodium_mg"] or 0 for f in items)
+    potassium = sum(f["potassium_mg"] or 0 for f in items)
+    minerals = " · ".join(x for x in (f"{sodium} mg sodium" if sodium else "", f"{potassium} mg potassium" if potassium else "") if x)
+    lines = ["<b>Today</b>", head] + ([macros] if macros else []) + ([minerals] if minerals else [])
     for f in items:
         bits = [f"{f['protein_g']}p" if f["protein_g"] is not None else "", f"{f['carbs_g']}c" if f["carbs_g"] is not None else "",
                 f"{f['fat_g']}f" if f["fat_g"] is not None else ""]
@@ -38,7 +41,9 @@ def item_view(store, now: datetime, index: int, message_id: int | None = None) -
         return day_view(store, now, message_id)
     f = items[index]
     text = f"<b>{esc(f['item'])}</b>\n{'~' if f['estimate'] else ''}{f['kcal']} kcal" + "".join(
-        f", {f[k]} g {label}" for k, label in (("protein_g", "protein"), ("carbs_g", "carbs"), ("fat_g", "fat")) if f[k] is not None)
+        f", {f[k]} {unit} {label}" for k, unit, label in
+        (("protein_g", "g", "protein"), ("carbs_g", "g", "carbs"), ("fat_g", "g", "fat"), ("sodium_mg", "mg", "sodium"), ("potassium_mg", "mg", "potassium"))
+        if f[k] is not None)
     return Outbound(text, buttons=[("🗑 Remove", f"food:remove:{index}"), ("◀ Back", "food:day")],
                     kind="edit" if message_id else "reply", edit_message_id=message_id)
 

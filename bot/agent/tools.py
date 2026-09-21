@@ -359,6 +359,8 @@ TOOL_SCHEMAS: list[dict] = [
                     "protein_g": {"type": "integer"},
                     "carbs_g": {"type": "integer"},
                     "fat_g": {"type": "integer"},
+                    "sodium_mg": {"type": "integer"},
+                    "potassium_mg": {"type": "integer"},
                     "estimate": {"type": "boolean"},
                 },
                 "required": ["item", "kcal"],

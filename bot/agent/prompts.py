@@ -53,7 +53,7 @@ One message may need many calls. Use `reply` exactly once.
 
 Assign `priority` using the active goals in the context.
 A message that is just talk — a photo of friends, a thought, a joke, a mood — gets `reply` alone.
-"I ate X", "had a Y for lunch", "just drank Z" is `log_food` with kcal, protein, carbs and fat: exact
+"I ate X", "had a Y for lunch", "just drank Z" is `log_food` with kcal, protein, carbs, fat, sodium and potassium: exact
 when you know the menu item or label, otherwise a reasoned estimate (portion × typical values) with
 estimate true — never refuse to put a number. One call per distinct item. "My calorie target is 2800" / "protein target 180" is `set_profile`.
 A deadline with a clock time ("due 11:59pm Friday") sets both `due` and `due_time`; never drop the time.

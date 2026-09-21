@@ -75,6 +75,12 @@ def food_totals(items: list[dict], profile) -> str:
         parts.append(f"{carbs} g carbs")
     if fat:
         parts.append(f"{fat} g fat")
+    sodium = sum(f.get("sodium_mg") or 0 for f in items)
+    potassium = sum(f.get("potassium_mg") or 0 for f in items)
+    if sodium:
+        parts.append(f"{sodium} mg sodium")
+    if potassium:
+        parts.append(f"{potassium} mg potassium")
     return ", ".join(parts)
 
 
@@ -797,11 +803,14 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 changed_schedule = True
             elif action.name == "log_food":
                 store.add_food(str(args["item"]), int(args["kcal"]), args.get("protein_g"), bool(args.get("estimate")),
-                               carbs_g=args.get("carbs_g"), fat_g=args.get("fat_g"))
+                               carbs_g=args.get("carbs_g"), fat_g=args.get("fat_g"),
+                               sodium_mg=args.get("sodium_mg"), potassium_mg=args.get("potassium_mg"))
                 today = store.food(now.date())
                 profile = store.profile()
                 approx = "~" if args.get("estimate") else ""
-                macros = [f"{int(args[k])} g {label}" for k, label in (("protein_g", "protein"), ("carbs_g", "carbs"), ("fat_g", "fat")) if args.get(k) is not None]
+                macros = [f"{int(args[k])} {unit} {label}" for k, unit, label in
+                          (("protein_g", "g", "protein"), ("carbs_g", "g", "carbs"), ("fat_g", "g", "fat"),
+                           ("sodium_mg", "mg", "sodium"), ("potassium_mg", "mg", "potassium")) if args.get(k) is not None]
                 line = f"Logged: {str(args['item']).strip()} {approx}{int(args['kcal'])} kcal" + (", " + ", ".join(macros) if macros else "")
                 summary.append(line + ". Today: " + food_totals(today, profile) + ".")
             elif action.name == "remember":

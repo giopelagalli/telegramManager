@@ -224,11 +224,13 @@ class KnowledgeStore:
             f.write(f"- {now:%H:%M} {role}: {one_line}\n")
 
     _FOOD_RE = re.compile(
-        r"^- (\d{2}:\d{2}) (.+?) — (\d+) kcal(?:, (\d+) g protein)?(?:, (\d+) g carbs)?(?:, (\d+) g fat)?(?: \((~)\))?$"
+        r"^- (\d{2}:\d{2}) (.+?) — (\d+) kcal(?:, (\d+) g protein)?(?:, (\d+) g carbs)?(?:, (\d+) g fat)?"
+        r"(?:, (\d+) mg sodium)?(?:, (\d+) mg potassium)?(?: \((~)\))?$"
     )
 
     def add_food(self, item: str, kcal: int, protein_g: int | None = None, estimate: bool = False,
-                 carbs_g: int | None = None, fat_g: int | None = None) -> None:
+                 carbs_g: int | None = None, fat_g: int | None = None,
+                 sodium_mg: int | None = None, potassium_mg: int | None = None) -> None:
         """One meal on today's food log (food/YYYY-MM-DD.md): calories and the three macros."""
         now = self.clock()
         folder = self.root / "food"
@@ -240,6 +242,10 @@ class KnowledgeStore:
             line += f", {int(carbs_g)} g carbs"
         if fat_g is not None:
             line += f", {int(fat_g)} g fat"
+        if sodium_mg is not None:
+            line += f", {int(sodium_mg)} mg sodium"
+        if potassium_mg is not None:
+            line += f", {int(potassium_mg)} mg potassium"
         if estimate:
             line += " (~)"
         with (folder / f"{now:%Y-%m-%d}.md").open("a", encoding="utf-8") as f:
@@ -258,7 +264,9 @@ class KnowledgeStore:
                             "protein_g": int(m.group(4)) if m.group(4) else None,
                             "carbs_g": int(m.group(5)) if m.group(5) else None,
                             "fat_g": int(m.group(6)) if m.group(6) else None,
-                            "estimate": bool(m.group(7)), "line": line})
+                            "sodium_mg": int(m.group(7)) if m.group(7) else None,
+                            "potassium_mg": int(m.group(8)) if m.group(8) else None,
+                            "estimate": bool(m.group(9)), "line": line})
         return out
 
     def remove_food(self, day, line: str) -> None:
