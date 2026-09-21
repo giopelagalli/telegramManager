@@ -81,6 +81,12 @@ def food_totals(items: list[dict], profile) -> str:
         parts.append(f"{sodium} mg sodium")
     if potassium:
         parts.append(f"{potassium} mg potassium")
+    fiber = sum(f.get("fiber_g") or 0 for f in items)
+    sugar = sum(f.get("sugar_g") or 0 for f in items)
+    if fiber:
+        parts.append(f"{fiber} g fiber")
+    if sugar:
+        parts.append(f"{sugar} g sugar")
     return ", ".join(parts)
 
 
@@ -132,7 +138,7 @@ class Agent:
 
     async def capture(
         self, text: str, awaiting: str | None = None, recent: list | None = None, recalled: list[str] | None = None,
-        client: ModelClient | None = None,
+        client: ModelClient | None = None, web: str | None = None,
     ) -> CaptureResult:
         """The main loop. `client` runs it on another model (/hard → the cloud) with the remote
         view: schedule, todos, goals, the conversation and the memories that match — not the vault."""
@@ -144,6 +150,13 @@ class Agent:
         context = self.context(now, awaiting, remote=client is not None and client is not self.client)
         if recalled:
             context += "\nFrom memory, possibly relevant:\n" + "\n".join(f"- {r}" for r in recalled)
+        tools = self.tools
+        if web:
+            # Second pass after a search: the results are in hand, now act on them and answer.
+            context += ("\n\nLive web search results fetched just now (you DO have current information; never say you "
+                        "lack internet access or a knowledge cutoff; numbers found here beat estimates; cite the URL "
+                        "you used in `reply`):\n" + web)
+            tools = [t for t in self.tools if t["function"]["name"] != "search"]
         messages = [
             {"role": "system", "content": system},
             {"role": "system", "content": context},
@@ -151,7 +164,7 @@ class Agent:
             {"role": "user", "content": text},
         ]
 
-        response = await self._chat_or_none(messages, self.tools, 0.1, client=client)
+        response = await self._chat_or_none(messages, tools, 0.1, client=client)
         if response is None:
             return self._to_inbox(text, "Model's down. Saved it, say it again in a bit.")
 
@@ -167,7 +180,7 @@ class Agent:
                     + ". Resend ALL tool calls, fixed, and include exactly one reply call.",
                 },
             ]
-            response = await self._chat_or_none(retry_messages, self.tools, 0.1, client=client)
+            response = await self._chat_or_none(retry_messages, tools, 0.1, client=client)
             if response is None:
                 return self._to_inbox(text, "Model's down. Saved it, say it again in a bit.")
             self._adopt_text_as_reply(response)
@@ -804,13 +817,15 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
             elif action.name == "log_food":
                 store.add_food(str(args["item"]), int(args["kcal"]), args.get("protein_g"), bool(args.get("estimate")),
                                carbs_g=args.get("carbs_g"), fat_g=args.get("fat_g"),
-                               sodium_mg=args.get("sodium_mg"), potassium_mg=args.get("potassium_mg"))
+                               sodium_mg=args.get("sodium_mg"), potassium_mg=args.get("potassium_mg"),
+                               fiber_g=args.get("fiber_g"), sugar_g=args.get("sugar_g"))
                 today = store.food(now.date())
                 profile = store.profile()
                 approx = "~" if args.get("estimate") else ""
                 macros = [f"{int(args[k])} {unit} {label}" for k, unit, label in
                           (("protein_g", "g", "protein"), ("carbs_g", "g", "carbs"), ("fat_g", "g", "fat"),
-                           ("sodium_mg", "mg", "sodium"), ("potassium_mg", "mg", "potassium")) if args.get(k) is not None]
+                           ("sodium_mg", "mg", "sodium"), ("potassium_mg", "mg", "potassium"),
+                           ("fiber_g", "g", "fiber"), ("sugar_g", "g", "sugar")) if args.get(k) is not None]
                 line = f"Logged: {str(args['item']).strip()} {approx}{int(args['kcal'])} kcal" + (", " + ", ".join(macros) if macros else "")
                 summary.append(line + ". Today: " + food_totals(today, profile) + ".")
             elif action.name == "remember":

@@ -975,20 +975,24 @@ async def test_directions_without_maps_is_just_the_link(rig):
     assert outs[0].text.startswith("Bar South, Athens GA. <a href=") and not outs[0].location_button
 
 
-async def test_the_search_answer_is_what_he_remembers_saying(rig):
+async def test_search_is_a_turn_the_model_can_act_in(rig):
     router, store, client, state, _ = rig
     class FakeSearch:
-        async def search(self, q): return "- Magnolias Bar\n  https://example.com\n  312 E Broad St, Athens, GA 30601"
+        async def search(self, q): return "- Fast Food Nutrition\n  https://example.com/zaxbys\n  Signature Spicy Chicken Sandwich 770 cal 45g protein 2610mg sodium"
     router.search = FakeSearch()
     router.agent.tools = router.agent.tools + [{"type": "function", "function": {"name": "search", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}}}]
-    client.responses.append(R(("search", {"query": "Mags Athens GA address"}), ("reply", {"text": "Looking."})))
-    client.responses.append(ModelResponse("312 E Broad St, Athens, GA 30601. Source: https://example.com", []))
-    outs = await router.on_text("what's the address")
-    assert "312 E Broad St" in outs[0].text
-    assert state.recent[-1][0] == "assistant" and "312 E Broad St" in state.recent[-1][1]
-    assert "Looking." not in state.recent[-1][1]
-    sent = "\n".join(m["content"] for m in client.calls[-1]["messages"])
-    assert "fetched just now" in sent and "never say you lack internet" in sent
+    client.responses.append(R(("search", {"query": "zaxbys spicy chicken sandwich nutrition"}), ("reply", {"text": "Looking."})))
+    client.responses.append(R(("log_food", {"item": "Zaxby's Signature Spicy Chicken Sandwich", "kcal": 770, "protein_g": 45, "sodium_mg": 2610, "fiber_g": 4, "sugar_g": 8}),
+                              ("reply", {"text": "Logged from https://example.com/zaxbys."})))
+    outs = await router.on_text("log a zaxbys spicy chicken sandwich, look it up")
+    assert "Logged: Zaxby's Signature Spicy Chicken Sandwich 770 kcal, 45 g protein, 2610 mg sodium, 4 g fiber, 8 g sugar." in outs[0].text
+    assert store.food(router.clock.now().date())[0]["sugar_g"] == 8
+    second = client.calls[-1]
+    joined = "\n".join(m["content"] for m in second["messages"])
+    assert "fetched just now" in joined and "770 cal" in joined and "never say you lack internet" in joined
+    assert not any(t["function"]["name"] == "search" for t in second["tools"])  # no search loop
+    assert state.recent[-1][0] == "assistant" and "Logged:" in state.recent[-1][1]
+
 
 
 async def test_sharing_a_location_moves_the_clock_to_that_timezone(rig):

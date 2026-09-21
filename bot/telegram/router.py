@@ -541,10 +541,7 @@ class Router:
             chat = chat[:cap // 2] + ["…"] + chat[-cap // 2:]
         return out + chat
 
-    async def _search(self, query: str, question: str, via_voice: bool, client=None) -> list[Outbound]:
-        results = await self.search.search(query)
-        if results is None:
-            return [Outbound("Search isn't answering right now.", kind="reply")]
+    async def _search_answer(self, query: str, results: str, question: str, via_voice: bool, client=None) -> list[Outbound]:
         answer = await self.agent.answer(
             question,
             f"Live web search results fetched just now for \"{query}\" (you DO have current information — "
@@ -767,7 +764,16 @@ class Router:
 
         search = next((a for a in result.actions if a.name == "search"), None)
         if search is not None and self.search is not None:
-            return await self._search(str(search.arguments.get("query", text)), text, via_voice, client=client)
+            query = str(search.arguments.get("query", text))
+            results = await self.search.search(query)
+            if results is None:
+                return [Outbound("Search isn't answering right now.", kind="reply")]
+            # Give the model the results and a real turn: it can log what it found, file it, then answer.
+            second = await self.agent.capture(text, awaiting=awaiting, recent=self._thread(), client=client,
+                                              web=f"Query: {query}\n{results}")
+            if second.parsed:
+                return await self._captured(text, second, awaiting, via_voice, now, pending_schedule, client=client)
+            return await self._search_answer(query, results, text, via_voice, client=client)
 
         study = next((a for a in result.actions if a.name == "study"), None)
         if study is not None:

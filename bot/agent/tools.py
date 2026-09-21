@@ -361,6 +361,8 @@ TOOL_SCHEMAS: list[dict] = [
                     "fat_g": {"type": "integer"},
                     "sodium_mg": {"type": "integer"},
                     "potassium_mg": {"type": "integer"},
+                    "fiber_g": {"type": "integer"},
+                    "sugar_g": {"type": "integer"},
                     "estimate": {"type": "boolean"},
                 },
                 "required": ["item", "kcal"],
