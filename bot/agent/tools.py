@@ -83,6 +83,7 @@ TOOL_SCHEMAS: list[dict] = [
                     "end": {"type": "string", "format": "date-time"},
                     "location": {"type": "string"},
                     "travel_minutes": {"type": "integer"},
+                    "travel_mode": {"type": "string", "enum": ["walk", "drive"], "description": "how they get there, when they say"},
                     "prep_minutes": {"type": "integer"},
                     "importance": {"type": "string", "enum": ["normal", "critical"]},
                     "repeat_days": {
@@ -114,6 +115,7 @@ TOOL_SCHEMAS: list[dict] = [
                     "end": {"type": "string", "format": "date-time"},
                     "location": {"type": "string"},
                     "travel_minutes": {"type": "integer"},
+                    "travel_mode": {"type": "string", "enum": ["walk", "drive"], "description": "how they get there, when they say"},
                     "prep_minutes": {"type": "integer"},
                     "repeat_until": {"type": "string", "format": "date", "description": "last day of a weekly series (a class's semester end)"},
                     "importance": {"type": "string", "enum": ["normal", "critical"]},

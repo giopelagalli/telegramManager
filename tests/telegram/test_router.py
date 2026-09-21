@@ -29,7 +29,7 @@ class FakeMaps:
         self.calls.append(address)
         return self.mapping.get(address)
 
-    async def travel_minutes(self, origin, dest, depart_at):
+    async def travel_minutes(self, origin, dest, depart_at, mode="drive"):
         self.travel_calls.append((origin, dest, depart_at))
         return self.travel
 
@@ -1055,3 +1055,23 @@ async def test_live_location_updates_quietly(rig):
     await router.on_text("hey")
     sent = "\n".join(m["content"] for m in client.calls[-1]["messages"])
     assert "he shared it" not in sent  # stale after three hours
+
+
+async def test_walking_to_class_changes_the_estimate_and_the_link(rig):
+    router, store, client, state, _ = rig
+    p = store.profile(); p.home_latlng = (33.95, -83.38); store.save_profile(p)
+    maps = FakeMaps({"Dawson Hall, UGA, Athens GA": (33.948, -83.375)})
+    seen = []
+    async def travel(origin, dest, depart_at, mode="drive"):
+        seen.append(mode); return 18 if mode == "walk" else 7
+    maps.travel_minutes = travel
+    router.maps = maps
+    client.responses.append(R(("add_event", {"title": "CSCI 2670", "start": "2026-09-07T09:55:00-04:00",
+                                              "location": "Dawson Hall, UGA, Athens GA", "travel_mode": "walk", "repeat_days": ["MO"]}),
+                              ("reply", {"text": "In."})))
+    outs = await router.on_text("csci 2670 mondays 9:55 at dawson hall, i walk")
+    assert seen == ["walk"] and "Walk from home 18 min, so leave by 9:37 AM." in outs[0].text
+    tpl = store.series()[0]
+    assert tpl.travel_mode == "walk" and all(e.travel_mode == "walk" for e in store.events() if e.series == tpl.path)
+    from bot.scheduler.reminders import _directions_suffix
+    assert "travelmode=walking" in _directions_suffix(store.events()[0])

@@ -825,7 +825,7 @@ class Router:
         if self.maps is not None and destination.strip():
             place = await self.maps.find_place(destination, near=origin)
         name = place["name"] if place else destination
-        url = directions_url(place["address"] or name if place else destination, place["latlng"] if place else None)
+        url = directions_url(place["address"] or name if place else destination, place["latlng"] if place else None, mode=mode)
         link = f'<a href="{url}">Directions</a>' if url else ""
         if self.maps is None or origin is None or place is None:
             line = f"{esc(name)}. {link}".strip()
@@ -885,8 +885,9 @@ class Router:
                 logger.warning("could not geocode event location: %s", location)
                 continue
             minutes = None
+            mode = targets[0].travel_mode or profile.travel_mode
             if profile.home_latlng and not action.arguments.get("travel_minutes"):
-                minutes = await self.maps.travel_minutes(profile.home_latlng, latlng, depart_at=targets[0].start)
+                minutes = await self.maps.travel_minutes(profile.home_latlng, latlng, depart_at=targets[0].start, mode=mode)
             elif not profile.home_latlng and "Tell me your home address" not in " ".join(notes):
                 notes.append("Tell me your home address and I'll do traffic for this.")
             for event in targets:
@@ -897,7 +898,8 @@ class Router:
             geocoded.append(targets[0].title)
             if minutes is not None:
                 leave_by = targets[0].times(profile).leave_by
-                notes.append(f"Traffic from home {minutes} min, so leave by {leave_by:%-I:%M %p}.")
+                how = "Walk from home" if mode == "walk" else "Traffic from home"
+                notes.append(f"{how} {minutes} min, so leave by {leave_by:%-I:%M %p}.")
         if geocoded:
             self.store.commit(f"geocode: {geocoded[0]}")
         return notes

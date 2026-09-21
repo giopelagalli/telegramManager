@@ -53,7 +53,7 @@ async def test_maps_refresh_shifts_leave(store):
     p = store.add(Event(path="", title="Gym", start=T(18), travel_minutes=20, prep_minutes=15,
                         location="Equinox", location_latlng=(40.72, -73.99))); store.commit("e")
     class Maps:
-        async def travel_minutes(self, origin, dest, depart_at): return 30
+        async def travel_minutes(self, origin, dest, depart_at, mode="drive"): return 30
     s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
     out = await due_reminders(T(17, 25), store, s, Maps())
     # refresh moved leave_by to 5:30 and leave_at to 5:20, so both fire in this same call

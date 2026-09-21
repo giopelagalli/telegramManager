@@ -644,6 +644,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                     end=datetime.fromisoformat(args["end"]) if args.get("end") else None,
                     location=args.get("location"),
                     travel_minutes=args.get("travel_minutes", 0),
+                    travel_mode=args.get("travel_mode") or "",
                     prep_minutes=args.get("prep_minutes"),
                     importance=args.get("importance", "normal"),
                     repeat_days=list(args.get("repeat_days") or []),
@@ -685,6 +686,8 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                     event.location = args["location"]
                 if "travel_minutes" in args:
                     event.travel_minutes = args["travel_minutes"]
+                if "travel_mode" in args:
+                    event.travel_mode = args["travel_mode"] or ""
                 if "prep_minutes" in args:
                     event.prep_minutes = args["prep_minutes"]
                 if "importance" in args:

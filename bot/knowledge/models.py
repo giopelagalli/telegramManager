@@ -322,6 +322,7 @@ class Event:
     location: str | None = None
     location_latlng: tuple[float, float] | None = None
     travel_minutes: int = 0
+    travel_mode: str = ""  # walk | drive; empty = the profile default
     prep_minutes: int | None = None
     importance: str = "normal"
     verify: str = "none"
@@ -351,6 +352,8 @@ class Event:
         if self.location_latlng is not None:
             meta["location_latlng"] = self.location_latlng
         meta["travel_minutes"] = self.travel_minutes
+        if self.travel_mode:
+            meta["travel_mode"] = self.travel_mode
         if self.prep_minutes is not None:
             meta["prep_minutes"] = self.prep_minutes
         meta["importance"] = self.importance
@@ -386,6 +389,7 @@ class Event:
             location=meta.get("location"),
             location_latlng=tuple(latlng) if latlng is not None else None,
             travel_minutes=meta.get("travel_minutes", 0),
+            travel_mode=meta.get("travel_mode", "") or "",
             prep_minutes=meta.get("prep_minutes"),
             importance=meta.get("importance", "normal"),
             verify=meta.get("verify", "none"),
@@ -535,6 +539,7 @@ class Profile:
     proactive_budget_per_hour: int = 3
     default_prep_minutes: int = 15
     leave_lead_minutes: int = 10
+    travel_mode: str = "drive"  # how he usually gets places: walk | drive
     critical_leave_cap_minutes: int = 20
     voice_on_proactive: bool = True
     voice_reply_mode: str = "on_voice"
@@ -584,6 +589,7 @@ class Profile:
             "proactive_budget_per_hour": self.proactive_budget_per_hour,
             "default_prep_minutes": self.default_prep_minutes,
             "leave_lead_minutes": self.leave_lead_minutes,
+            "travel_mode": self.travel_mode,
             "critical_leave_cap_minutes": self.critical_leave_cap_minutes,
             "voice_on_proactive": self.voice_on_proactive,
             "voice_reply_mode": self.voice_reply_mode,

@@ -337,7 +337,7 @@ class KnowledgeStore:
                     path="", title=tpl.title, start=start,
                     end=tpl.end.replace(year=day.year, month=day.month, day=day.day) if tpl.end else None,
                     location=tpl.location, location_latlng=tpl.location_latlng,
-                    travel_minutes=tpl.travel_minutes, prep_minutes=tpl.prep_minutes,
+                    travel_minutes=tpl.travel_minutes, travel_mode=tpl.travel_mode, prep_minutes=tpl.prep_minutes,
                     importance=tpl.importance, course=tpl.course, kind=tpl.kind, series=tpl.path,
                 )
                 self.add(occurrence)

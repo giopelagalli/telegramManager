@@ -138,5 +138,5 @@ def leave_on_text(state: RuntimeState, store: KnowledgeStore) -> Outbound | None
 
 
 def _dirs(ev) -> str:
-    url = directions_url(ev.location, ev.location_latlng)
+    url = directions_url(ev.location, ev.location_latlng, mode=ev.travel_mode)
     return f' <a href="{url}">Directions</a>' if url else ""

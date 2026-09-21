@@ -41,7 +41,8 @@ async def due_reminders(
         if is_due(get_ready_key, times.get_ready_at, now, state):
             if maps is not None and profile.home_latlng and ev.location_latlng:
                 minutes = await maps.travel_minutes(
-                    profile.home_latlng, ev.location_latlng, depart_at=times.leave_by
+                    profile.home_latlng, ev.location_latlng, depart_at=times.leave_by,
+                    mode=ev.travel_mode or profile.travel_mode,
                 )
                 if minutes is not None and minutes != ev.travel_minutes:
                     ev.travel_minutes = minutes
@@ -79,5 +80,5 @@ async def due_reminders(
 
 
 def _directions_suffix(ev) -> str:
-    url = directions_url(ev.location, ev.location_latlng)
+    url = directions_url(ev.location, ev.location_latlng, mode=ev.travel_mode)
     return f' <a href="{url}">Directions</a>' if url else ""

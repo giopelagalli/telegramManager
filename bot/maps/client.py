@@ -16,7 +16,7 @@ TIMEZONE_URL = "https://maps.googleapis.com/maps/api/timezone/json"
 logger = logging.getLogger(__name__)
 
 
-def directions_url(destination: str | None, latlng: tuple[float, float] | None = None) -> str | None:
+def directions_url(destination: str | None, latlng: tuple[float, float] | None = None, mode: str = "drive") -> str | None:
     """A Google Maps navigation link; opens turn-by-turn on a phone. No API key needed."""
     from urllib.parse import quote
     if latlng is not None:
@@ -25,7 +25,8 @@ def directions_url(destination: str | None, latlng: tuple[float, float] | None =
         target = quote(destination)
     else:
         return None
-    return f"https://www.google.com/maps/dir/?api=1&destination={target}&travelmode=driving"
+    travelmode = "walking" if mode == "walk" else "driving"
+    return f"https://www.google.com/maps/dir/?api=1&destination={target}&travelmode={travelmode}"
 
 
 def distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -158,7 +159,8 @@ class MapsClient:
         origin: tuple[float, float],
         dest: tuple[float, float],
         depart_at: datetime,
+        mode: str = "drive",
     ) -> int | None:
-        """Driving minutes with traffic at `depart_at`; the leave-by refresh."""
-        r = await self.route(origin, dest, "drive", depart_at=depart_at)
+        """Minutes to get there at `depart_at` (driving with traffic, or walking); the leave-by refresh."""
+        r = await self.route(origin, dest, mode, depart_at=depart_at)
         return None if r is None else r[0]
