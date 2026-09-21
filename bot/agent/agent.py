@@ -610,6 +610,8 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
 
             elif action.name == "update_todo":
                 todo = store.get_todo(args["file"])
+                if "title" in args and str(args["title"]).strip():
+                    todo.title = str(args["title"]).strip()
                 if "priority" in args:
                     todo.priority = args["priority"]
                 if "due_time" in args:

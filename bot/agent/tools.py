@@ -42,6 +42,7 @@ TOOL_SCHEMAS: list[dict] = [
                 "type": "object",
                 "properties": {
                     "file": {"type": "string", "description": "path to the todo file"},
+                    "title": {"type": "string", "description": "new name, for a rename"},
                     "status": {"type": "string", "enum": ["open", "done", "dropped"]},
                     "priority": {"type": "integer", "enum": [1, 2, 3]},
                     "due": {"type": "string", "format": "date"},

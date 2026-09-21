@@ -266,3 +266,10 @@ async def test_a_deadline_keeps_its_clock_time(store):
     t = store.todos()[0]
     assert t.due_time == "23:59" and "due 2026-09-03 23:59" in __import__("bot.agent.prompts", fromlist=["build_context"]).build_context(store, NOW)
     assert Todo.from_markdown(t.path, (store.root / t.path).read_text()).due_time == "23:59"
+
+
+async def test_a_todo_can_be_renamed(store):
+    store.add(Todo(path="", title="Discrete math homework", priority=1)); store.commit("t")
+    path = store.todos()[0].path
+    apply_actions(store, [ToolCall("update_todo", {"file": path, "title": "CSCI 2670 hw"})], NOW)
+    assert store.get_todo(path).title == "CSCI 2670 hw"
