@@ -39,19 +39,19 @@ def morning_text(store: KnowledgeStore, now: datetime) -> str:
     current_week = f"{iso[0]}-W{iso[1]:02d}"
     week_goals = [g for g in goals if g.status == "active" and g.period == current_week]
 
-    goal_lines = ["<b>This week</b>"]
+    goal_lines = ["<b>Goals</b>"]
     if week_goals:
         for g in week_goals:
             done, tot = goal_progress(g, todos)
             goal_lines.append(f"• {esc(g.title)} — {done}/{tot}")
     else:
-        goal_lines.append("No goals this week.")
+        goal_lines.append("None set.")
 
+    # No composed line here: the day speaks for itself, and the leave-by texts come on their own.
     parts = [
         f"<b>Good morning, {profile.name}.</b>",
         render_today(events, todos, profile, now),
         "\n".join(goal_lines),
-        "{prose}",
     ]
     if broken_files:
         parts.append(f"⚠️ {len(broken_files)} file(s) in the bundle couldn't be read; see the log.")
@@ -158,8 +158,7 @@ async def _weather_line(profile) -> str | None:
 
 
 async def morning_outbound(store: KnowledgeStore, now: datetime, agent, note: str | None = None) -> Outbound:
-    prose = await _compose_prose(store, now, agent)
-    text = morning_text(store, now).replace("{prose}", md_to_html(prose))
+    text = morning_text(store, now)
     weather = await _weather_line(store.profile())
     if weather:
         head, _, rest = text.partition("\n")

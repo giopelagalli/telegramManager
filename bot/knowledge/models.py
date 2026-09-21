@@ -534,7 +534,7 @@ class Profile:
     followup_gaps_minutes: list[int] = field(default_factory=list)  # empty = no follow-ups
     proactive_budget_per_hour: int = 3
     default_prep_minutes: int = 15
-    leave_lead_minutes: int = 5
+    leave_lead_minutes: int = 10
     critical_leave_cap_minutes: int = 20
     voice_on_proactive: bool = True
     voice_reply_mode: str = "on_voice"

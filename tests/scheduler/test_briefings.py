@@ -63,7 +63,8 @@ async def test_due_briefings_fire_once_and_open_chain(store):
     s = RuntimeState.load(Path("/nonexistent"))
     assert await due_briefings(T(7, 59), store, s, FakeAgent()) == []
     out = await due_briefings(T(8), store, s, FakeAgent())
-    assert len(out) == 1 and out[0].kind == "briefing" and out[0].voice and "Make it count." in out[0].text
+    assert len(out) == 1 and out[0].kind == "briefing" and out[0].voice and "Make it count." not in out[0].text
+    assert "<b>Thursday, September 3</b>" in out[0].text and "<b>Goals</b>" in out[0].text
     assert len(out[0].buttons) == 1 and out[0].buttons[0][1].startswith("done:")
     assert s.chain and s.chain.kind == "briefing"
     assert await due_briefings(T(8, 1), store, s, FakeAgent()) == []
@@ -75,7 +76,7 @@ async def test_composed_prose_is_escaped(store):
         def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "Watch out <b>now</b>."
     s = RuntimeState.load(Path("/nonexistent"))
-    out = (await due_briefings(T(8), store, s, HtmlAgent()))[0]
+    out = (await due_briefings(T(21), store, s, HtmlAgent()))[0]  # the evening still carries a composed line
     assert "&lt;b&gt;" in out.text and "<b>now</b>" not in out.text
 
 
@@ -94,7 +95,7 @@ async def test_composed_prose_markdown_bold(store):
         def context(self, now, awaiting=None, remote=False): return "ctx"
         async def compose(self, kind, context, fallback): return "**Nice work**"
     s = RuntimeState.load(Path("/nonexistent"))
-    out = (await due_briefings(T(8), store, s, MdAgent()))[0]
+    out = (await due_briefings(T(21), store, s, MdAgent()))[0]
     assert "<b>Nice work</b>" in out.text
 
 

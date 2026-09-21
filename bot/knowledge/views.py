@@ -20,6 +20,10 @@ def fmt_day(d: date) -> str:
     return d.strftime("%a %b %-d")
 
 
+def fmt_long_day(d: date) -> str:
+    return d.strftime("%A, %B %-d")
+
+
 def render_todo(todos: Iterable[Todo], today: date, show_all: bool = False) -> str:
     open_todos = rank_todos(todos, today)
     if show_all:
@@ -30,7 +34,7 @@ def render_todo(todos: Iterable[Todo], today: date, show_all: bool = False) -> s
         header = "<b>Top 5</b>"
 
     if not selected:
-        return "Nothing open. Nice."
+        return "Nothing on your list."
 
     lines = [header]
     for i, t in enumerate(selected, 1):
@@ -86,7 +90,7 @@ def render_goals(goals: list[Goal], todos: list[Todo], today: date) -> str:
 
 def render_today(events: list[Event], todos: list[Todo], profile: Profile, now: datetime) -> str:
     today = now.date()
-    header = f"<b>Today · {fmt_day(today)}</b>"
+    header = f"<b>{fmt_long_day(today)}</b>"
     todays_events = [e for e in events if e.start.date() == today]
 
     lines = [header]

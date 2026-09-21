@@ -43,7 +43,7 @@ def test_event_times():
     t = e.times(p)
     assert t.leave_by == datetime(2026, 9, 4, 17, 40, tzinfo=NY)
     assert t.get_ready_at == datetime(2026, 9, 4, 17, 25, tzinfo=NY)
-    assert t.leave_at == datetime(2026, 9, 4, 17, 35, tzinfo=NY)
+    assert t.leave_at == datetime(2026, 9, 4, 17, 30, tzinfo=NY)  # 10-minute lead by default
 
 def test_event_times_use_profile_prep_default_when_unset():
     p = Profile(default_prep_minutes=30, leave_lead_minutes=10)

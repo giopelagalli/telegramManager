@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Callable
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, LinkPreviewOptions, ReplyKeyboardMarkup
 from telegram.error import BadRequest, NetworkError
 
 from bot.scheduler.outbound import Outbound
@@ -86,6 +86,7 @@ class Sender:
                 parse_mode=parse_mode,
                 reply_markup=_markup(out),
                 disable_notification=out.silent,
+                link_preview_options=LinkPreviewOptions(is_disabled=True),  # no Google Maps card under a link
                 **thread,
             )
 

@@ -29,8 +29,8 @@ async def test_get_ready_and_leave_fire_once(store):
     out = await due_reminders(T(17, 25), store, s, None)
     assert [o.text for o in out] == ["Get ready for Gym. Leave by 5:40pm."] and out[0].kind == "reminder"
     assert await due_reminders(T(17, 26), store, s, None) == []
-    out = await due_reminders(T(17, 35), store, s, None)
-    assert [o.text for o in out] == ["Leave in the next 5 minutes for Gym."]
+    out = await due_reminders(T(17, 30), store, s, None)
+    assert [o.text for o in out] == ["Leave in the next 10 minutes for Gym."]
 
 async def test_critical_leave_starts_state_not_message(store):
     p = store.add(Event(path="", title="Flight", start=T(18), travel_minutes=60, importance="critical")); store.commit("e")
@@ -56,8 +56,8 @@ async def test_maps_refresh_shifts_leave(store):
         async def travel_minutes(self, origin, dest, depart_at): return 30
     s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
     out = await due_reminders(T(17, 25), store, s, Maps())
-    # refresh moved leave_by to 5:30 and leave_at to 5:25, so both fire in this same call
-    assert [o.text.split(" <a")[0] for o in out] == ["Get ready for Gym. Leave by 5:30pm.", "Leave in the next 5 minutes for Gym."]
+    # refresh moved leave_by to 5:30 and leave_at to 5:20, so both fire in this same call
+    assert [o.text.split(" <a")[0] for o in out] == ["Get ready for Gym. Leave by 5:30pm.", "Leave in the next 10 minutes for Gym."]
     assert store.get_event(p).travel_minutes == 30
     assert await due_reminders(T(17, 26), store, s, Maps()) == []
 
