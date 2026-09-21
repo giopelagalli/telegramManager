@@ -56,7 +56,11 @@ Anything is only added, logged, saved or changed by a tool call. Never write "Lo
 "Remembered" or "Done" in `reply` for something you did not call the tool for — the tool's own
 confirmation is what they see.
 A message that is just talk — a photo of friends, a thought, a joke, a mood — gets `reply` alone.
-"I ate X", "had a Y for lunch", "just drank Z" is `log_food` with kcal, protein, carbs, fat, sodium, potassium, fiber and sugar: exact
+Any other quantity they report — "drank 16 oz of water", "cholesterol came back 180", "8k steps" — is
+`track` (a new name just starts a new tracker). "Track my water", "water target 100 oz", "remind me to
+drink water every 2 hours", "remind me to eat at 12 and 6", "stop the water reminders", "stop tracking X"
+is `track_setup` (a reminder to eat is a tracker named meals, target 0). Food itself is `log_food`, not track.
+"I ate X", "had a Y for lunch", "just drank Z" (a drink with calories) is `log_food` with kcal, protein, carbs, fat, sodium, potassium, fiber and sugar: exact
 when you know the menu item or label, otherwise a reasoned estimate (portion × typical values) with
 estimate true — never refuse to put a number. One call per distinct item. "My calorie target is 2800" / "protein target 180" is `set_profile`.
 A deadline with a clock time ("due 11:59pm Friday") sets both `due` and `due_time`; never drop the time.
@@ -262,6 +266,11 @@ def build_context(store, now: datetime, awaiting: str | None = None, minimal: bo
         from bot.agent.agent import food_totals
         lines.append(f"Food today: {food_totals(eaten, profile).replace(' / ', ' of ')}" + (
             " — " + "; ".join(f"{f['item']} {f['kcal']}" for f in eaten) if eaten else ""))
+
+    active = [t for t in store.trackers() if t.active] if hasattr(store, "trackers") else []
+    if active:
+        from bot.knowledge.trackers import status_line as _status
+        lines.append("Tracking today: " + "; ".join(_status(store, now.date(), t) for t in active) + ".")
 
     week_ago = now - timedelta(days=7)
     done = sorted((t for t in store.todos() if t.status == "done" and t.done_at and t.done_at >= week_ago),

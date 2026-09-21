@@ -68,7 +68,10 @@ def _split_body(body: str, limit: int) -> list[str]:
 _WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
 
 
-class KnowledgeStore:
+from bot.knowledge.trackers import TrackerStore
+
+
+class KnowledgeStore(TrackerStore):
     def __init__(self, root: Path, clock: Callable[[], datetime], remotes: list[str] | None = None):
         self.root = Path(root)
         self.clock = clock

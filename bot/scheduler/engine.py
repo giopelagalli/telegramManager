@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from bot.scheduler.checkins import due_sprint
-from bot.scheduler import briefings, chains, checkins, critical, reflect, review
+from bot.scheduler import briefings, chains, checkins, critical, reflect, review, trackers
 from bot.scheduler.budget import budget_ok, record_send
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import LATE_WINDOW, MISSED_AFTER, due_reminders
@@ -61,6 +61,7 @@ class Engine:
             self._prune,
             self._backend,
             self._reminders,
+            self._tracker_reminders,
             self._sprint,
             self._critical_leave,
             self._briefings,
@@ -131,6 +132,10 @@ class Engine:
 
     async def _reminders(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await due_reminders(now, self.store, self.state, self.maps):
+            await self._send(out, now, sent)
+
+    async def _tracker_reminders(self, now: datetime, sent: list[Outbound]) -> None:
+        for out in trackers.due_tracker_reminders(now, self.store, self.state):
             await self._send(out, now, sent)
 
     async def _sprint(self, now: datetime, sent: list[Outbound]) -> None:

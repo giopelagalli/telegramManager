@@ -373,6 +373,47 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "track",
+            "description": "Log an amount on a tracker: \"drank 16 oz of water\" → track water 16 oz. A new name starts a new "
+            "tracker on the spot (any quantity with a unit: water, cholesterol, caffeine, steps, weight).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "short lowercase name, e.g. water"},
+                    "amount": {"type": "number"},
+                    "unit": {"type": "string", "description": "oz, ml, mg, steps, lb… as they said it"},
+                    "note": {"type": "string"},
+                },
+                "required": ["name", "amount"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "track_setup",
+            "description": "Start, change or stop a tracker: its unit, a daily target, reminders at fixed times or every N "
+            "minutes (\"remind me to drink every 2 hours\", \"remind me to eat at 12 and 6\"), or off=true to stop it "
+            "and its reminders. Use it for reminder requests too: a reminder to eat is a tracker named meals.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "unit": {"type": "string"},
+                    "target": {"type": "number", "description": "daily target, 0 to clear"},
+                    "remind_at": {"type": "array", "items": {"type": "string"}, "description": "HH:MM 24h times; [] to clear"},
+                    "remind_every_minutes": {"type": "integer", "description": "0 to clear"},
+                    "off": {"type": "boolean", "description": "true stops the tracker and its reminders"},
+                },
+                "required": ["name"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "briefing",
             "description": "Send the morning or evening briefing now, on request (with voice).",
             "parameters": {

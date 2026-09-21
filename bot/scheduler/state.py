@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 # Only these keys carry the day they belong to. Event keys embed the file's
 # creation date, which says nothing about when the job fires.
-_DAY_KEY_PREFIXES = ("checkin:", "morning:", "evening:", "reflect:")
+_DAY_KEY_PREFIXES = ("checkin:", "morning:", "evening:", "reflect:", "track:")
 
 
 @dataclass

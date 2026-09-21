@@ -37,6 +37,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("schedule", "Your classes, day by day", True),
     ("goals", "Your goals and where you stand", True),
     ("calories", "Today's food and the total against your target", True),
+    ("track", "Water, cholesterol, steps — whatever you're tracking, today", False),
     ("reflect", "The week in numbers, and the weeks before", False),
     ("notes", "This week's scratchpad, by day", False),
     ("pause", "Quiet for 2h", True),
@@ -142,6 +143,25 @@ async def handle(
     if name == "calories":
         from bot.telegram.food_ui import day_view
         return [day_view(store, now)]
+
+    if name == "track":
+        from bot.knowledge.trackers import status_line
+        active = [t for t in store.trackers() if t.active]
+        if not active:
+            return [Outbound("Nothing tracked. Say \"track my water, target 100 oz\" or just \"drank 16 oz of water\".", kind="reply")]
+        lines = ["<b>Today</b>"]
+        for t in active:
+            entries = store.tracking(today, t.name)
+            line = f"• <b>{esc(status_line(store, today, t))}</b>"
+            if t.remind_at:
+                line += f" · reminders {', '.join(t.remind_at)}"
+            elif t.remind_every_minutes:
+                line += f" · every {t.remind_every_minutes} min"
+            lines.append(line)
+            for e in entries:
+                amount = str(int(e["amount"])) if e["amount"].is_integer() else f"{e['amount']:g}"
+                lines.append(f"    {e['time']} {amount} {e['unit']}" + (f" — {esc(e['note'])}" if e["note"] else ""))
+        return [Outbound("\n".join(lines), kind="reply")]
 
     if name == "notes":
         from bot.telegram.notes_ui import days_view

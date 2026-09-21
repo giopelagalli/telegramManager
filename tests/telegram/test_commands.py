@@ -359,3 +359,22 @@ async def test_food_is_logged_with_macros_and_shown_against_the_target(rig):
     assert "62 g fat, 2900 mg sodium, 900 mg potassium" in item.text
     after = (await r.on_callback(item.buttons[0][1], 3, "x", item.buttons))[0]
     assert after.toast == "Removed." and "<b>0</b> / 2800 kcal" in after.text
+
+
+async def test_track_in_chat_and_the_track_view(rig):
+    r, store, state = rig
+    r.agent.client.responses.append(R(("track_setup", {"name": "water", "unit": "oz", "target": 100, "remind_every_minutes": 120}), ("reply", {"text": "Ok."})))
+    outs = await r.on_text("track my water, 100 oz a day, remind me every 2 hours")
+    assert "Tracking water in oz, target 100 oz, a reminder every 120 min." in outs[0].text
+    r.agent.client.responses.append(R(("track", {"name": "water", "amount": 16, "unit": "oz"}), ("reply", {"text": "Ok."})))
+    outs = await r.on_text("drank 16 oz")
+    assert "Water: 16 / 100 oz." in outs[0].text
+    r.agent.client.responses.append(R(("reply", {"text": "You're at 16."})))
+    await r.on_text("how's my water")
+    assert "Tracking today: water: 16 / 100 oz." in "\n".join(m["content"] for m in r.agent.client.calls[-1]["messages"])
+    view = (await r.command("track", ""))[0].text
+    assert "• <b>water: 16 / 100 oz</b> · every 120 min" in view and "16 oz" in view
+    r.agent.client.responses.append(R(("track_setup", {"name": "water", "off": True}), ("reply", {"text": "Ok."})))
+    outs = await r.on_text("stop tracking water")
+    assert "Stopped tracking water; reminders off." in outs[0].text
+    assert (await r.command("track", ""))[0].text.startswith("Nothing tracked.")

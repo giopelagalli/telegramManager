@@ -35,6 +35,7 @@ from bot.agent.prompts import (
 )
 from bot.agent.tools import TOOL_SCHEMAS, TUTOR_TOOLS, validate_call
 from bot.knowledge.models import slugify, SOURCE_KINDS, Course, Event, Goal, Source, Todo
+from bot.knowledge.trackers import status_line
 
 logger = logging.getLogger(__name__)
 from bot.knowledge.store import KnowledgeStore
@@ -60,6 +61,10 @@ class Applied:
 
 
 _RAW_CALL_RE = re.compile(r"^\w+\(\{.*\}\)$", re.DOTALL)
+
+
+def _fmt_amount(n: float) -> str:
+    return str(int(n)) if float(n).is_integer() else f"{n:g}"
 
 
 def food_totals(items: list[dict], profile) -> str:
@@ -814,6 +819,29 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 store.save_profile(profile)
                 summary.append(f"Home is now: {name}")
                 changed_schedule = True
+            elif action.name == "track":
+                t = store.add_tracking(str(args["name"]), float(args["amount"]), args.get("unit"), args.get("note"))
+                summary.append(f"{status_line(store, now.date(), t).capitalize()}.")
+            elif action.name == "track_setup":
+                if args.get("off"):
+                    t = store.upsert_tracker(str(args["name"]), active=False, remind_at=[], remind_every_minutes=0)
+                    summary.append(f"Stopped tracking {t.label}; reminders off.")
+                else:
+                    t = store.upsert_tracker(
+                        str(args["name"]), unit=args.get("unit"),
+                        target=float(args["target"]) if args.get("target") is not None else None,
+                        remind_at=list(args["remind_at"]) if args.get("remind_at") is not None else None,
+                        remind_every_minutes=int(args["remind_every_minutes"]) if args.get("remind_every_minutes") is not None else None,
+                        active=True,
+                    )
+                    bits = [f"Tracking {t.label}" + (f" in {t.unit}" if t.unit else "")]
+                    if t.target:
+                        bits.append(f"target {_fmt_amount(t.target)} {t.unit}".rstrip())
+                    if t.remind_at:
+                        bits.append("reminders at " + ", ".join(t.remind_at))
+                    if t.remind_every_minutes:
+                        bits.append(f"a reminder every {t.remind_every_minutes} min")
+                    summary.append(", ".join(bits) + ".")
             elif action.name == "log_food":
                 store.add_food(str(args["item"]), int(args["kcal"]), args.get("protein_g"), bool(args.get("estimate")),
                                carbs_g=args.get("carbs_g"), fat_g=args.get("fat_g"),
