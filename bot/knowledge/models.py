@@ -176,7 +176,7 @@ class Course:
         )
 
 
-SOURCE_KINDS = ("slides", "chapter", "paper", "notes", "photo", "hw-spec", "other")
+SOURCE_KINDS = ("slides", "chapter", "paper", "notes", "syllabus", "hw-spec", "code", "photo", "other")
 
 
 @dataclass

@@ -123,13 +123,40 @@ Read the start of a document and answer with strict JSON, nothing else:
 `kind` is one of: {kinds}. `topics` is at most 10 short topic names.
 `summary` is 3 to 6 sentences describing what the document covers."""
 
-DESCRIBE_SOURCE_ANY_SYSTEM = """You catalogue a student's course material.
+DESCRIBE_SOURCE_ANY_SYSTEM = """You sort files a student sends: course material gets filed, anything else
+gets read and talked about.
 Existing courses: {courses}.
-Read the start of a document and answer with strict JSON, nothing else:
+Read the start of the file and answer with strict JSON, nothing else:
 {{"course": "...", "title": "...", "kind": "...", "topics": ["...", "..."], "summary": "..."}}
-`course` is the exact title of the existing course this belongs to, or a short new course
-name (like "Bio 201") if none fits. `kind` is one of: {kinds}. `topics` is at most 10 short
-topic names. `summary` is 3 to 6 sentences describing what the document covers."""
+`kind` is one of: {kinds}. syllabus: a course syllabus (meeting times, grading, exam and
+assignment dates). code: source code or a config file. other: not course material at all (a
+personal document, a project brief, a plan, data). `course` is the exact title of the existing
+course this belongs to, or a short new course name (like "Bio 201") if none fits; for a
+syllabus use the course code and name from the file ("CSCI 1301 Intro to Computing"); "" when
+`kind` is code or other. `topics` is at most 10 short topic names. `summary` is 3 to 6 sentences
+describing what the file covers; for a syllabus include the instructor, office hours, grading
+weights, and the textbook if given."""
+
+SYLLABUS_HINT = """This is the syllabus for {course} (course slug: {slug}). Build the course from it the way you
+would a pasted schedule, all in this turn:
+- one `add_event` with `repeat_days` per distinct (meeting, days, time, room): lecture, lab,
+  discussion; `course` "{slug}", `end`, `location` with building, campus and city, `start` the
+  first meeting on or after today, `repeat_until` the last day of classes if the syllabus gives it;
+- one `add_event` with `kind` "exam" (or "quiz") and `course` "{slug}" per dated exam or quiz,
+  `topics` when stated, `location` the classroom;
+- one `add_todo` with `course` "{slug}", `due` and `due_time` per dated assignment, project,
+  paper, or homework (skip readings and anything with no date); priority 2;
+- skip anything the context already has for this course.
+Then `reply` in three short lines: what the course is and how it's graded, office hours if given,
+and what's missing (the last day of classes, an exam listed as TBA) so the user can answer.
+Dates with no year are this term's.
+
+--- syllabus ---
+{text}"""
+
+ATTACHMENT_HINT = """--- {name} ---
+{text}
+--- end of {name} ---"""
 
 PLAN_SYSTEM = """You plan study for a student who says they have not learned the material yet.
 Given the exam, the days left, the daily minute budget, and the course sources with page counts

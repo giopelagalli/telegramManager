@@ -197,6 +197,15 @@ async def _wrap(value):
     return value
 
 
+async def test_a_document_in_the_dm_is_downloaded():
+    handlers, bot, sender, router = _rig()
+    update = _document_update(chat_id=42, thread_id=None)
+    update.effective_chat.type = "private"
+    await handlers.on_document(update, None)
+    assert router.documents == [(b"%PDF", "ch4.pdf", "application/pdf", "chapter 4", Channel(42, None, "life"))]
+    assert bot.actions == [(42, "typing")]
+
+
 async def test_a_document_over_the_cap_is_not_downloaded():
     channels = Channels()
     channels.bind(Channel(-100, 45, "course", "cs101"))

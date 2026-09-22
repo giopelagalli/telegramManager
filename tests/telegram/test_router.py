@@ -322,9 +322,9 @@ async def test_docx_document_in_a_course_topic_is_ingested(rig):
 async def test_unreadable_document_is_kept_raw(rig):
     router, store, client, state, _ = rig
     store.add_course(Course(path="courses/cs101.md", title="Intro to CS"))
-    outs = await router.on_document(b"zipped", "data.zip", "application/zip", None, channel=COURSE)
+    outs = await router.on_document(b"PK\x03\x04zipped", "data.zip", "application/zip", None, channel=COURSE)
     assert outs[0].text == "Stored the file but couldn't read it."
-    assert (store.root / "sources/cs101/raw/data.zip").read_bytes() == b"zipped"
+    assert (store.root / "sources/cs101/raw/data.zip").read_bytes() == b"PK\x03\x04zipped"
     assert store.sources("cs101") == [] and client.calls == []
     assert _subject(store) == "ingest: data.zip"
 
@@ -340,6 +340,88 @@ async def test_document_in_the_dm_is_filed_under_an_inferred_course(rig, monkeyp
     assert [c.title for c in store.courses()] == ["Bio 201"]
     assert store.sources("bio-201")[0].title == "Chapter 3"
     assert "Existing courses: none yet" in client.calls[-1]["messages"][0]["content"]
+
+
+SYLLABUS = (
+    "CSCI 1301 Introduction to Computing, Fall 2026. Lecture Tue/Thu 9:30-10:45, Boyd 328. "
+    "Instructor: Dr. Lee, office hours Mon 2-3. Exam 1: Sep 13. Homework 1 due Sep 10 11:59pm. "
+    "Grading: exams 60%, homework 40%. Last day of classes Dec 8."
+)
+
+
+async def test_code_file_in_the_dm_is_read_and_stays_in_view(rig):
+    router, store, client, state, clock = rig
+    code = "def f():\n    return 1\n"
+    client.responses.append(R(("reply", {"text": "Returns 1. No bug."})))
+    outs = await router.on_document(code.encode(), "main.py", "text/x-python", "anything wrong here?")
+    assert outs[0].text == "Returns 1. No bug."
+    sent = client.calls[-1]["messages"][-1]["content"]  # one model call: no cataloguing for code
+    assert len(client.calls) == 1 and sent.startswith("[sent main.py] anything wrong here?") and code in sent
+    assert state.recent[0][1] == "[sent main.py] anything wrong here?"  # the thread keeps the line, not the file
+    assert store.courses() == [] and store.sources() == []
+
+    client.responses.append(R(("reply", {"text": "One int."})))
+    await router.on_text("what does it return?")
+    assert code in client.calls[-1]["messages"][-1]["content"]  # still in view for follow-ups
+
+    clock.advance(minutes=240)
+    client.responses.append(R(("reply", {"text": "Which file?"})))
+    await router.on_text("and now?")
+    assert code not in client.calls[-1]["messages"][-1]["content"] and state.last_file is None
+
+
+async def test_a_document_that_is_not_course_material_is_discussed_not_filed(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(ModelResponse(
+        '{"course": "", "title": "Engine brief", "kind": "other", "topics": [], "summary": "A project brief."}', []
+    ))
+    client.responses.append(R(("reply", {"text": "Sports first, then stocks. Makes sense."})))
+    outs = await router.on_document(b"# Context brief\nBuild the engine.", "brief.md", "text/markdown", None)
+    assert outs[0].text == "Sports first, then stocks. Makes sense."
+    assert store.courses() == [] and store.sources() == []
+    assert "Build the engine." in client.calls[-1]["messages"][-1]["content"]
+
+
+async def test_syllabus_in_the_dm_builds_the_course(rig, monkeypatch):
+    router, store, client, state, _ = rig
+    monkeypatch.setattr("bot.telegram.router._extract", lambda data, kind, name: [(1, SYLLABUS)])
+    client.responses.append(ModelResponse(
+        '{"course": "CSCI 1301 Intro to Computing", "title": "CSCI 1301 Syllabus", "kind": "syllabus",'
+        ' "topics": ["programming"], "summary": "Intro programming. Dr. Lee, office hours Mon 2-3. Exams 60%."}', []
+    ))
+    slug = "csci-1301-intro-to-computing"
+    client.responses.append(R(
+        ("add_event", {"title": "CSCI 1301 Lecture", "start": "2026-09-08T09:30:00-04:00",
+                       "end": "2026-09-08T10:45:00-04:00", "location": "Boyd 328, UGA, Athens GA",
+                       "repeat_days": ["TU", "TH"], "repeat_until": "2026-12-08", "course": slug}),
+        ("add_event", {"title": "CSCI 1301 Exam 1", "start": "2026-09-13T09:30:00-04:00", "kind": "exam", "course": slug}),
+        ("add_todo", {"title": "Homework 1", "priority": 2, "due": "2026-09-10", "due_time": "23:59", "course": slug}),
+        ("reply", {"text": "Intro programming, exams 60% homework 40%. Office hours Mon 2-3."}),
+    ))
+    client.responses.append(ModelResponse(
+        '{"days": [{"date": "2026-09-11", "minutes": 60, "task": "Read the syllabus topics"}], "advice": ""}', []
+    ))
+    outs = await router.on_document(b"%PDF", "syllabus.pdf", "application/pdf", None)
+    text = outs[0].text
+    assert text.startswith("Intro programming") and "Added weekly: CSCI 1301 Lecture Tu/Th" in text
+    assert "Added todo: Homework 1" in text and "Plan for CSCI 1301 Exam 1" in text
+    course = store.get_course(slug)
+    assert course.title == "CSCI 1301 Intro to Computing" and course.body.startswith("Intro programming")
+    assert [(s.kind, s.title) for s in store.sources(slug)] == [("syllabus", "CSCI 1301 Syllabus")]
+    assert [e.repeat_days for e in store.series()] == [["TU", "TH"]]
+    assert [t.course for t in store.todos() if t.title == "Homework 1"] == [slug]
+    prompt = client.calls[1]["messages"][-1]["content"]
+    assert f"course slug: {slug}" in prompt and "Boyd 328" in prompt
+    assert state.recent[0][1] == "[sent syllabus.pdf, the syllabus for CSCI 1301 Intro to Computing]"
+
+
+async def test_an_exam_far_out_is_not_planned_yet(rig):
+    router, store, client, state, _ = rig
+    client.responses.append(R(("add_event", {"title": "Final", "start": "2026-12-10T09:00:00-05:00", "kind": "exam"}),
+                              ("reply", {"text": "On the calendar."})))
+    outs = await router.on_text("final is dec 10 at 9")
+    assert "Final is 98 days out; I'll plan it when it's 21 days away." in outs[0].text
+    assert len(client.calls) == 1 and not [t for t in store.todos() if t.kind == "study"]
 
 
 async def test_study_tool_routes_a_dm_question_to_the_tutor(rig):

@@ -12,6 +12,8 @@ from bot.study.extract import (
     extract_pptx,
     extract_text,
     guess_kind,
+    is_plain_text,
+    looks_like_text,
     render_pages,
 )
 
@@ -72,6 +74,15 @@ def test_guess_kind():
     assert guess_kind("board.jpg", "") == "photo"
     assert guess_kind("board", "image/jpeg") == "photo"
     assert guess_kind("data.zip", "application/zip") == "other"
+    assert guess_kind("main.py", "") == "code" and guess_kind("", "application/json") == "code"
+    assert guess_kind("brief.md", "") == "notes" and guess_kind("data.csv", "text/csv") == "notes"
+
+
+def test_any_text_file_is_plain_text_and_unknown_bytes_are_sniffed():
+    assert is_plain_text("notes.tex", "") and is_plain_text("x.py", "") and is_plain_text("readme", "text/x-readme")
+    assert not is_plain_text("data.zip", "application/zip")
+    assert looks_like_text(b"just words\nand lines\n")
+    assert not looks_like_text(b"PK\x03\x04zipped") and not looks_like_text(b"") and not looks_like_text(b"\xff\xfe")
 
 
 def _doc(paragraphs: list[str]) -> bytes:

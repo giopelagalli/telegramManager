@@ -16,7 +16,14 @@ PDF_MIMES = ("application/pdf",)
 PPTX_MIMES = ("application/vnd.openxmlformats-officedocument.presentationml.presentation",)
 DOCX_MIMES = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document",)
 TEXT_MIMES = ("text/plain", "text/markdown", "text/x-markdown")
-_TEXT_SUFFIXES = (".txt", ".md")
+_TEXT_SUFFIXES = (".txt", ".md", ".markdown", ".rst", ".tex", ".csv", ".tsv", ".log")
+CODE_MIMES = ("application/json", "application/x-python", "application/x-sh", "application/xml",
+              "application/x-yaml", "application/javascript", "application/typescript")
+_CODE_SUFFIXES = (
+    ".py", ".ipynb", ".js", ".jsx", ".ts", ".tsx", ".java", ".kt", ".c", ".h", ".cpp", ".hpp", ".cc",
+    ".cs", ".go", ".rs", ".rb", ".php", ".swift", ".scala", ".lua", ".r", ".m", ".sh", ".bash", ".zsh",
+    ".sql", ".html", ".css", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".xml", ".env",
+)
 _IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")
 _DOCX_PARAGRAPHS_PER_CHUNK = 40
 
@@ -52,8 +59,24 @@ def extract_docx(data: bytes) -> list[tuple[int, str]]:
     return chunks
 
 
+def is_code(filename: str, mime: str) -> bool:
+    return Path((filename or "").lower()).suffix in _CODE_SUFFIXES or (mime or "").lower() in CODE_MIMES
+
+
 def is_plain_text(filename: str, mime: str) -> bool:
-    return Path((filename or "").lower()).suffix in _TEXT_SUFFIXES or (mime or "").lower() in TEXT_MIMES
+    """Anything that is its own text: notes, data, code. `text/*` mimes count whatever the name."""
+    suffix = Path((filename or "").lower()).suffix
+    mime = (mime or "").lower()
+    return suffix in _TEXT_SUFFIXES or mime in TEXT_MIMES or mime.startswith("text/") or is_code(filename, mime)
+
+
+def looks_like_text(data: bytes) -> bool:
+    """An unknown file that decodes as UTF-8 with no control bytes is text, whatever it's called."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return bool(text.strip()) and not any(ord(ch) < 32 and ch not in "\t\n\r" for ch in text)
 
 
 def extract_text(data: bytes) -> str:
@@ -74,6 +97,8 @@ def guess_kind(filename: str, mime: str) -> str:
         return "slides"
     if name.endswith(".pdf") or mime in PDF_MIMES:
         return "chapter"
+    if is_code(name, mime):
+        return "code"
     if name.endswith(".docx") or mime in DOCX_MIMES or is_plain_text(name, mime):
         return "notes"
     if mime.startswith("image/") or Path(name).suffix in _IMAGE_SUFFIXES:

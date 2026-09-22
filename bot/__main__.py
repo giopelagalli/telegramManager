@@ -159,7 +159,7 @@ def main() -> None:
         hub=AgentHubStatus(settings.agenthub_url, settings.agenthub_password) if settings.agenthub_url else None,
     )
     router = Router(store, agent, state, clock, maps, search=search, index=index, cluster=cluster)
-    engine = Engine(store, agent, state, state_path, clock, sender, maps)
+    engine = Engine(store, agent, state, state_path, clock, sender, maps, search=search)
 
     application = build_application(settings, router, sender, _transcriber(settings))
     sender.bot = application.bot

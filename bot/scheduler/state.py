@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 # Only these keys carry the day they belong to. Event keys embed the file's
 # creation date, which says nothing about when the job fires.
-_DAY_KEY_PREFIXES = ("checkin:", "morning:", "evening:", "reflect:", "track:")
+_DAY_KEY_PREFIXES = ("checkin:", "morning:", "evening:", "reflect:", "track:", "plans:")
 
 
 @dataclass
@@ -138,6 +138,7 @@ class RuntimeState:
     backend_down: bool = False  # the primary (Spark) model is unreachable; running on the backup
     last_location: dict | None = None  # {"lat", "lng", "at": ISO} — the last location he shared
     pending_schedule: dict | None = None  # /schedule is waiting for typed details: {mode, day|path}
+    last_file: dict | None = None  # {"name", "text", "at": ISO} — the last file he sent to talk about
     review: dict | None = None  # an open recall session: queue, current, right, again
     recent: list = field(default_factory=list)  # last few [role, text] exchanges, capped
 
@@ -158,6 +159,7 @@ class RuntimeState:
             "backend_down": self.backend_down,
             "last_location": self.last_location,
             "pending_schedule": self.pending_schedule,
+            "last_file": self.last_file,
             "review": self.review,
             "recent": [list(x) for x in self.recent],
         }
@@ -184,6 +186,7 @@ class RuntimeState:
                 backend_down=bool(data.get("backend_down", False)),
                 last_location=data.get("last_location"),
                 pending_schedule=data.get("pending_schedule"),
+                last_file=data.get("last_file"),
                 review=data.get("review"),
                 recent=[list(x) for x in data.get("recent", [])],
             )

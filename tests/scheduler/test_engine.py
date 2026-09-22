@@ -172,3 +172,24 @@ async def test_engine_announces_the_spark_going_down_and_coming_back(rig):
     eng.agent.client.up = True
     clock.advance(seconds=61); await eng.tick()
     assert [o.text for o in sink.sent if "Spark" in o.text][-1] == "Spark's back." and not state.backend_down
+
+
+async def test_an_exam_entering_the_horizon_is_planned_in_the_morning(rig):
+    eng, clock, sink, state, store = rig
+    store.add(Event(path="", title="CS101 Midterm", start=T(10) + timedelta(days=21), kind="exam", course="cs101"))
+    store.commit("exam")
+    for d in ("2026-09-03", "2026-09-04"):
+        state.fired.add(f"morning:{d}")
+    eng.agent.client.responses.append(ModelResponse(
+        '{"days": [{"date": "2026-09-04", "minutes": 45, "task": "Read chapter 1"}], "advice": "Start now."}', []
+    ))
+    await eng.tick()  # 07:00: too early
+    assert not [o for o in sink.sent if o.kind == "plan"]
+    clock.set(T(8, 5))
+    await eng.tick()
+    plans = [o for o in sink.sent if o.kind == "plan"]
+    assert len(plans) == 1 and "Plan for CS101 Midterm" in plans[0].text and "21 days" in plans[0].text
+    assert [t.due for t in store.todos() if t.kind == "study"] == [date(2026, 9, 4)]
+    clock.set(T(8, 5) + timedelta(days=1))
+    await eng.tick()  # planned already: nothing more, and no model call
+    assert len([o for o in sink.sent if o.kind == "plan"]) == 1 and eng.agent.client.responses == []

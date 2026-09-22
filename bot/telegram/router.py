@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
-from bot.agent.prompts import build_context
+from bot.agent.prompts import ATTACHMENT_HINT, SYLLABUS_HINT, build_context
 from bot.knowledge.models import Todo, UNBOUND, Channel, Course, Source, channel_key, slugify
 from bot.knowledge.views import esc, render_week
 from bot.maps.client import directions_url, distance_m
@@ -28,8 +28,10 @@ from bot.study.extract import (
     extract_text,
     guess_kind,
     is_plain_text,
+    looks_like_text,
     render_pages,
 )
+from bot.study import plans
 from bot.study.select import select_sources
 from bot.telegram import callbacks, commands, courses_ui, notes_ui, schedule_ui, todo_ui
 from bot.telegram.markdown import md_to_html
@@ -41,6 +43,8 @@ VERIFY_RADIUS_M = 200
 NOTE_TITLE_CHARS = 60
 MAX_COURSE_TOPICS = 50
 NOTE_SUMMARY_CHARS = 300
+ATTACHMENT_CHARS = 40_000  # of a sent file the model gets to read
+FILE_FRESH = timedelta(hours=3)  # how long a sent file stays in view for follow-up questions
 UNREADABLE_REPLY = "Stored the file but couldn't read it."
 TUTOR_OFFLINE_REPLY = "Can't reach the model for that right now. Try again in a bit."
 COURSE_GONE_REPLY = "This topic's course file is gone; /bind again."
@@ -331,6 +335,9 @@ class Router:
         kind = guess_kind(filename, mime)
         if kind == "photo":
             return await self._ingest_photo(data, caption, channel)
+        if kind == "code" and not _is_course(channel):
+            # Code sent in the DM is something to talk about, not to file.
+            return await self._discuss_file(filename, extract_text(data), caption)
 
         if is_plain_text(filename, mime):
             pages, body = None, extract_text(data)
@@ -338,14 +345,27 @@ class Router:
             pages = _extract(data, kind, filename)
             marker = SLIDE_MARKER if kind == "slides" else PART_MARKER if kind == "notes" else PAGE_MARKER
             body = render_pages(pages, marker) if pages else ""
+            if not body and kind == "other" and looks_like_text(data):
+                body = extract_text(data)  # an unknown extension that is just text
         if not body.strip():
             self.store.keep_raw(channel.course if _is_course(channel) else "unsorted", filename, data)
             self.store.commit(f"ingest: {filename}")
             return [Outbound(esc(UNREADABLE_REPLY), kind="reply")]
 
-        course, described = await self._describe_and_file(body, filename, channel)
-        if course is None:
-            return [Outbound(esc(COURSE_GONE_REPLY), kind="reply")]
+        if _is_course(channel):
+            course, described = await self._describe_and_file(body, filename, channel)
+            if course is None:
+                return [Outbound(esc(COURSE_GONE_REPLY), kind="reply")]
+        else:
+            # The DM: the model says what the file is. Only course material gets filed; a
+            # syllabus builds its course; anything else gets read and talked about.
+            titles = [c.title for c in self.store.courses()]
+            described = await self.agent.describe_source(body, filename, None, titles)
+            if described["kind"] in ("code", "other"):
+                return await self._discuss_file(filename, body, caption)
+            course = self._course_named(described.get("course") or "General")
+            if described["kind"] == "syllabus":
+                return await self._syllabus(course, described, body, filename, pages, caption)
         source = Source(
             path="",
             title=described["title"],
@@ -357,6 +377,55 @@ class Router:
             body=body,
         )
         return [self._store_source(source, course)]
+
+    async def _discuss_file(self, filename: str, body: str, caption: str | None) -> list[Outbound]:
+        """A file that isn't course material: read it and talk about it, like a photo."""
+        now = self.clock.now()
+        close_chain(self.state)
+        sent = f"[sent {filename}]"
+        text = f"{sent} {caption}".strip() if caption else sent
+        return await self._capture(text, None, False, now, attachment=(filename, body))
+
+    async def _syllabus(
+        self, course: Course, described: dict, body: str, filename: str, pages, caption: str | None
+    ) -> list[Outbound]:
+        """A syllabus builds its course: the file is kept as a source, the course page gets the
+        summary, and meetings, exams and dated work go in through the normal capture tools."""
+        source = Source(
+            path="",
+            title=described["title"],
+            course=course.slug,
+            kind="syllabus",
+            topics=described["topics"],
+            summary=described["summary"],
+            pages=len(pages) if pages else None,
+            body=body,
+        )
+        self.store.add_source(source)
+        self._merge_topics(course, source.topics)
+        if described["summary"] and not course.body.strip():
+            course.body = described["summary"]
+            self.store.save_course(course)
+        self.store.commit(f"ingest: {source.title}")
+        now = self.clock.now()
+        close_chain(self.state)
+        text = f"[sent {filename}, the syllabus for {course.title}]" + (f" {caption}" if caption else "")
+        prompt = SYLLABUS_HINT.format(course=course.title, slug=course.slug, text=body[:ATTACHMENT_CHARS])
+        return await self._capture(text, None, False, now, attachment=(filename, body), prompt=prompt)
+
+    def _file_in_view(self, now) -> dict | None:
+        """The last file he sent, while it's fresh: follow-up questions are about it."""
+        last = self.state.last_file
+        if not last:
+            return None
+        try:
+            fresh = now - datetime.fromisoformat(last["at"]) <= FILE_FRESH
+        except (KeyError, ValueError, TypeError):
+            fresh = False
+        if not fresh:
+            self.state.last_file = None
+            return None
+        return last
 
     async def _ingest_photo(
         self, image: bytes, caption: str | None, channel: Channel, kind: str | None = None
@@ -478,40 +547,19 @@ class Router:
         return [out] if out else []
 
     async def _plan_new_exams(self, actions: list[ToolCall], now) -> list[str]:
-        """A new exam gets a day-by-day plan and one study todo per day."""
+        """A new exam inside the horizon gets a day-by-day plan and one study todo per day; a
+        far one (a syllabus lists the whole semester) is planned the morning it gets close."""
         lines: list[str] = []
         for action in actions:
             if action.name != "add_event" or action.arguments.get("kind") not in ("exam", "quiz"):
                 continue
             exam = self._event_of(action)
-            if exam is None:
+            if exam is None or plans.days_left(exam, now) < 1:
                 continue
-            days_left = (exam.start.date() - now.date()).days
-            if days_left < 1:
+            if plans.days_left(exam, now) > plans.PLAN_HORIZON_DAYS:
+                lines.append(plans.later_line(exam, now))
                 continue
-            profile = self.store.profile()
-            sources = self.store.sources(exam.course) if exam.course else self.store.sources()
-            lookup = None
-            if not sources and self.search is not None:
-                course_title = next((c.title for c in self.store.courses() if c.slug == exam.course), exam.course or "")
-                lookup = await self.search.search(f"{course_title} {' '.join(exam.topics)} key concepts syllabus".strip())
-            plan = await self.agent.plan_exam(exam, sources, days_left, profile.study_daily_minutes, lookup=lookup)
-            if plan is None or not plan["days"]:
-                lines.append(esc(f"{days_left} days until {exam.title}. Couldn't draft a plan right now; ask me again in a bit."))
-                continue
-            total = 0
-            for d in plan["days"]:
-                if d["date"] < now.date() or d["date"] >= exam.start.date():
-                    continue
-                self.store.add(Todo(path="", title=f"Study: {d['task'][:80]}", priority=1, due=d["date"],
-                                    course=exam.course, kind="study"))
-                total += d["minutes"]
-            self.store.commit(f"plan: {exam.title}")
-            per_day = round(total / max(1, len(plan["days"])))
-            head = f"<b>Plan for {esc(exam.title)}</b> — {days_left} days, about {per_day} min/day"
-            body = "\n".join(f"{d['date']:%a %b %d}: {esc(d['task'])} ({d['minutes']} min)" for d in plan["days"])
-            advice = md_to_html(plan["advice"]) if plan["advice"] else ""
-            lines.append("\n".join(x for x in (head, body, advice) if x))
+            lines.append(await plans.plan_exam(self.store, self.agent, exam, now, search=self.search))
         return lines
 
     async def _recall(self, query: str) -> list[str]:
@@ -692,7 +740,13 @@ class Router:
             logger.exception("recall before capture failed")
             return []
 
-    async def _capture(self, text: str, awaiting: str | None, via_voice: bool, now, client=None) -> list[Outbound]:
+    async def _capture(
+        self, text: str, awaiting: str | None, via_voice: bool, now, client=None,
+        *, attachment: tuple[str, str] | None = None, prompt: str | None = None,
+    ) -> list[Outbound]:
+        """`text` is what gets remembered and recalled on; `attachment` (name, body) is a file
+        he just sent, read by the model now and kept in view for a while; `prompt` replaces the
+        model's copy of the message when the file comes with its own instructions."""
         pending_schedule = self.state.pending_schedule
         if pending_schedule and pending_schedule.get("mode") == "add_course":
             # No model needed: the name is the whole input.
@@ -707,6 +761,14 @@ class Router:
             model_text = ui.hint(pending_schedule, text)
         else:
             model_text = text
+        if attachment is not None:
+            name, body = attachment
+            self.state.last_file = {"name": name, "text": body[:ATTACHMENT_CHARS], "at": now.isoformat()}
+        shown = self._file_in_view(now)
+        if prompt is not None:
+            model_text = prompt
+        elif shown is not None:
+            model_text += "\n\n" + ATTACHMENT_HINT.format(name=shown["name"], text=shown["text"])
         result = await self.agent.capture(
             model_text, awaiting=awaiting, recent=self._thread(), recalled=await self._recalled(text), client=client
         )

@@ -141,8 +141,8 @@ class Handlers:
         message = update.effective_message
         document = message.document
         channel = self._channel(update)
-        if channel is None or channel.kind != "course":
-            # Only a course topic ingests files; nothing else reads the bytes.
+        if channel is None or channel.kind not in ("life", "course"):
+            # The DM and course topics read files; an unbound topic gets its one warning.
             await self._send(await self.router.on_document(b"", "", "", None, channel=channel))
             return
         if _too_large(getattr(document, "file_size", None)):

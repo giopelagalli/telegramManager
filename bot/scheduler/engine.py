@@ -7,6 +7,7 @@ from pathlib import Path
 
 from bot.scheduler.checkins import due_sprint
 from bot.scheduler import briefings, chains, checkins, critical, reflect, review, trackers
+from bot.study import plans
 from bot.scheduler.budget import budget_ok, record_send
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import LATE_WINDOW, MISSED_AFTER, due_reminders
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 PENDING_VERIFY_TTL = timedelta(minutes=10)
 SENT_TIMES_CAP = 200
+PLANS_AFTER_HOUR = 8  # exam plans are drafted in the morning, not at midnight
 BACKEND_PROBE_EVERY = timedelta(seconds=60)
 SPARK_DOWN_TEXT = (
     "Spark's down. Running on the backup until it's back — same as /hard, so everything works "
@@ -26,7 +28,7 @@ SPARK_UP_TEXT = "Spark's back."
 class Engine:
     """Runs one deterministic pass over every scheduled job per tick."""
 
-    def __init__(self, store, agent, state, state_path: Path, clock, sender, maps):
+    def __init__(self, store, agent, state, state_path: Path, clock, sender, maps, search=None):
         self.store = store
         self.agent = agent
         self.state = state
@@ -34,6 +36,7 @@ class Engine:
         self.clock = clock
         self.sender = sender
         self.maps = maps
+        self.search = search
         self.sent_times: list[datetime] = []
         self._last_probe: datetime | None = None
 
@@ -65,6 +68,7 @@ class Engine:
             self._sprint,
             self._critical_leave,
             self._briefings,
+            self._plans,
             self._reflect,
             self._checkin,
             self._followup,
@@ -156,6 +160,18 @@ class Engine:
     async def _briefings(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await briefings.due_briefings(now, self.store, self.state, self.agent):
             await self._send(out, now, sent)
+
+    async def _plans(self, now: datetime, sent: list[Outbound]) -> None:
+        """An exam entering the study horizon gets its plan, once a day, in the morning."""
+        key = f"plans:{now.date()}"
+        if key in self.state.fired or now.hour < PLANS_AFTER_HOUR:
+            return
+        if self.state.pause_until is not None and now < self.state.pause_until:
+            return
+        self.state.fired.add(key)
+        for exam in plans.entering_horizon(self.store, now):
+            text = await plans.plan_exam(self.store, self.agent, exam, now, search=self.search)
+            await self._send(Outbound(text, kind="plan"), now, sent)
 
     async def _reflect(self, now: datetime, sent: list[Outbound]) -> None:
         out = reflect.due_reflection(now, self.store, self.state, self.agent)
