@@ -12,10 +12,6 @@ from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import is_due
 from bot.memory.thread import thread, user_turns
 from bot.scheduler.state import Chain, RuntimeState
-from bot.telegram.markdown import md_to_html
-
-_FALLBACK_PROSE = "Have a good one."
-
 
 def briefing_time(profile: Profile, state: RuntimeState, day: date, which: str) -> datetime:
     override = state.briefing_override.get(f"{which}:{day}")
@@ -70,8 +66,6 @@ def evening_text(store: KnowledgeStore, now: datetime) -> tuple[str, list[tuple[
     unconfirmed = [
         t for t in todos if t.status == "done" and not t.confirmed and t.done_at and t.done_at.date() == today
     ]
-    missed_today = [e for e in events if e.start.date() == today and e.status == "missed"]
-
     lines = ["<b>Evening wrap-up</b>"]
 
     if done_today:
@@ -94,12 +88,6 @@ def evening_text(store: KnowledgeStore, now: datetime) -> tuple[str, list[tuple[
         lines.append("Unconfirmed:")
         for t in unconfirmed:
             lines.append(f"• {esc(t.title)}")
-
-    if missed_today:
-        lines.append("")
-        lines.append("Missed today:")
-        for e in missed_today:
-            lines.append(f"• {esc(e.title)}")
 
     starving = _starving_goals(store.goals(), todos, today)
     if starving:
@@ -138,11 +126,6 @@ def _chain_item(store: KnowledgeStore, day: date) -> str:
     return (slipped[0].title if slipped else None) or (top_todos[0].title if top_todos else None) or ""
 
 
-async def _compose_prose(store: KnowledgeStore, now: datetime, agent) -> str:
-    context = agent.context(now)
-    return await agent.compose("briefing", context, _FALLBACK_PROSE)
-
-
 # Set by the entrypoint: an object with `async line(latlng) -> str | None` (see bot/weather.py).
 WEATHER = None
 
@@ -172,10 +155,10 @@ async def morning_outbound(store: KnowledgeStore, now: datetime, agent, note: st
 
 
 async def evening_outbound(store: KnowledgeStore, now: datetime, agent, notes: list[str] | None = None) -> Outbound:
+    # Deterministic on purpose: a composed line repeated tomorrow's plan and nagged about food.
+    # Nightly notes are written quietly, not read back.
     body, buttons = evening_text(store, now)
-    prose = await _compose_prose(store, now, agent)
-    text = f"{body}\n\n{md_to_html(prose)}"  # nightly notes are written quietly, not read back
-    return Outbound(text, voice=store.profile().voice_on_proactive, buttons=buttons, kind="briefing")
+    return Outbound(body, voice=store.profile().voice_on_proactive, buttons=buttons, kind="briefing")
 
 
 async def nightly_notes(store: KnowledgeStore, state: RuntimeState, now: datetime, agent) -> list[str]:

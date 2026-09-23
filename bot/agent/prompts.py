@@ -289,7 +289,7 @@ def build_context(store, now: datetime, awaiting: str | None = None, minimal: bo
         lines.append("- none")
 
     eaten = store.food(now.date()) if hasattr(store, "food") else []
-    if eaten or profile.calorie_target:
+    if eaten:  # a target alone is not a reason to bring food up
         from bot.agent.agent import food_totals
         lines.append(f"Food today: {food_totals(eaten, profile).replace(' / ', ' of ')}" + (
             " — " + "; ".join(f"{f['item']} {f['kcal']}" for f in eaten) if eaten else ""))

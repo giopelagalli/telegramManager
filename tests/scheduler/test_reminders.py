@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import pytest
-from bot.knowledge.models import Event, Profile
+from bot.knowledge.models import Event, Profile, Todo
 from bot.knowledge.store import KnowledgeStore
 from bot.scheduler.state import RuntimeState
 from bot.scheduler.reminders import is_due, due_reminders, LATE_WINDOW
@@ -81,3 +81,26 @@ async def test_leave_reminder_links_directions_when_there_is_a_place(store):
     out = await due_reminders(T(17, 35), store, s, None)
     leave = [o for o in out if o.text.startswith("Leave")][0]
     assert 'href="https://www.google.com/maps/dir/?api=1&destination=Equinox%20Bond%20St&travelmode=driving"' in leave.text
+
+
+async def test_deadline_reminders_an_hour_and_half_an_hour_before_while_open(store):
+    from datetime import date
+    path = store.add(Todo(path="", title="Homework 1", priority=2, due=date(2026, 9, 4), due_time="18:00")); store.commit("t")
+    s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
+    assert await due_reminders(T(16, 59), store, s, None) == []
+    out = await due_reminders(T(17), store, s, None)
+    assert [o.text for o in out] == ["Homework 1 is due at 6:00pm, an hour from now."]
+    assert out[0].kind == "reminder" and out[0].buttons == [("✅ Done", f"done:{path}")]
+    assert await due_reminders(T(17, 1), store, s, None) == []
+    out = await due_reminders(T(17, 30), store, s, None)
+    assert [o.text for o in out] == ["Homework 1 is due at 6:00pm, 30 minutes from now."]
+
+
+async def test_no_deadline_reminder_once_done_or_without_a_time(store):
+    from datetime import date
+    todo = Todo(path="", title="Homework 1", priority=2, due=date(2026, 9, 4), due_time="18:00")
+    store.add(todo); store.add(Todo(path="", title="Dateless", priority=2, due=date(2026, 9, 4))); store.commit("t")
+    s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
+    assert len(await due_reminders(T(17), store, s, None)) == 1
+    todo.status = "done"; store.save(todo)
+    assert await due_reminders(T(17, 30), store, s, None) == []

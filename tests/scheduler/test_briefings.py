@@ -42,6 +42,13 @@ def test_evening_text_sections_and_buttons(store):
     assert "Slipped" in text and "unconfirmed" in text.lower() and "Doctor" in text and "9:00am" in text
     assert buttons and buttons[0][1].startswith("defer:")
 
+
+def test_evening_does_not_call_unconfirmed_events_missed(store):
+    gym = next(e for e in store.events() if e.title == "Gym")
+    gym.status = "missed"; store.save(gym); store.commit("passed")  # what the scheduler does 15 min after start
+    text, _ = evening_text(store, T(21))
+    assert "Missed" not in text and "Gym" not in text
+
 def test_evening_escapes_tomorrow_title(store):
     store.add(Event(path="", title="Dinner & <Sam>", start=T(7, d=4), travel_minutes=10))
     store.commit("tomorrow event")
@@ -71,32 +78,11 @@ async def test_due_briefings_fire_once_and_open_chain(store):
     out = await due_briefings(T(21), store, s, FakeAgent())
     assert len(out) == 1 and out[0].buttons
 
-async def test_composed_prose_is_escaped(store):
-    class HtmlAgent:
-        def context(self, now, awaiting=None, remote=False): return "ctx"
-        async def compose(self, kind, context, fallback): return "Watch out <b>now</b>."
+async def test_evening_has_no_composed_prose_and_one_tomorrow(store):
     s = RuntimeState.load(Path("/nonexistent"))
-    out = (await due_briefings(T(21), store, s, HtmlAgent()))[0]  # the evening still carries a composed line
-    assert "&lt;b&gt;" in out.text and "<b>now</b>" not in out.text
-
-
-async def test_evening_escapes_composed_prose(store):
-    class Sharp:
-        def context(self, now, awaiting=None, remote=False): return "ctx"
-        async def compose(self, kind, context, fallback): return "<Dune> & rest"
-
-    s = RuntimeState.load(Path("/nonexistent"))
-    out = await due_briefings(T(21), store, s, Sharp())
-    assert out and out[-1].text.endswith("&lt;Dune&gt; &amp; rest")
-
-
-async def test_composed_prose_markdown_bold(store):
-    class MdAgent:
-        def context(self, now, awaiting=None, remote=False): return "ctx"
-        async def compose(self, kind, context, fallback): return "**Nice work**"
-    s = RuntimeState.load(Path("/nonexistent"))
-    out = (await due_briefings(T(21), store, s, MdAgent()))[0]
-    assert "<b>Nice work</b>" in out.text
+    out = (await due_briefings(T(21), store, s, FakeAgent()))[0]
+    assert "Make it count." not in out.text and out.text.count("Tomorrow:") == 1
+    assert out.text.endswith("Tomorrow: Doctor at 9:30am — get ready 9:00am, leave by 9:15am.")
 
 
 async def test_morning_includes_weather_line_when_home_is_set(store, monkeypatch):

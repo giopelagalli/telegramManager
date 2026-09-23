@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from bot.knowledge.models import hm_to_time
 from bot.knowledge.store import KnowledgeStore
 from bot.knowledge.views import esc, fmt_time
 from bot.maps.client import directions_url
@@ -11,6 +12,7 @@ from bot.scheduler.state import CriticalLeaveState, RuntimeState
 
 LATE_WINDOW = timedelta(minutes=15)
 MISSED_AFTER = timedelta(minutes=15)
+DEADLINE_LEADS = ((60, "an hour"), (30, "30 minutes"))  # before a todo's due time
 
 
 class MapsClient(Protocol):
@@ -75,6 +77,22 @@ async def due_reminders(
             ev.status = "missed"
             store.save(ev)
             store.commit("event missed")
+
+    for todo in store.todos():
+        if todo.status != "open" or todo.due is None or not todo.due_time:
+            continue
+        due_at = datetime.combine(todo.due, hm_to_time(todo.due_time), tzinfo=profile.tz)
+        for minutes, left in DEADLINE_LEADS:
+            # The due time is in the key, so a moved deadline gets its own reminders.
+            key = f"due{minutes}:{todo.path}@{due_at:%Y-%m-%dT%H:%M}"
+            if is_due(key, due_at - timedelta(minutes=minutes), now, state):
+                out.append(
+                    Outbound(
+                        text=f"{esc(todo.title)} is due at {fmt_time(due_at)}, {left} from now.",
+                        buttons=[("✅ Done", f"done:{todo.path}")],
+                        kind="reminder",
+                    )
+                )
 
     return out
 
