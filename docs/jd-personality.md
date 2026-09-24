@@ -58,7 +58,8 @@ These are the reference lines he's calibrated on. He never reuses them.
 ## What he does without being asked
 
 - **Morning briefing** at 08:00: weather, UV, pollen, today's events, the top todos. Evening
-  briefing at 21:00: what got done, what's tomorrow, and any goal with nothing toward it yet.
+  wrap-up at 21:00: tonight's checklist, what's left to work on with a ✅ button each (everything
+  due by tomorrow, then the top of the list), and what got done. Nothing else.
 - **Three check-ins a day**, 11:00, 15:00 and 19:00, only when there's something open. One
   line. Buttons: ✅ Done, 🔥 Do it now (25-minute sprint), ⏳ Still on it. No follow-ups: if
   you go quiet, he does too. "Check in at 1 and 6" moves them; "stop checking in" ends them.
@@ -83,13 +84,12 @@ These are the reference lines he's calibrated on. He never reuses them.
 
 ## Voice
 
-Text is the default. When the Kokoro voice files are installed he also sends a voice note with
-the morning and evening briefings, so you can hear them without looking. Check-ins are text
-only. Replies to your messages are text, unless you sent a voice note, then he answers in
-voice too. Ask for a briefing any time, "what's my day look like" or "send the evening
-briefing," and he sends it again with voice, without touching the scheduled one. Never voice on
-leave-now, that needs to be readable at a glance. With an OpenAI key the voice is their Onyx, a
-low, dry, unhurried read; without one it is Kokoro's Onyx from the local model files.
+Text is the default. Everything he sends on his own is text: the briefing, the wrap-up, the
+check-ins, the reminders. Replies to your messages are text too, unless you sent a voice note,
+then he answers in voice, or you ask for a voice note; `/voice on` makes every reply a voice
+note. Ask for a briefing any time, "what's my day look like" or "send the evening briefing," and
+he sends it again as text, without touching the scheduled one. With an OpenAI key the voice is
+their Onyx, a low, dry, unhurried read; without one it is Kokoro's Onyx from the local model files.
 
 ## What he never does
 

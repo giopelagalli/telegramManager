@@ -547,7 +547,6 @@ class Profile:
     calorie_target: int = 0  # 0 = not set
     protein_target: int = 0
     critical_leave_cap_minutes: int = 20
-    voice_on_proactive: bool = True
     voice_reply_mode: str = "on_voice"
     tutor_context_chars: int = 150000
     tutor_context_chars_fallback: int = 40000
@@ -599,7 +598,6 @@ class Profile:
             "calorie_target": self.calorie_target,
             "protein_target": self.protein_target,
             "critical_leave_cap_minutes": self.critical_leave_cap_minutes,
-            "voice_on_proactive": self.voice_on_proactive,
             "voice_reply_mode": self.voice_reply_mode,
             "tutor_context_chars": self.tutor_context_chars,
             "tutor_context_chars_fallback": self.tutor_context_chars_fallback,

@@ -37,10 +37,42 @@ def test_morning_text(store):
     t = morning_text(store, T(8))
     assert t.startswith("<b>Good morning, Giovanni.</b>") and "Gym" in t and "leave by <b>5:40pm</b>" in t and "Health week" in t
 
-def test_evening_text_sections_and_buttons(store):
+def test_evening_is_a_checklist_with_done_buttons(store):
+    store.add(Todo(path="", title="Read & <write>", due=date(2026, 9, 4), due_time="23:59"))
+    store.commit("due tomorrow")
     text, buttons = evening_text(store, T(21))
-    assert "Slipped" in text and "unconfirmed" in text.lower() and "Doctor" in text and "9:00am" in text
-    assert buttons and buttons[0][1].startswith("defer:")
+    assert text.splitlines()[:2] == ["<b>Evening wrap-up</b>", "Todo:"]
+    assert "• ⚠️ Slipped — due Wed Sep 2" in text
+    assert "• Read &amp; &lt;write&gt; — due Fri Sep 4, 11:59pm" in text and "Read & <write>" not in text
+    assert text.endswith("\nDone:\n• Done today (unconfirmed)")
+    assert [label for label, _ in buttons] == ["✅ Slipped", "✅ Read & <write>"]
+    assert all(data.startswith("done:") for _, data in buttons)
+
+
+def test_evening_is_nothing_but_the_checklist(store):
+    # No tomorrow line (leave-by reminders cover getting to class), no goal nag, no slipped section.
+    text, _ = evening_text(store, T(21))
+    assert "Tomorrow" not in text and "Doctor" not in text
+    assert "Nothing toward" not in text and "Slipped:" not in text and "Nothing marked done" not in text
+
+
+def test_evening_lists_everything_due_by_tomorrow_then_fills_to_five(store):
+    for i in range(6):
+        store.add(Todo(path="", title=f"Study: day {i}", priority=1, due=date(2026, 9, 10 + i), kind="study"))
+    store.add(Todo(path="", title="Essay", priority=3, due=date(2026, 9, 4)))
+    store.add(Todo(path="", title="Quiz prep", priority=3, due=date(2026, 9, 3)))
+    store.commit("a busy week")
+    text, buttons = evening_text(store, T(21))
+    todo = text.split("Done:")[0]
+    assert "Slipped" in todo and "Quiz prep" in todo and "Essay" in todo  # due by tomorrow, whatever the priority
+    assert todo.count("• ") == 5 and "Study: day 1" in todo and "Study: day 2" not in todo
+    assert len(buttons) == 5
+
+
+def test_evening_with_nothing_on_the_list(tmp_path):
+    s = KnowledgeStore(tmp_path / "k", clock=lambda: T(8)); s.init()
+    text, buttons = evening_text(s, T(21))
+    assert text == "<b>Evening wrap-up</b>\nNothing on your list." and buttons == []
 
 
 def test_evening_does_not_call_unconfirmed_events_missed(store):
@@ -48,13 +80,6 @@ def test_evening_does_not_call_unconfirmed_events_missed(store):
     gym.status = "missed"; store.save(gym); store.commit("passed")  # what the scheduler does 15 min after start
     text, _ = evening_text(store, T(21))
     assert "Missed" not in text and "Gym" not in text
-
-def test_evening_escapes_tomorrow_title(store):
-    store.add(Event(path="", title="Dinner & <Sam>", start=T(7, d=4), travel_minutes=10))
-    store.commit("tomorrow event")
-    text, _ = evening_text(store, T(21))
-    assert "Dinner &amp; &lt;Sam&gt;" in text
-    assert "Dinner & <Sam>" not in text
 
 def test_morning_warns_about_broken_files(store):
     # "---\ntype: todo\n:::" without a closing delimiter isn't parsed as
@@ -70,7 +95,7 @@ async def test_due_briefings_fire_once_and_open_chain(store):
     s = RuntimeState.load(Path("/nonexistent"))
     assert await due_briefings(T(7, 59), store, s, FakeAgent()) == []
     out = await due_briefings(T(8), store, s, FakeAgent())
-    assert len(out) == 1 and out[0].kind == "briefing" and out[0].voice and "Make it count." not in out[0].text
+    assert len(out) == 1 and out[0].kind == "briefing" and not out[0].voice and "Make it count." not in out[0].text
     assert "<b>Thursday, September 3</b>" in out[0].text and "<b>Goals</b>" in out[0].text
     assert len(out[0].buttons) == 1 and out[0].buttons[0][1].startswith("done:")
     assert s.chain and s.chain.kind == "briefing"
@@ -78,11 +103,10 @@ async def test_due_briefings_fire_once_and_open_chain(store):
     out = await due_briefings(T(21), store, s, FakeAgent())
     assert len(out) == 1 and out[0].buttons
 
-async def test_evening_has_no_composed_prose_and_one_tomorrow(store):
+async def test_evening_has_no_composed_prose(store):
     s = RuntimeState.load(Path("/nonexistent"))
     out = (await due_briefings(T(21), store, s, FakeAgent()))[0]
-    assert "Make it count." not in out.text and out.text.count("Tomorrow:") == 1
-    assert out.text.endswith("Tomorrow: Doctor at 9:30am — get ready 9:00am, leave by 9:15am.")
+    assert "Make it count." not in out.text and out.text.endswith("Done:\n• Done today (unconfirmed)")
 
 
 async def test_morning_includes_weather_line_when_home_is_set(store, monkeypatch):
@@ -94,22 +118,6 @@ async def test_morning_includes_weather_line_when_home_is_set(store, monkeypatch
     s = RuntimeState.load(__import__("pathlib").Path("/nonexistent"))
     out = await B.send_morning(T(8), store, s, Agent(FakeModelClient([]), None, store, lambda: T(8)))
     assert "72° and clear, high 80, UV high." in out.text.splitlines()[1]
-
-
-def test_evening_names_goals_with_nothing_done_toward_them(store):
-    # Sept 3 2026 is week 36; "Health week" has no todos at all, so it is starving.
-    text, _ = evening_text(store, T(21))
-    assert "Nothing toward Health week this week yet. Tomorrow?" in text
-
-    goal = store.goals()[0]
-    store.add(Todo(path="", title="Run", status="done", done_at=T(12), goal=goal.path))
-    store.add(Goal(path="", title="Read 2 books", period="2026-09"))
-    store.add(Goal(path="", title="Ship", period="2026"))
-    store.commit("progress")
-    text, _ = evening_text(store, T(21))
-    assert "Health week" not in text.split("Nothing toward")[-1]
-    assert "Nothing toward Read 2 books this month yet. Tomorrow?" in text
-    assert "Ship" not in text
 
 
 async def test_evening_writes_nightly_notes_from_the_days_conversation(store):

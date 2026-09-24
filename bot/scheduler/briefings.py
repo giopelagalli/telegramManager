@@ -5,9 +5,9 @@ import logging
 from datetime import date, datetime, timedelta
 
 from bot.knowledge.models import Profile, hm_to_time
-from bot.knowledge.ranking import goal_progress, top
+from bot.knowledge.ranking import goal_progress, rank_todos, top
 from bot.knowledge.store import KnowledgeStore
-from bot.knowledge.views import esc, fmt_time, render_today
+from bot.knowledge.views import esc, fmt_due, render_today
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.reminders import is_due
 from bot.memory.thread import thread, user_turns
@@ -55,68 +55,38 @@ def morning_text(store: KnowledgeStore, now: datetime) -> str:
 
 
 def evening_text(store: KnowledgeStore, now: datetime) -> tuple[str, list[tuple[str, str]]]:
-    profile = store.profile()
+    """Tonight's checklist: what's left to work on, then what got done today. Nothing else."""
     today = now.date()
     tomorrow = today + timedelta(days=1)
     todos = store.todos()
-    events = store.events()
+    ranked = rank_todos(todos, today)
+    # Everything due by tomorrow, whatever its priority, then the top of the list to make five.
+    soon = [t for t in ranked if t.due is not None and t.due <= tomorrow]
+    later = [t for t in ranked if t.due is None or t.due > tomorrow]
+    todo = soon + later[: max(0, 5 - len(soon))]
+    done = sorted(
+        (t for t in todos if t.status == "done" and t.done_at and t.done_at.date() == today),
+        key=lambda t: t.done_at,
+    )
 
-    done_today = [t for t in todos if t.status == "done" and t.done_at and t.done_at.date() == today]
-    slipped = [t for t in todos if t.due is not None and t.due <= today and t.status == "open"]
-    unconfirmed = [
-        t for t in todos if t.status == "done" and not t.confirmed and t.done_at and t.done_at.date() == today
-    ]
     lines = ["<b>Evening wrap-up</b>"]
+    if todo:
+        lines.append("Todo:")
+        for t in todo:
+            overdue = "⚠️ " if t.due and t.due < today else ""
+            due = f" — due {fmt_due(t)}" if t.due else ""
+            lines.append(f"• {overdue}{esc(t.title)}{due}")
+    if done:
+        if todo:
+            lines.append("")
+        lines.append("Done:")
+        for t in done:
+            lines.append(f"• {esc(t.title)}" + ("" if t.confirmed else " (unconfirmed)"))
+    if not todo and not done:
+        lines.append("Nothing on your list.")
 
-    if done_today:
-        lines.append("Done today:")
-        for t in done_today:
-            lines.append(f"• {esc(t.title)}")
-    else:
-        lines.append("Nothing marked done today.")
-
-    buttons: list[tuple[str, str]] = []
-    if slipped:
-        lines.append("")
-        lines.append("Slipped:")
-        for t in slipped:
-            lines.append(f"• {esc(t.title)}")
-            buttons.append((f"→ tomorrow: {t.title[:20]}", f"defer:{t.path}"))
-
-    if unconfirmed:
-        lines.append("")
-        lines.append("Unconfirmed:")
-        for t in unconfirmed:
-            lines.append(f"• {esc(t.title)}")
-
-    starving = _starving_goals(store.goals(), todos, today)
-    if starving:
-        lines.append("")
-        lines.append(f"Nothing toward {esc(starving)} yet. Tomorrow?")
-
-    tomorrow_events = [e for e in events if e.start.date() == tomorrow]
-    if tomorrow_events:
-        e = tomorrow_events[0]
-        times = e.times(profile)
-        lines.append("")
-        lines.append(
-            f"Tomorrow: {esc(e.title)} at {fmt_time(e.start)} — "
-            f"get ready {fmt_time(times.get_ready_at)}, leave by {fmt_time(times.leave_by)}."
-        )
-
+    buttons = [("✅ " + t.title[:24], f"done:{t.path}") for t in todo]
     return "\n".join(lines), buttons
-
-
-def _starving_goals(goals, todos, today: date) -> str:
-    """This week's and this month's goals with nothing done toward them, as one phrase."""
-    iso = today.isocalendar()
-    periods = {f"{iso[0]}-W{iso[1]:02d}": "this week", f"{today:%Y-%m}": "this month"}
-    names = [
-        f"{g.title} {periods[g.period]}"
-        for g in goals
-        if g.status == "active" and g.period in periods and goal_progress(g, todos)[0] == 0
-    ]
-    return ", ".join(names[:2]) if names else ""
 
 
 def _chain_item(store: KnowledgeStore, day: date) -> str:
@@ -148,17 +118,16 @@ async def morning_outbound(store: KnowledgeStore, now: datetime, agent, note: st
         text = f"{head}\n{esc(weather)}\n{rest}"
     if note:
         text = f"{note}\n\n{text}"
-    profile = store.profile()
     top_todos = top(store.todos(), now.date(), n=5)
     buttons = [("✅ " + t.title[:24], f"done:{t.path}") for t in top_todos]
-    return Outbound(text, voice=profile.voice_on_proactive, buttons=buttons, kind="briefing")
+    return Outbound(text, buttons=buttons, kind="briefing")
 
 
 async def evening_outbound(store: KnowledgeStore, now: datetime, agent, notes: list[str] | None = None) -> Outbound:
     # Deterministic on purpose: a composed line repeated tomorrow's plan and nagged about food.
     # Nightly notes are written quietly, not read back.
     body, buttons = evening_text(store, now)
-    return Outbound(body, voice=store.profile().voice_on_proactive, buttons=buttons, kind="briefing")
+    return Outbound(body, buttons=buttons, kind="briefing")
 
 
 async def nightly_notes(store: KnowledgeStore, state: RuntimeState, now: datetime, agent) -> list[str]:

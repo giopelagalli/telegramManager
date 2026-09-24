@@ -1,7 +1,7 @@
 # 0006 — The evening wrap-up is deterministic
 Date: 2026-09-23
 Decided by: orchestrator (owner complaint)
-Status: accepted
+Status: accepted (the body it lists is superseded by 0008)
 
 ## Context
 The wrap-up ended with model-written lines that repeated tomorrow's plan ("two tomorrows") and brought up calories and water from the context.

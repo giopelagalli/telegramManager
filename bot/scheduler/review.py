@@ -154,4 +154,4 @@ async def due_digest(now: datetime, store: KnowledgeStore, state: RuntimeState, 
         store.save(s)
     store.commit("digest")
     buttons = [(f"🎯 Quiz me: {(s.topics[0] if s.topics else s.title)[:20]}", f"quiz:{s.course}:{(s.topics[0] if s.topics else s.title)[:40]}") for s in picks]
-    return Outbound(md_to_html(text), voice=profile.voice_on_proactive, buttons=buttons, kind="digest")
+    return Outbound(md_to_html(text), buttons=buttons, kind="digest")

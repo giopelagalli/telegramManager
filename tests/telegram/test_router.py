@@ -909,11 +909,11 @@ async def test_event_with_location_but_no_home_asks_for_the_address(rig):
     assert router.maps.travel_calls == []
 
 
-async def test_asking_for_the_briefing_sends_it_with_voice_without_marking_it_fired(rig):
+async def test_asking_for_the_briefing_sends_it_as_text_without_marking_it_fired(rig):
     router, store, client, state, _ = rig
     client.responses.append(R(("briefing", {"which": "morning"}), ("reply", {"text": "Here."})))
     outs = await router.on_text("what's my day look like")
-    assert outs[0].kind == "briefing" and outs[0].voice is True
+    assert outs[0].kind == "briefing" and outs[0].voice is False
     assert "Good morning" in outs[0].text
     assert not any(k.startswith("morning:") for k in state.fired)
     assert state.chain is None
@@ -921,7 +921,7 @@ async def test_asking_for_the_briefing_sends_it_with_voice_without_marking_it_fi
     client.responses.append(R(("briefing", {"which": "evening"}), ("reply", {"text": "Here."})))
     client.responses.append(ModelResponse("Nothing closed today.", []))
     outs = await router.on_text("evening briefing")
-    assert outs[0].kind == "briefing" and outs[0].voice is True
+    assert outs[0].kind == "briefing" and outs[0].voice is False
 
 
 async def test_backup_model_coaches_and_looks_at_photos_on_the_cloud(rig):

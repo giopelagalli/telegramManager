@@ -1,5 +1,5 @@
 # 0007 — Owner rules for proactive messages
-Date: 2026-09-18, 2026-09-23
+Date: 2026-09-18, 2026-09-23, 2026-09-24
 Decided by: owner
 Status: accepted
 
@@ -17,6 +17,7 @@ Recommendations at the time (wake-up chains, follow-ups, calorie target in conte
 - A todo with a due time gets a reminder an hour and 30 minutes before, with the due time in the text and a Done button, while it is still open.
 - Every composed message has the current time in its context; reminders are computed, never guessed.
 - Terse voice (`docs/jd-personality.md`): answer, then one instruction, no greetings, no needy check-ins.
+- Proactive messages are text only: no voice note on the briefing, the wrap-up or the check-ins (2026-09-24; the `voice_on_proactive` profile flag is gone). Voice stays for replies, when he sent voice or asked for one.
 
 ## Consequences
 New proactive features must fit these before they ship; the owner decides volume.
