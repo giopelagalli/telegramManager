@@ -1,0 +1,23 @@
+# Architecture
+
+One paragraph per module: purpose, interface, why this shape. Entry point `python -m bot`.
+
+**`bot/__main__.py`, `bot/config.py`** — Reads `.env` into `Settings` and wires everything. With `SPARK_URL` set the Spark is chat, vision and hard model; `SPARK_VOICE_URL` gives STT, TTS and embeddings; Fireworks is derived as fallback only. One derivation, so a box with one URL configures itself.
+
+**`bot/telegram/`** — `handlers.py` turns Telegram updates into router calls (typing keep-alive, size checks, DM vs bound topic). `router.py` is the brain of one message: capture, files, photos, voice, callbacks, search-then-act, syllabus, undo; it owns the runtime state and remembers what was actually sent. `commands.py` is the minimal slash menu. `sender.py` sends HTML, voice notes and buttons and resolves channels. `schedule_ui`, `todo_ui`, `courses_ui`, `notes_ui`, `food_ui` are button editors with callback prefixes (`sched:`, `todo:`, `course:`, `note:`, `food:`) and a `hint()` that wraps typed details for the model. `markdown.py` converts model markdown to Telegram HTML.
+
+**`bot/agent/`** — `client.py`: OpenAI-compatible clients, the fallback client with a circuit breaker, tool-call parsing, thinking stripped, one system message (Qwen template). `agent.py`: the capture loop (tools, retry on bad calls, dedupe), describe/look/ocr for files and photos, exam plans, coaching, tutoring, nightly consolidation, `compose` for proactive texts, `answer` for grounded Q&A. `prompts.py`: VOICE, CAPTURE_SYSTEM rules, `build_context` (the model's view of the vault; minimal on the cloud). `tools.py`: tool schemas and validation. The model decides through tools only, so every side effect is code we can test.
+
+**`bot/knowledge/`** — `models.py`: dataclasses that round-trip to markdown files (todos, events with weekly series, goals, courses, sources, memories, profile, channels). `store.py`: the git-backed vault (`knowledge/`): add/save/undo/commit, recall corpus, chat transcript per day, food and (via `trackers.py`) tracker logs. `views.py`: today/week/now renderers and HTML escaping. `ranking.py`: which todo matters now. Markdown in git means the owner can read, edit and revert everything.
+
+**`bot/memory/`** — `thread.py`: the two-day working context kept in runtime state (60k chars, day starts 4am, gaps marked). `days.py`: dates named in a message, for verbatim day recall. `index.py`: a vector index over the recall corpus (nomic embeddings on the voice server). Context is the whole recent conversation plus a few recalled lines, not a summary.
+
+**`bot/scheduler/`** — `engine.py` runs one deterministic pass over the steps every tick and saves state before each send. `reminders.py`: get-ready and leave-by for events (traffic refreshed), the missed mark, deadline reminders for todos. `briefings.py`: morning and evening texts, nightly notes. `checkins.py`: three text-only check-ins. `chains.py`: follow-ups (off by default). `critical.py`: storm mode for critical leaves. `trackers.py`, `reflect.py`, `review.py` (parked), `budget.py`, `state.py` (`RuntimeState` JSON: fired keys, thread, last location, last file, pending UI), `outbound.py`, `clock.py`. Everything proactive is a pure function of store + state + now, so it is testable with a fake clock.
+
+**`bot/study/`** — `extract.py`: text out of pdf/pptx/docx/text/code, kind guessing, text sniffing. `plans.py`: exam study plans, the 21-day horizon, the morning check. `select.py`: which sources fit the tutoring budget. `srs.py`: SM-2 cards (parked).
+
+**`bot/maps/`, `bot/search.py`, `bot/weather.py`, `bot/cluster.py`, `bot/voice/`** — Google Places (New), Routes, Geocoding, Time Zone; Brave search that reads the top pages; Open-Meteo + pollen line; Spark and AgentHub load for `/queue`; STT/TTS providers.
+
+**`spark/`** — `voice_server.py`: FastAPI on `:8890` serving transcription (faster-whisper), speech (Kokoro) and embeddings on CPU, so the GPU pool stays for vLLM. `docs/spark-setup.md` is the box inventory.
+
+**`knowledge/`** — The vault: `todos/`, `backlog/`, `schedule/` (+ series), `goals/`, `courses/`, `sources/<course>/`, `memories/`, `chat/YYYY-MM-DD.md`, `food/`, `tracking/`, `notes`, `profile.md`, `trackers.md`. Private, on the Spark, never sent whole to the cloud.

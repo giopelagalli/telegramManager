@@ -2,11 +2,11 @@
 
 A single-user Telegram bot that keeps a plain-text/Markdown knowledge base
 (todos, events, goals, a profile) in a git repo, reminds you on schedule,
-and talks to a model over an OpenAI-compatible endpoint. It runs as a
-systemd service on an always-on $6/month DigitalOcean droplet, 24/7,
-independent of the DGX Spark that serves the model over Tailscale. Running
-everything on the Spark instead is free but goes down whenever the Spark
-does — see §1.5.
+and talks to a model over an OpenAI-compatible endpoint. Since 2026-09-18 it
+runs on the DGX Spark itself (`assistant.service`, see `docs/spark-setup.md`)
+next to the vLLM it talks to; the DigitalOcean droplet described in §1.5 and
+the remotes section is history, kept for reference. `docs/ROADMAP.md`,
+`docs/ARCHITECTURE.md` and `docs/decisions/` are the current map.
 
 See `docs/superpowers/specs/2026-09-03-telegram-assistant-design.md` for the
 full design.
