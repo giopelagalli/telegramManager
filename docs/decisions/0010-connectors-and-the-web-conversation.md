@@ -26,8 +26,14 @@ the web conversation (`DATA_DIR/web.json`, last 200 messages, written on every c
 file rather than `RuntimeState`, which the engine rewrites every tick). Web message ids are a
 persisted counter, so `Outbound.edit_message_id` (an int) addresses a web message the same way it
 addresses a Telegram one, and a web button tap finds its message by the newest one carrying that
-`data`. Web requests are served one at a time (a lock in `WebDoor`), since the router owns shared
-state. Telegram HTML maps onto the contract's subset (`bot/web/format.py`); what Telegram would
+`data`. One message at a time across surfaces: the router owns an `asyncio.Lock` (`router.lock`)
+that `WebDoor` and every Telegram `Handlers` path hold around the router call and the
+`last_outcome` read after it. A web-only lock was not enough: a Telegram and a web message would
+interleave on `pending_schedule`, `chain`, `pending_verify`, the remembered thread pairs, `undo`,
+and `last_outcome` (which decides the ❌ reaction). Downloads, transcription and sends stay outside
+the lock. The engine does not take it: it never calls the router, its sharing of `RuntimeState`
+with the handlers predates the web door, and holding it would put leave-by reminders behind a
+five-minute `/hard` reply. Telegram HTML maps onto the contract's subset (`bot/web/format.py`); what Telegram would
 refuse goes out `plain`, the sender's own fallback.
 
 ## Consequences

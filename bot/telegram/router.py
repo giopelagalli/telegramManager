@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import logging
 import re
 from datetime import datetime, timedelta
@@ -129,6 +131,9 @@ class Router:
         build_context.projects = projects  # and carry the Projects block
         self.last_outcome = "handled"
         self._warned_threads: set[str] = set()
+        # Every surface (Telegram's Handlers, the web door) holds this around a router call and the
+        # last_outcome read after it, so two messages never interleave on the shared state (0010).
+        self.lock = asyncio.Lock()
 
     # -- entry points ----------------------------------------------------
 

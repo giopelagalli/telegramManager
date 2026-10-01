@@ -1,5 +1,6 @@
 """Fakes for the web door: a router that echoes, a transcriber, a synthesizer and a transcoder
 that never touch a model or ffmpeg, and an aiohttp test client with the bearer set."""
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,7 @@ LIFE = Channel(1, None, "life")
 class FakeRouter:
     def __init__(self):
         self.calls = []
+        self.lock = asyncio.Lock()
 
     async def on_text(self, text, via_voice=False, *, channel=None):
         self.calls.append(("text", text, via_voice, channel))

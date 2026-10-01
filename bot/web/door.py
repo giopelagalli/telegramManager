@@ -2,7 +2,6 @@
 replies come back as wire messages on that request only (they never reach Telegram)."""
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -34,8 +33,8 @@ class WebDoor:
         self.tmp_dir = Path(tmp_dir)
         self.name = name
         self.keys = list(QUICK_KEYS)
-        # One web request at a time: the router owns shared state and the hub is one owner's browser.
-        self._lock = asyncio.Lock()
+        # The router's lock, shared with Telegram's Handlers (0010): one message at a time, any surface.
+        self.lock = router.lock
 
     async def message(self, text: str) -> list[dict]:
         async with self._busy():
@@ -101,7 +100,7 @@ class WebDoor:
 
     @asynccontextmanager
     async def _busy(self):
-        async with self._lock:
+        async with self.lock:
             await self.conversation.typing(True)
             try:
                 yield

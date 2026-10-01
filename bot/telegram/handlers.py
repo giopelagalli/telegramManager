@@ -27,6 +27,8 @@ class Handlers:
         self.sender = sender
         self.transcriber = transcriber
         self.tmp_dir = Path(tmp_dir)
+        # The router's lock, shared with the web door (0010); a test fake without one gets its own.
+        self.lock = getattr(router, "lock", None) or asyncio.Lock()
 
     async def _send(self, outs) -> None:
         for out in outs:
@@ -60,9 +62,9 @@ class Handlers:
         finally:
             task.cancel()
 
-    async def _outcome(self, message) -> None:
+    async def _outcome(self, message, outcome: str) -> None:
         # Only mark the one case worth knowing about: the message went to the inbox unparsed.
-        if self.router.last_outcome == "inbox":
+        if outcome == "inbox":
             await self._react(message, NOT_UNDERSTOOD)
 
     def _channel(self, update) -> Channel | None:
@@ -80,7 +82,7 @@ class Handlers:
     def command(self, name: str):
         async def handler(update, context):
             arg = " ".join(context.args) if context.args else ""
-            async with self._busy(update.effective_message):
+            async with self._busy(update.effective_message), self.lock:
                 outs = await self.router.command(name, arg, channel=self._channel(update))
             await self._send(outs)
 
@@ -89,16 +91,19 @@ class Handlers:
     async def on_text(self, update, context) -> None:
         message = update.effective_message
         logger.info("text from %s: %r", getattr(getattr(update, "effective_user", None), "id", None), (message.text or "")[:40])
-        async with self._busy(message):
+        async with self._busy(message), self.lock:
             outs = await self.router.on_text(message.text, channel=self._channel(update))
-        await self._outcome(message)
+            outcome = self.router.last_outcome
+        await self._outcome(message, outcome)
         await self._send(outs)
 
     async def on_voice(self, update, context) -> None:
         message = update.effective_message
         channel = self._channel(update)
         if self.transcriber is None:
-            await self._send(await self.router.on_voice_unavailable(channel=channel))
+            async with self.lock:
+                outs = await self.router.on_voice_unavailable(channel=channel)
+            await self._send(outs)
             return
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         voice = message.voice
@@ -112,12 +117,16 @@ class Handlers:
                 logger.info("transcribed in %.1fs: %r", time.monotonic() - started, text[:40])
             except Exception as exc:
                 reason = str(exc) or type(exc).__name__
-                await self._send(await self.router.on_voice_failed(reason, channel=channel))
+                async with self.lock:
+                    outs = await self.router.on_voice_failed(reason, channel=channel)
+                await self._send(outs)
                 return
             finally:
                 path.unlink(missing_ok=True)
-            outs = await self.router.on_text(text, via_voice=True, channel=channel)
-        await self._outcome(message)
+            async with self.lock:
+                outs = await self.router.on_text(text, via_voice=True, channel=channel)
+                outcome = self.router.last_outcome
+        await self._outcome(message, outcome)
         if outs and confidence < LOW_CONFIDENCE:
             outs[0].text = f"Heard: “{esc(text)}”\n" + outs[0].text
         await self._send(outs)
@@ -126,15 +135,19 @@ class Handlers:
         message = update.effective_message
         photo = message.photo[-1]
         if _too_large(getattr(photo, "file_size", None)):
-            await self._send(await self.router.on_file_too_large(channel=self._channel(update)))
+            async with self.lock:
+                outs = await self.router.on_file_too_large(channel=self._channel(update))
+            await self._send(outs)
             return
         async with self._busy(message):
             file = await photo.get_file()
             image = await file.download_as_bytearray()
-            outs = await self.router.on_photo(
-                bytes(image), message.caption, channel=self._channel(update)
-            )
-        await self._outcome(message)
+            async with self.lock:
+                outs = await self.router.on_photo(
+                    bytes(image), message.caption, channel=self._channel(update)
+                )
+                outcome = self.router.last_outcome
+        await self._outcome(message, outcome)
         await self._send(outs)
 
     async def on_document(self, update, context) -> None:
@@ -143,32 +156,40 @@ class Handlers:
         channel = self._channel(update)
         if channel is None or channel.kind not in ("life", "course"):
             # The DM and course topics read files; an unbound topic gets its one warning.
-            await self._send(await self.router.on_document(b"", "", "", None, channel=channel))
+            async with self.lock:
+                outs = await self.router.on_document(b"", "", "", None, channel=channel)
+            await self._send(outs)
             return
         if _too_large(getattr(document, "file_size", None)):
-            await self._send(await self.router.on_file_too_large(channel=channel))
+            async with self.lock:
+                outs = await self.router.on_file_too_large(channel=channel)
+            await self._send(outs)
             return
         async with self._busy(message):
             file = await document.get_file()
             data = await file.download_as_bytearray()
-            outs = await self.router.on_document(
-                bytes(data), document.file_name or "", document.mime_type or "", message.caption, channel=channel
-            )
-        await self._outcome(message)
+            async with self.lock:
+                outs = await self.router.on_document(
+                    bytes(data), document.file_name or "", document.mime_type or "", message.caption, channel=channel
+                )
+                outcome = self.router.last_outcome
+        await self._outcome(message, outcome)
         await self._send(outs)
 
     async def on_location(self, update, context) -> None:
         location = update.effective_message.location
-        outs = await self.router.on_location(
-            location.latitude, location.longitude, channel=self._channel(update)
-        )
+        async with self.lock:
+            outs = await self.router.on_location(
+                location.latitude, location.longitude, channel=self._channel(update)
+            )
         await self._send(outs)
 
     async def on_live_location(self, update, context) -> None:
         location = update.effective_message.location
-        await self.router.on_location(
-            location.latitude, location.longitude, channel=self._channel(update), silent=True
-        )
+        async with self.lock:
+            await self.router.on_location(
+                location.latitude, location.longitude, channel=self._channel(update), silent=True
+            )
 
     async def on_forum_topic_created(self, update, context) -> None:
         message = update.effective_message
@@ -190,13 +211,14 @@ class Handlers:
         message = query.message
         message_id = message.message_id if message else None
         message_html = message.text_html if message else None
-        outs = await self.router.on_callback(
-            query.data,
-            message_id,
-            message_html,
-            _buttons(message),
-            channel=self._channel(update),
-        )
+        async with self.lock:
+            outs = await self.router.on_callback(
+                query.data,
+                message_id,
+                message_html,
+                _buttons(message),
+                channel=self._channel(update),
+            )
         toast = next((out.toast for out in outs if out.toast), None)
         await query.answer(text=toast) if toast else await query.answer()
         await self._send(outs)
