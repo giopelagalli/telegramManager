@@ -155,3 +155,11 @@ async def test_the_stream_gets_typing_and_proactive_messages_but_not_replies(cli
 async def test_the_stream_refuses_a_wrong_bearer(client):
     response = await client.get("/stream", headers={"Authorization": "Bearer nope"})
     assert response.status == 401
+
+
+async def test_a_message_over_telegrams_4096_characters_is_400(client, router):
+    response = await client.post("/messages", headers=AUTH, json={"text": "x" * 4097})
+    assert response.status == 400
+    assert "4096" in (await response.json())["error"]
+    assert router.calls == [] and (await (await client.get("/history", headers=AUTH)).json())["messages"] == []
+    assert (await client.post("/messages", headers=AUTH, json={"text": "x" * 4096})).status == 200

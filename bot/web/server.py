@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 MAX_BODY = 10 * 1024 * 1024
 HISTORY_DEFAULT = 50
+MAX_TEXT = 4096  # Telegram's own cap on a message
 DOOR = web.AppKey("door", object)
 TOKEN = web.AppKey("token", bytes)
 
@@ -57,6 +58,8 @@ async def history(request: web.Request) -> web.Response:
 
 async def messages(request: web.Request) -> web.Response:
     text = await _json(request, "text")
+    if len(text) > MAX_TEXT:
+        return web.json_response({"error": f"text is over {MAX_TEXT} characters"}, status=400)
     return web.json_response({"messages": await request.app[DOOR].message(text)})
 
 
