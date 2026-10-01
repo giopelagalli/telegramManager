@@ -72,6 +72,17 @@ def _web_door(settings: Settings, store, router, synthesizer, transcriber):
     return WebDoor(router, conversation, life, transcriber, tmp_dir, name=lambda: store.profile().assistant_name)
 
 
+async def _open_web_door(door, settings: Settings):
+    """Start the web door; a busy port is logged and Telegram carries on without it."""
+    from bot.web.server import build_app, start
+
+    try:
+        return await start(build_app(door, settings.jd_web_token), settings.jd_web_host, settings.jd_web_port)
+    except OSError as exc:
+        logger.error("web door off: cannot listen on %s:%s (%s)", settings.jd_web_host, settings.jd_web_port, exc)
+        return None
+
+
 def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -205,9 +216,9 @@ def main() -> None:
         tasks.add(task)
         task.add_done_callback(tasks.discard)
         if door is not None:
-            from bot.web.server import build_app, start
-
-            web_runner.append(await start(build_app(door, settings.jd_web_token), settings.jd_web_host, settings.jd_web_port))
+            runner = await _open_web_door(door, settings)
+            if runner is not None:
+                web_runner.append(runner)
 
     async def post_shutdown(app) -> None:
         for runner in web_runner:

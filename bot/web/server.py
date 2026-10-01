@@ -125,6 +125,10 @@ def build_app(door, token: str) -> web.Application:
 async def start(app: web.Application, host: str, port: int) -> web.AppRunner:
     runner = web.AppRunner(app)
     await runner.setup()
-    await web.TCPSite(runner, host, port).start()
+    try:
+        await web.TCPSite(runner, host, port).start()
+    except BaseException:
+        await runner.cleanup()
+        raise
     logger.info("web door listening on %s:%s", host, port)
     return runner
