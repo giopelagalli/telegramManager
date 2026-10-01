@@ -13,10 +13,12 @@ Map, not manual. Updated at the end of every session. Details live in the decisi
 - Proactive messaging: morning briefing, three text-only check-ins, evening wrap-up (deterministic), leave-by reminders with traffic, deadline reminders an hour and 30 minutes before a due time, tracker reminders, Sunday reflect, storm mode with Twilio calls.
 - Button editors: `/schedule`, `/due`, `/todo`, `/courses`, `/notes`, `/calories`.
 - AgentHub phase 1 (branch `agenthub-phase1`): `project_*` tools, the Projects context block, `/projects`, turn reports, briefing roll-up, blocked/failed alerts (0008, 0009).
+- The web door (branch `jd-web-door`, on top of `agenthub-phase1`): connector layer with proactive fan-out, the AgentHub 0069 API on aiohttp (`:8891`, bearer), web voice notes in and `.m4a` out, persisted web conversation (0010, 0011).
 - Cluster design: vLLM priority scheduling so AgentHub agents queue behind JD; the 7900 XTX PC as worker and image/video node (plan only).
 
 ## In progress
 
+- The web door waits on the owner: deploy `jd-web-door` (after phase 1), `pip install -e .` once for aiohttp, `openssl rand -hex 32` on the Spark into both `.env`s as `JD_WEB_TOKEN` (hub also `JD_URL=http://127.0.0.1:8891`), restart both, run the plan's phase 2 acceptance from the hub's JD page.
 - AgentHub phase 1 waits on the owner: mint an assistant token (label `JD`), set `AGENTHUB_URL` / `AGENTHUB_TOKEN`, deploy the branch, run the plan's acceptance (start a project from Telegram, see it in the hub, one message when its turn lands, see it in the next briefing).
 
 ## Next
@@ -30,7 +32,7 @@ Owner side, in order:
 6. PC (7900 XTX) per AgentHub `deploy/amd/README.md`.
 
 Code side:
-- Plan phase 2: connector layer + web API, call mode, Discord/email, self-improvement loop, image/video request tools.
+- Plan phase 3+: call mode, Discord/email connectors (one `send` each, 0010), `POST /photo` on the web door, self-improvement loop, image/video request tools.
 - Optional: Fireworks Whisper as STT fallback while the Spark is down.
 - README still describes the droplet topology in §1.5 and the remotes section; rewrite when the web door lands.
 
