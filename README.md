@@ -399,6 +399,30 @@ may only call the hub's short assistant allow-list (AgentHub decision 0065). If 
   going blocked or a turn failing → one message, within the hourly proactive budget and held
   while you've snoozed JD. The hub is polled once a minute; nothing is pushed.
 
+### Web door
+
+AgentHub's **JD** page talks to JD through a small HTTP API on the Spark (AgentHub decision 0069;
+here 0010, 0011). It is off until `JD_WEB_TOKEN` is set, listens on `JD_WEB_HOST:JD_WEB_PORT`
+(default `127.0.0.1:8891`, loopback, since the hub runs on the same box), and answers only
+requests carrying `Authorization: Bearer <JD_WEB_TOKEN>`. The hub is its only client.
+
+- **Turn it on:** on the Spark, `openssl rand -hex 32`; put the value in JD's `.env` as
+  `JD_WEB_TOKEN` and in AgentHub's `.env` as `JD_WEB_TOKEN` (with `JD_URL=http://127.0.0.1:8891`);
+  `.venv/bin/pip install -e '.[voice]'` once (the door needs `aiohttp`); restart both.
+  Rotating it is the same two edits and two restarts. Never paste it into a chat.
+- **What it does:** a message on the web goes through the same router as a Telegram message
+  (slash commands included) and is answered on the web only; it is still in JD's conversation
+  memory. Buttons tapped on the web go through the same callback dispatcher and edit the message
+  in place. Voice notes (webm, mp4 or ogg from the browser) are transcribed like Telegram's, and
+  spoken replies come back as `.m4a` (AAC, plays in Safari), kept for a day or the last 50.
+- **Proactive messages** (briefings, check-ins, reminders, project reports) go to Telegram as
+  always **and** to every open browser; with no browser attached the web gets nothing.
+- **The web conversation** (last 200 messages) lives in `DATA_DIR/web.json`, so a restart keeps
+  it; reply audio in `DATA_DIR/web-audio/`.
+- **Routes:** `GET /health`, `GET /history?limit=50`, `POST /messages {text}`,
+  `POST /callback {data}`, `POST /voice` (raw audio), `GET /audio/:id`, `GET /keys`,
+  `WS /stream`. Bodies over 10 MB are 413. The message shape is in AgentHub's 0069.
+
 ## 7. Study
 
 Everything happens in the bot's DM. Drop a PDF, a slide deck, a Word doc, a text file, or a photo of a page and it is stored under the course it belongs to (it infers the course from the content, creating one if needed, and tells you where it filed it — say "move that to Bio 201" if it guessed wrong). Ask a question about anything you have stored and it answers from your material with page citations. `/hard` before a question sends it to the big model.
