@@ -70,7 +70,7 @@ async def test_run_a_turn_from_a_message(jd, hub):
     outs = await router.on_text("run a turn on rosenroot, focus on the ingest")
     assert outs[0].text == "On it.\nTurn on Rosenroot started. I'll message you when it lands."
     assert ("POST", "/api/projects/rosenroot/turn", {"instruction": "focus on the ingest"}) in hub.calls
-    assert state.projects["watch"] == {"rosenroot": NOW_MS}
+    assert state.projects["watch"] == {"rosenroot": {"since": NOW_MS, "last": NOW_MS, "pending": 1}}
     system, context = (m["content"] for m in model.calls[0]["messages"][:2])
     assert "project_new" in system and 'rosenroot "Rosenroot" [active, normal]: Ingest half done.' in context
 

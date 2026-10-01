@@ -71,7 +71,7 @@ async def test_turn_pause_resume_priority(hub, client):
     projects, state = rig(client)
     assert await projects.turn(state, "rosenroot", "focus on the ingest", NOW) == \
         "Turn on Rosenroot started. I'll message you when it lands."
-    assert state.projects["watch"] == {"rosenroot": NOW_MS}
+    assert state.projects["watch"] == {"rosenroot": {"since": NOW_MS, "last": NOW_MS, "pending": 1}}
     assert await projects.pause("Rosenroot") == "Paused Rosenroot."
     assert projects.snapshot[0]["status"] == "paused"
     assert await projects.resume("rosenroot") == "Resumed Rosenroot."
@@ -102,7 +102,7 @@ async def test_a_turn_jd_started_is_reported_exactly_once(hub, client):
         "<b>Rosenroot</b> turn done: Built the ingest worker, tests green. Next: the stream view"]
     assert state.projects["watch"] == {}
     # Watched again (a second turn fired): the first one is not reported twice.
-    state.projects["watch"]["rosenroot"] = NOW_MS
+    state.projects["watch"]["rosenroot"] = {"since": NOW_MS, "last": NOW_MS, "pending": 1}
     reports, _ = await projects.poll(state, NOW + timedelta(minutes=3), 3)
     assert reports == []
 
@@ -113,17 +113,48 @@ async def test_reported_survives_a_restart(hub, client, tmp_path):
     await projects.turn(state, "rosenroot", None, NOW)
     hub.land("rosenroot", "Done.", ended_at=NOW_MS + 1)
     assert len((await projects.poll(state, NOW, 3))[0]) == 1
-    state.projects["watch"]["rosenroot"] = NOW_MS
+    state.projects["watch"]["rosenroot"] = {"since": NOW_MS, "last": NOW_MS, "pending": 1}
     state.save(tmp_path / "s.json")
     again = RuntimeState.load(tmp_path / "s.json")
     assert (await Projects(client).poll(again, NOW, 3))[0] == []
 
 
-async def test_a_watch_that_never_lands_expires(hub, client):
-    hub.add("rosenroot")
+async def test_a_watch_that_never_lands_expires_and_says_so(hub, client, caplog):
+    hub.add("rosenroot", "Rosenroot")
     projects, state = rig(client)
     await projects.turn(state, "rosenroot", None, NOW)
-    await projects.poll(state, NOW + timedelta(hours=4), 3)
+    hub.land("rosenroot", "signed by another label", requested_by="jd", ended_at=NOW_MS + 1)
+    assert (await projects.poll(state, NOW + timedelta(hours=1), 3))[0] == []
+    reports, _ = await projects.poll(state, NOW + timedelta(hours=4), 3)
+    assert [r.text for r in reports] == ["Lost track of the turn on Rosenroot; check the hub."]
+    assert state.projects["watch"] == {}
+    assert "requestedBy='jd' but AGENTHUB_LABEL is 'JD' (differs only by case)" in caplog.text
+    assert caplog.text.count("requestedBy='jd'") == 1  # warned once
+    assert (await projects.poll(state, NOW + timedelta(hours=5), 3))[0] == []
+
+
+async def test_two_turns_fired_before_a_poll_are_both_reported_in_order(hub, client):
+    hub.add("rosenroot", "Rosenroot")
+    projects, state = rig(client)
+    await projects.turn(state, "rosenroot", None, NOW)
+    await projects.turn(state, "rosenroot", None, NOW + timedelta(minutes=1))
+    assert state.projects["watch"]["rosenroot"] == {"since": NOW_MS, "last": NOW_MS + 60_000, "pending": 2}
+    hub.land("rosenroot", "First.", ended_at=NOW_MS + 30_000)
+    assert [r.text for r in (await projects.poll(state, NOW + timedelta(minutes=2), 3))[0]] == \
+        ["<b>Rosenroot</b> turn done: First."]
+    assert state.projects["watch"]["rosenroot"]["pending"] == 1  # still waiting for the second
+    hub.land("rosenroot", "Second.", ended_at=NOW_MS + 90_000)
+    assert [r.text for r in (await projects.poll(state, NOW + timedelta(minutes=3), 3))[0]] == \
+        ["<b>Rosenroot</b> turn done: Second."]
+    assert state.projects["watch"] == {}
+
+    # Both land between polls: two reports, oldest first, then nothing twice.
+    await projects.turn(state, "rosenroot", None, NOW + timedelta(minutes=4))
+    await projects.turn(state, "rosenroot", None, NOW + timedelta(minutes=5))
+    hub.land("rosenroot", "Third.", ended_at=NOW_MS + 270_000)
+    hub.land("rosenroot", "Fourth.", ended_at=NOW_MS + 330_000)
+    reports, _ = await projects.poll(state, NOW + timedelta(minutes=6), 3)
+    assert [r.text for r in reports] == ["<b>Rosenroot</b> turn done: Third.", "<b>Rosenroot</b> turn done: Fourth."]
     assert state.projects["watch"] == {}
 
 

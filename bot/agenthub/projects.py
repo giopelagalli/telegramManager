@@ -29,7 +29,7 @@ CONTEXT_CHARS = 2500
 REPORT_SUMMARY_CHARS = 400
 REPORTED_CAP = 200
 BRIEFING_WAIT = 15.0  # seconds the briefing waits for the Projects line
-WATCH_MAX_MS = 3 * 3600 * 1000  # a turn JD fired that never lands is dropped after this
+WATCH_MAX_MS = 3 * 3600 * 1000  # a turn JD fired that never lands is given up on (and said so) after this
 
 
 def _ms(now: datetime) -> int:
@@ -44,7 +44,7 @@ def _clip(text: str, n: int) -> str:
 def _bucket(state) -> dict:
     """JD's own bookkeeping in the runtime state: turns being watched, reported, statuses seen."""
     rec = state.projects
-    rec.setdefault("watch", {})     # slug → ms the turn was fired
+    rec.setdefault("watch", {})     # slug → {"since": first fire ms, "last": last fire ms, "pending": turns not yet reported}
     rec.setdefault("reported", [])  # session ids already reported
     rec.setdefault("seen", {})      # slug → {"status", "error_at"}
     return rec
@@ -88,6 +88,7 @@ class Projects:
         self.snapshot: list[dict] | None = None  # the last good read; the context renders from it
         self.outbox: list[Outbound] = []  # finished background work, sent by the engine
         self._tasks: set[asyncio.Task] = set()
+        self._other_labels: set[str] = set()  # requestedBy labels already warned about
 
     # -- reads -----------------------------------------------------------
 
@@ -185,7 +186,10 @@ class Projects:
             await self.client.start_turn(row["slug"], (instruction or "").strip() or None)
         except AgentHubError as exc:
             return f"{esc(row['title'])}: {esc(str(exc))}"
-        _bucket(state)["watch"][row["slug"]] = fired_at
+        # A second fire while one is open keeps the first `since`, so neither turn's report is lost.
+        watch = _bucket(state)["watch"].setdefault(row["slug"], {"since": fired_at, "last": fired_at, "pending": 0})
+        watch["last"] = fired_at
+        watch["pending"] += 1
         return f"Turn on {esc(row['title'])} started. I'll message you when it lands."
 
     async def pause(self, name: str) -> str:
@@ -240,12 +244,13 @@ class Projects:
         rec = _bucket(state)
         snapshot = await self.refresh()
         reports: list[Outbound] = []
-        for slug, fired_at in list(rec["watch"].items()):
+        for slug, watch in list(rec["watch"].items()):
             try:
-                turns = (await self.client.turns(slug, fired_at)).get("turns") or []
+                turns = (await self.client.turns(slug, watch["since"])).get("turns") or []
             except AgentHubError as exc:
                 logger.warning("turns for %s: %s", slug, exc)
                 turns = []
+            self._check_labels(turns)
             mine = sorted((t for t in turns if t.get("requestedBy") == self.label and t.get("endedAt") is not None),
                           key=lambda t: t.get("sessionId", 0))
             for t in mine:
@@ -253,11 +258,17 @@ class Projects:
                     continue
                 rec["reported"].append(t.get("sessionId"))
                 reports.append(self._report(slug, t))
+                watch["pending"] -= 1
                 if t.get("outcome") == "error":  # already said; the alert below must not repeat it
                     seen = rec["seen"].setdefault(slug, {"status": None, "error_at": 0})
                     seen["error_at"] = max(seen.get("error_at") or 0, int(t["endedAt"]))
-            if mine or _ms(now) - int(fired_at) > WATCH_MAX_MS:
+            if watch["pending"] <= 0:
+                del rec["watch"][slug]  # every turn fired here has been reported
+            elif _ms(now) - int(watch["last"]) > WATCH_MAX_MS:
                 del rec["watch"][slug]
+                title = next((r["title"] for r in self.snapshot or [] if r["slug"] == slug), slug)
+                logger.warning("turn on %s never landed with requestedBy=%r", slug, self.label)
+                reports.append(Outbound(f"Lost track of the turn on {esc(title)}; check the hub.", kind="reply"))
         del rec["reported"][:-REPORTED_CAP]
 
         alerts: list[Outbound] = []
@@ -281,6 +292,16 @@ class Projects:
                 alerts.append(Outbound(f"<b>{esc(row['title'])}</b>: a turn failed.", kind="reply"))
                 seen["error_at"] = errored_at
         return reports, alerts
+
+    def _check_labels(self, turns: list[dict]) -> None:
+        """A watched project's turns signed by another label: say so once, so a token labelled
+        differently from AGENTHUB_LABEL shows in the log instead of as reports that never come."""
+        for t in turns:
+            by = t.get("requestedBy")
+            if by and by != self.label and by not in self._other_labels:
+                self._other_labels.add(by)
+                hint = " (differs only by case)" if by.lower() == self.label.lower() else ""
+                logger.warning("AgentHub turns carry requestedBy=%r but AGENTHUB_LABEL is %r%s", by, self.label, hint)
 
     def _report(self, slug: str, turn: dict) -> Outbound:
         row = next((r for r in self.snapshot or [] if r["slug"] == slug), None)

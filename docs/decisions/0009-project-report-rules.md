@@ -14,7 +14,12 @@ the owner decides volume.
 
 ## Decision
 - A turn JD started (`requestedBy` = its label) → exactly one message, deduped by session id; not
-  budgeted, because he asked for it. Watches expire after 3 hours.
+  budgeted, because he asked for it. A project's watch keeps the first fire time and counts the
+  turns fired, so a second fire before the first lands loses neither report; it closes when every
+  fired turn has been reported. One still unreported 3 hours after the last fire → one message,
+  "Lost track of the turn on X; check the hub." Turns on a watched project signed by another label
+  are logged once per label (flagged when it differs only by case), so a token labelled other than
+  `AGENTHUB_LABEL` is diagnosable.
 - Turns JD didn't start since the previous briefing → "Projects: rosenroot 2 turns,
   probability-engine blocked on …" in the morning and evening briefings; nothing when quiet.
 - A project newly `blocked`, or a turn ending in `error` → one message each, spending the hourly
