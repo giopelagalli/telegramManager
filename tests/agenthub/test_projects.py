@@ -182,3 +182,19 @@ async def test_unreachable_hub_keeps_the_last_snapshot(hub, client):
     assert projects.snapshot[0]["slug"] == "rosenroot"
     assert await projects.briefing_line(NOW) is None
     assert await projects.poll(state, NOW, 3) == ([], [])
+
+
+async def test_a_turn_that_never_reached_the_hub_is_an_error_not_a_watch(hub):
+    import httpx
+    from bot.agenthub.client import AgentHubClient
+    from .conftest import TOKEN
+
+    def handler(req):
+        if req.method == "POST":
+            raise httpx.ConnectTimeout("connect hung", request=req)
+        return hub(req)
+    hub.add("rosenroot", "Rosenroot")
+    projects = Projects(AgentHubClient("http://hub.test", TOKEN, http=httpx.AsyncClient(transport=httpx.MockTransport(handler))))
+    state = RuntimeState()
+    assert await projects.turn(state, "rosenroot", None, NOW) == "Rosenroot: AgentHub didn't answer in time."
+    assert state.projects.get("watch", {}) == {}

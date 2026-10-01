@@ -81,8 +81,10 @@ class AgentHubClient:
         route = path.split("?", 1)[0]
         try:
             r = await self._http.request(method, self._url + path, json=body, headers=self._headers, timeout=timeout)
-        except httpx.TimeoutException:
-            if quiet_timeout:
+        except httpx.TimeoutException as exc:
+            # Only a read timeout means the hub took the request and is still working on it; a
+            # connect/write/pool timeout means it never got there.
+            if quiet_timeout and isinstance(exc, httpx.ReadTimeout):
                 raise _StillRunning()
             logger.warning("agenthub %s %s timed out", method, route)
             raise AgentHubError("AgentHub didn't answer in time.")
