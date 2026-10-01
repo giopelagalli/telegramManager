@@ -11,6 +11,8 @@ from bot.agenthub.projects import Projects
 from bot.agent.client import FallbackModelClient, ModelClient, OpenAIModelClient
 from bot.cluster import AgentHubStatus, ClusterStatus, SparkStatus
 from bot.config import Settings
+from bot.connectors import Fanout
+from bot.knowledge.models import Channel
 from bot.memory.index import Embedder, VectorIndex
 from bot.search import BraveSearch
 from bot.scheduler import briefings
@@ -52,6 +54,22 @@ def _transcriber(settings: Settings) -> stt.Transcriber | stt.ApiTranscriber | N
         logger.warning("voice input off: faster-whisper not installed")
         return None
     return stt.Transcriber(model_size=settings.whisper_model)
+
+
+def _web_door(settings: Settings, store, router, synthesizer, transcriber):
+    """The web door AgentHub proxies (0010, 0011): off unless JD_WEB_TOKEN is set."""
+    if not settings.jd_web_token:
+        return None
+    from bot.web.audio import AudioStore
+    from bot.web.conversation import WebConversation
+    from bot.web.door import WebDoor
+
+    tmp_dir = settings.data_dir / "tmp"
+    conversation = WebConversation(
+        settings.data_dir / "web.json", AudioStore(settings.data_dir / "web-audio"), synthesizer, tmp_dir
+    )
+    life = Channel(settings.telegram_user_id, None, "life")  # the web is the DM, never a topic
+    return WebDoor(router, conversation, life, transcriber, tmp_dir, name=lambda: store.profile().assistant_name)
 
 
 def main() -> None:
@@ -146,10 +164,12 @@ def main() -> None:
         )
     maps = MapsClient(settings.google_maps_api_key) if settings.google_maps_api_key else None
 
+    synthesizer = _synthesizer(settings)
+    transcriber = _transcriber(settings)
     sender = Sender(
         None,
         settings.telegram_user_id,
-        _synthesizer(settings),
+        synthesizer,
         settings.data_dir / "tmp",
         resolve=channel_resolver(store, settings.telegram_user_id),
         caller=(
@@ -167,9 +187,12 @@ def main() -> None:
         if settings.agenthub_url else None,
     )
     router = Router(store, agent, state, clock, maps, search=search, index=index, cluster=cluster, projects=projects)
-    engine = Engine(store, agent, state, state_path, clock, sender, maps, search=search, projects=projects)
+    door = _web_door(settings, store, router, synthesizer, transcriber)
+    # Proactive messages reach every connector; replies go back where the message came in (0010).
+    proactive = Fanout(sender, door.conversation) if door is not None else sender
+    engine = Engine(store, agent, state, state_path, clock, proactive, maps, search=search, projects=projects)
 
-    application = build_application(settings, router, sender, _transcriber(settings))
+    application = build_application(settings, router, sender, transcriber)
     sender.bot = application.bot
 
     set_my_commands = application.post_init
@@ -181,8 +204,18 @@ def main() -> None:
         task = asyncio.create_task(engine.run())
         tasks.add(task)
         task.add_done_callback(tasks.discard)
+        if door is not None:
+            from bot.web.server import build_app, start
 
+            web_runner.append(await start(build_app(door, settings.jd_web_token), settings.jd_web_host, settings.jd_web_port))
+
+    async def post_shutdown(app) -> None:
+        for runner in web_runner:
+            await runner.cleanup()
+
+    web_runner: list = []
     application.post_init = post_init
+    application.post_shutdown = post_shutdown
     application.run_polling(allowed_updates=["message", "edited_message", "callback_query"])
 
 

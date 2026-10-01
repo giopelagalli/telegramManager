@@ -132,6 +132,10 @@ class Settings:
     twilio_auth_token: str | None
     twilio_from: str | None
     phone: str | None
+    # The web door (0010, AgentHub 0069): off unless the token is set; the hub is its only client.
+    jd_web_token: str | None = None
+    jd_web_host: str = "127.0.0.1"
+    jd_web_port: int = 8891
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -225,6 +229,9 @@ class Settings:
             twilio_auth_token=twilio["TWILIO_AUTH_TOKEN"],
             twilio_from=twilio["TWILIO_FROM"],
             phone=twilio["PHONE"],
+            jd_web_token=opt("JD_WEB_TOKEN"),
+            jd_web_host=opt("JD_WEB_HOST") or "127.0.0.1",
+            jd_web_port=int(opt("JD_WEB_PORT") or 8891),
         )
 
 
