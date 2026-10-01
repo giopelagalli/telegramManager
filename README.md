@@ -358,6 +358,7 @@ do need `assistant` itself to be running.
 | `/quiet` | Quiet until the end of the day. |
 | `/resume` | Cancel the pause. |
 | `/undo` | Revert the last change. |
+| `/projects` | AgentHub projects: tap one for its status and latest briefing, with Run turn / Pause / Resume / Priority. |
 | `/hard` | Ask the big cloud model directly, bypassing the Spark (`/hard why does X happen?`). |
 | `/think` | Model thinking on/off for the Spark model (`/think on`). |
 | `/help` | List commands. |
@@ -377,6 +378,26 @@ talking to the usual model. If nothing is configured, `/hard` says so. Phase 2
 and 3 (plan generation, flashcards) will reach for `HARD_MODEL` automatically
 when it's set, for the same reason: some jobs are worth the trip off the
 Spark.
+
+### AgentHub projects
+
+With `AGENTHUB_URL` (e.g. `https://rosenroot.com` or `http://spark-f9a9:4000`) and
+`AGENTHUB_TOKEN` in `.env`, JD drives AgentHub's projects. The token is an **assistant** API
+token minted on the hub (**Machines → Access → API tokens**, kind *assistant*, label `JD`); it
+may only call the hub's short assistant allow-list (AgentHub decision 0065). If the label is not
+`JD`, set `AGENTHUB_LABEL` to it. The token also replaces `AGENTHUB_PASSWORD` for `/queue`.
+
+- **Say it:** "start a project: a tide clock for the harbour" (creates it, then drafts the PRD
+  and roadmap in the background and tells you the PRD title and milestone count), "run a turn on
+  rosenroot, focus on the ingest", "pause the probability engine", "resume rosenroot",
+  "rosenroot runs first" / "back to normal" / "only when idle".
+- **Ask it:** "how's rosenroot going" — the context carries a Projects block (slug, status,
+  order, one line of the latest briefing, what it is blocked on).
+- **`/projects`:** the same, as buttons, edited in place.
+- **Reports:** a turn JD started → one message when it lands. Turns JD didn't start (auto-run,
+  yours from the hub UI) → a "Projects:" line in the morning and evening briefings. A project
+  going blocked or a turn failing → one message, within the hourly proactive budget and held
+  while you've snoozed JD. The hub is polled once a minute; nothing is pushed.
 
 ## 7. Study
 

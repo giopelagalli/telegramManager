@@ -18,6 +18,8 @@ One paragraph per module: purpose, interface, why this shape. Entry point `pytho
 
 **`bot/maps/`, `bot/search.py`, `bot/weather.py`, `bot/cluster.py`, `bot/voice/`** — Google Places (New), Routes, Geocoding, Time Zone; Brave search that reads the top pages; Open-Meteo + pollen line; Spark and AgentHub load for `/queue`; STT/TTS providers.
 
+**`bot/agenthub/`** — JD's hands on AgentHub (FR-C1–C3). `client.py`: the hub's assistant allow-list over `Authorization: Bearer` (reads, create, `?wait=1` PRD/roadmap with an 11-minute timeout, a turn fired with a 10 s timeout, pause/resume/priority), every failure an `AgentHubError` worded for the owner. `projects.py`: `Projects` — the five `project_*` tools, the Projects block for the context (rendered from the last snapshot, so `build_context` stays synchronous), `poll()` for the engine (turns JD started, reported once by session id; blocked/errored alerts within the budget), `briefing_line()` for the roll-up. Bookkeeping lives in `RuntimeState.projects`. `bot/telegram/projects_ui.py` is the `/projects` editor (`proj:`). Polled, never pushed (0008, 0009).
+
 **`spark/`** — `voice_server.py`: FastAPI on `:8890` serving transcription (faster-whisper), speech (Kokoro) and embeddings on CPU, so the GPU pool stays for vLLM. `docs/spark-setup.md` is the box inventory.
 
 **`knowledge/`** — The vault: `todos/`, `backlog/`, `schedule/` (+ series), `goals/`, `courses/`, `sources/<course>/`, `memories/`, `chat/YYYY-MM-DD.md`, `food/`, `tracking/`, `notes`, `profile.md`, `trackers.md`. Private, on the Spark, never sent whole to the cloud.

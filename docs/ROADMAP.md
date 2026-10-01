@@ -12,11 +12,12 @@ Map, not manual. Updated at the end of every session. Details live in the decisi
 - Files in the DM: code and text are read and discussed and stay in view for three hours; course material is filed; a syllabus builds its course.
 - Proactive messaging: morning briefing, three text-only check-ins, evening wrap-up (deterministic), leave-by reminders with traffic, deadline reminders an hour and 30 minutes before a due time, tracker reminders, Sunday reflect, storm mode with Twilio calls.
 - Button editors: `/schedule`, `/due`, `/todo`, `/courses`, `/notes`, `/calories`.
+- AgentHub phase 1 (branch `agenthub-phase1`): `project_*` tools, the Projects context block, `/projects`, turn reports, briefing roll-up, blocked/failed alerts (0008, 0009).
 - Cluster design: vLLM priority scheduling so AgentHub agents queue behind JD; the 7900 XTX PC as worker and image/video node (plan only).
 
 ## In progress
 
-- Nothing mid-flight. Last commits: file reading + syllabus (2026-09-22), reminder and wrap-up fixes (2026-09-23).
+- AgentHub phase 1 waits on the owner: mint an assistant token (label `JD`), set `AGENTHUB_URL` / `AGENTHUB_TOKEN`, deploy the branch, run the plan's acceptance (start a project from Telegram, see it in the hub, one message when its turn lands, see it in the next briefing).
 
 ## Next
 
@@ -29,7 +30,7 @@ Owner side, in order:
 6. PC (7900 XTX) per AgentHub `deploy/amd/README.md`.
 
 Code side:
-- Plan phase 1: JD ↔ AgentHub tools and context; then connector layer + web API, call mode, Discord/email, self-improvement loop, image/video request tools.
+- Plan phase 2: connector layer + web API, call mode, Discord/email, self-improvement loop, image/video request tools.
 - Optional: Fireworks Whisper as STT fallback while the Spark is down.
 - README still describes the droplet topology in §1.5 and the remotes section; rewrite when the web door lands.
 
