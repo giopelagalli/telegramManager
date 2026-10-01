@@ -197,6 +197,8 @@ async def handle(
         return _think(arg, store, agent)
 
     if name == "help":
+        if projects is None:  # /projects only means something with AgentHub configured
+            return [Outbound("\n".join(l for l in HELP_TEXT.split("\n") if not l.startswith("/projects ")), kind="reply")]
         return [Outbound(HELP_TEXT, kind="reply")]
 
     return [Outbound("I don't know that command. Try /help.", kind="reply")]

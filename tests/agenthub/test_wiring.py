@@ -92,6 +92,7 @@ async def test_projects_command_and_buttons_edit_in_place(jd, hub):
     router, _, _, state, _, _ = jd
     hub.add("rosenroot", "Rosenroot", summary="Built the ingest worker.", next_steps=["the stream view"],
             progress={"done": 3, "total": 8})
+    assert "/projects" in (await router.command("help", ""))[0].text
     [listing] = await router.command("projects", "")
     assert "<b>Rosenroot</b> — active · normal · 3/8" in listing.text
     assert listing.buttons == [("Rosenroot", "proj:view:rosenroot")] and listing.kind == "reply"
@@ -121,6 +122,7 @@ async def test_projects_without_agenthub(tmp_path):
     router = Router(store, Agent(FakeModelClient([]), None, store, clock.now), RuntimeState(), clock, None)
     [out] = await router.command("projects", "")
     assert "isn't set up" in out.text
+    assert "/projects" not in (await router.command("help", ""))[0].text
     assert "isn't set up" in (await router.on_callback("proj:list"))[0].text
 
 

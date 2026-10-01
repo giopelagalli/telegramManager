@@ -37,9 +37,6 @@ class AgentHubClient:
     async def briefings(self) -> list[dict]:
         return await self._call("GET", "/api/briefings")
 
-    async def projects(self) -> list[dict]:
-        return await self._call("GET", "/api/projects")
-
     async def turns(self, slug: str, since: int | None = None) -> dict:
         query = "" if since is None else f"?since={int(since)}"
         return await self._call("GET", f"/api/projects/{_slug(slug)}/turns{query}")

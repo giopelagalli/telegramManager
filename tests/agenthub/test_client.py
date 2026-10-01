@@ -12,7 +12,6 @@ async def test_every_route_with_the_bearer_token(hub, client):
     hub.add("rosenroot", "Rosenroot")
     assert (await client.state())["projects"][0]["slug"] == "rosenroot"
     assert (await client.briefings())[0]["slug"] == "rosenroot"
-    assert (await client.projects())[0]["title"] == "Rosenroot"
     assert (await client.turns("rosenroot", since=123))["turns"] == []
     assert (await client.create("tide-clock", "Tide clock", "a tide clock", idea="a tide clock"))["slug"] == "tide-clock"
     assert (await client.draft_prd("tide-clock"))["full"].startswith("# Tide Clock")
@@ -22,15 +21,15 @@ async def test_every_route_with_the_bearer_token(hub, client):
     assert (await client.resume("rosenroot"))["status"] == "active"
     assert (await client.set_priority("rosenroot", "batch"))["priority"] == "batch"
     assert [c[:2] for c in hub.calls] == [
-        ("GET", "/api/state"), ("GET", "/api/briefings"), ("GET", "/api/projects"),
+        ("GET", "/api/state"), ("GET", "/api/briefings"),
         ("GET", "/api/projects/rosenroot/turns?since=123"), ("POST", "/api/projects"),
         ("POST", "/api/projects/tide-clock/prd/draft?wait=1"), ("POST", "/api/projects/tide-clock/roadmap/generate?wait=1"),
         ("POST", "/api/projects/rosenroot/turn"), ("POST", "/api/projects/rosenroot/pause"),
         ("POST", "/api/projects/rosenroot/resume"), ("POST", "/api/projects/rosenroot/priority"),
     ]
-    assert hub.calls[4][2] == {"slug": "tide-clock", "title": "Tide clock", "intent": "a tide clock", "idea": "a tide clock"}
-    assert hub.calls[7][2] == {"instruction": "focus on the ingest"}
-    assert hub.calls[10][2] == {"priority": "batch"}
+    assert hub.calls[3][2] == {"slug": "tide-clock", "title": "Tide clock", "intent": "a tide clock", "idea": "a tide clock"}
+    assert hub.calls[6][2] == {"instruction": "focus on the ingest"}
+    assert hub.calls[9][2] == {"priority": "batch"}
 
 
 async def test_timeouts_short_for_the_turn_long_for_plans(hub, client):

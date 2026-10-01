@@ -33,3 +33,7 @@ running; one that times out connecting, writing or waiting for a pooled connecti
 the hub and is an error. A planning task in flight is lost on restart
 (the project exists; draft it from the hub UI). The label JD's turns carry is configuration
 (`AGENTHUB_LABEL`, default `JD`) because no allowed route says which token is calling.
+Project tool calls run in the router's general path, like `directions`: when the same model answer
+also calls `study`, `coach`, `recall`, `briefing` or `search`, that path returns first and the
+project call is not made (he says it again). Running them ahead would double-fire on `search`, whose
+second capture can emit the same call again.
