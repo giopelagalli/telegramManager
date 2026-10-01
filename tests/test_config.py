@@ -218,3 +218,11 @@ def test_twilio_is_all_or_nothing():
     assert s.twilio_from == "+1" and s.phone == "+2"
     with pytest.raises(ValueError, match="all four"):
         Settings.from_env(dict(BASE, TWILIO_ACCOUNT_SID="AC"))
+
+
+def test_web_door_is_off_until_its_token_is_set():
+    s = Settings.from_env(BASE)
+    assert s.jd_web_token is None
+    assert (s.jd_web_host, s.jd_web_port) == ("127.0.0.1", 8891)
+    s = Settings.from_env(dict(BASE, JD_WEB_TOKEN="abc", JD_WEB_HOST="100.64.0.2", JD_WEB_PORT="9000"))
+    assert (s.jd_web_token, s.jd_web_host, s.jd_web_port) == ("abc", "100.64.0.2", 9000)
