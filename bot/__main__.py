@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from bot.agent.agent import Agent
+from bot.agenthub.client import AgentHubClient
+from bot.agenthub.projects import Projects
 from bot.agent.client import FallbackModelClient, ModelClient, OpenAIModelClient
 from bot.cluster import AgentHubStatus, ClusterStatus, SparkStatus
 from bot.config import Settings
@@ -128,7 +130,12 @@ def main() -> None:
         )
     search = BraveSearch(settings.brave_api_key) if settings.brave_api_key else None
     briefings.WEATHER = MorningWeather(settings.google_maps_api_key)
-    agent = Agent(client, vision, store, clock.now, hard=hard, search=search is not None)
+    projects = (
+        Projects(AgentHubClient(settings.agenthub_url, settings.agenthub_token), settings.agenthub_label)
+        if settings.agenthub_url and settings.agenthub_token else None
+    )
+    briefings.PROJECTS = projects
+    agent = Agent(client, vision, store, clock.now, hard=hard, search=search is not None, projects=projects is not None)
     # /hard on another provider than the primary only gets the minimal view
     agent.hard_remote = bool(settings.hard_model) and settings.hard_base_url != settings.openai_base_url
     if settings.fallback_model:
@@ -156,10 +163,11 @@ def main() -> None:
                             Embedder(settings.embed_base_url, settings.embed_api_key, settings.embed_model))
     cluster = ClusterStatus(
         spark=SparkStatus(settings.openai_base_url) if settings.fallback_model or "localhost" in settings.openai_base_url else None,
-        hub=AgentHubStatus(settings.agenthub_url, settings.agenthub_password) if settings.agenthub_url else None,
+        hub=AgentHubStatus(settings.agenthub_url, settings.agenthub_password, token=settings.agenthub_token)
+        if settings.agenthub_url else None,
     )
-    router = Router(store, agent, state, clock, maps, search=search, index=index, cluster=cluster)
-    engine = Engine(store, agent, state, state_path, clock, sender, maps, search=search)
+    router = Router(store, agent, state, clock, maps, search=search, index=index, cluster=cluster, projects=projects)
+    engine = Engine(store, agent, state, state_path, clock, sender, maps, search=search, projects=projects)
 
     application = build_application(settings, router, sender, _transcriber(settings))
     sender.bot = application.bot

@@ -140,12 +140,37 @@ async def _weather_line(profile) -> str | None:
         return None
 
 
+# Set by the entrypoint when AgentHub is configured: `bot.agenthub.projects.Projects`.
+PROJECTS = None
+
+
+async def _projects_line(since: datetime) -> str | None:
+    """The roll-up of project turns since the last briefing; never blocks the briefing."""
+    if PROJECTS is None:
+        return None
+    try:
+        return await PROJECTS.briefing_line(since)
+    except Exception:
+        logger.exception("projects line failed")
+        return None
+
+
+def _previous_briefing(profile: Profile, now: datetime, which: str) -> datetime:
+    """When the other briefing last went out: yesterday's evening for the morning, and back."""
+    day = now.date() - timedelta(days=1) if which == "morning" else now.date()
+    hm = profile.evening_briefing if which == "morning" else profile.morning_briefing
+    return datetime.combine(day, hm_to_time(hm), tzinfo=profile.tz)
+
+
 async def morning_outbound(store: KnowledgeStore, now: datetime, agent, note: str | None = None) -> Outbound:
     text = morning_text(store, now)
     weather = await _weather_line(store.profile())
     if weather:
         head, _, rest = text.partition("\n")
         text = f"{head}\n{esc(weather)}\n{rest}"
+    projects = await _projects_line(_previous_briefing(store.profile(), now, "morning"))
+    if projects:
+        text += "\n\n" + esc(projects)
     if note:
         text = f"{note}\n\n{text}"
     profile = store.profile()
@@ -158,6 +183,9 @@ async def evening_outbound(store: KnowledgeStore, now: datetime, agent, notes: l
     # Deterministic on purpose: a composed line repeated tomorrow's plan and nagged about food.
     # Nightly notes are written quietly, not read back.
     body, buttons = evening_text(store, now)
+    projects = await _projects_line(_previous_briefing(store.profile(), now, "evening"))
+    if projects:
+        body += "\n\n" + esc(projects)
     return Outbound(body, voice=store.profile().voice_on_proactive, buttons=buttons, kind="briefing")
 
 

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from bot.agent.agent import apply_actions
 from bot.agent.client import ToolCall
 from bot.agent.prompts import ATTACHMENT_HINT, SYLLABUS_HINT, build_context
+from bot.agent.tools import PROJECT_TOOLS
 from bot.knowledge.models import Todo, UNBOUND, Channel, Course, Source, channel_key, slugify
 from bot.knowledge.views import esc, render_week
 from bot.maps.client import directions_url, distance_m
@@ -114,7 +115,7 @@ def _stored_reply(source: Source, course: Course) -> str:
 class Router:
     """Turns a user action into a list of outbound messages. No telegram types here."""
 
-    def __init__(self, store, agent, state, clock, maps, search=None, index=None, cluster=None):
+    def __init__(self, store, agent, state, clock, maps, search=None, index=None, cluster=None, projects=None):
         self.store = store
         self.agent = agent
         self.state = state
@@ -123,7 +124,9 @@ class Router:
         self.search = search
         self.index = index
         self.cluster = cluster
+        self.projects = projects  # AgentHub (bot/agenthub/projects.py), when a token is configured
         build_context.state = state  # lets the context builder mention his last shared location
+        build_context.projects = projects  # and carry the Projects block
         self.last_outcome = "handled"
         self._warned_threads: set[str] = set()
 
@@ -662,7 +665,7 @@ class Router:
         now = self._touch()
         close_chain(self.state)
         outs = await callbacks.handle(
-            data, self.store, self.agent, self.state, now, message_id, message_html, buttons
+            data, self.store, self.agent, self.state, now, message_id, message_html, buttons, projects=self.projects
         )
         return self._tag(outs, channel)
 
@@ -682,6 +685,7 @@ class Router:
         outs = await commands.handle(
             name, arg, self.store, self.agent, self.state, now, channel,
             recall=self._recall, recent=self._thread(), search=self.search, cluster=self.cluster,
+            projects=self.projects,
         )
         return self._tag(outs, channel)
 
@@ -855,6 +859,8 @@ class Router:
                 )
                 lines.append(line)
                 ask_location = ask_location or need_location
+            elif a.name in PROJECT_TOOLS:
+                lines.append(await self._project(a, now))
         if sum(1 for a in result.actions if a.name == "add_event") >= 3:
             # A whole schedule went in: show the week back so he can check it at a glance.
             lines.append(render_week(self.store.events(), self.store.profile(), now, self.store.todos()))
@@ -880,6 +886,22 @@ class Router:
                 kind="reply",
             )
         ]
+
+    async def _project(self, action, now) -> str:
+        """One project tool call against AgentHub; the line he sees under the reply."""
+        if self.projects is None:
+            return "AgentHub isn't set up (AGENTHUB_URL and AGENTHUB_TOKEN)."
+        args = action.arguments
+        slug = str(args.get("slug", ""))
+        if action.name == "project_new":
+            return await self.projects.new(str(args.get("title", "")), str(args.get("intent", "")))
+        if action.name == "project_turn":
+            return await self.projects.turn(self.state, slug, args.get("instruction"), now)
+        if action.name == "project_pause":
+            return await self.projects.pause(slug)
+        if action.name == "project_resume":
+            return await self.projects.resume(slug)
+        return await self.projects.priority(slug, str(args.get("order", "")))
 
     LOCATION_FRESH_HOURS = 3
 

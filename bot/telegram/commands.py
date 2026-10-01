@@ -43,6 +43,7 @@ COMMANDS: list[tuple[str, str, bool]] = [
     ("pause", "Quiet for 2h", True),
     ("undo", "Take back the last thing he changed", False),
     ("queue", "What's using the Spark right now", False),
+    ("projects", "AgentHub projects: status, run a turn, pause", False),
     ("voice", "Voice notes on every reply, on/off (/voice on)", False),
     ("hard", "Same JD, on the bigger cloud model (/hard …)", False),
     ("think", "Slower, more careful answers on/off (/think on)", False),
@@ -68,7 +69,7 @@ _TIME_RE = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", re.IGNORECASE)
 
 async def handle(
     name: str, arg: str, store, agent, state, now: datetime, channel: Channel | None = None,
-    recall=None, recent=None, search=None, cluster=None,
+    recall=None, recent=None, search=None, cluster=None, projects=None,
 ) -> list[Outbound]:
     arg = (arg or "").strip()
     today = now.date()
@@ -175,6 +176,13 @@ async def handle(
         if cluster is None:
             return [Outbound("Nothing to report: no Spark or AgentHub configured.", kind="reply")]
         return [Outbound(esc(await cluster.report(now)), kind="reply")]
+
+    if name == "projects":
+        from bot.telegram import projects_ui
+        if projects is None:
+            return [Outbound("AgentHub isn't set up (AGENTHUB_URL and AGENTHUB_TOKEN).", kind="reply")]
+        await projects.refresh()
+        return [projects_ui.list_view(projects)]
 
     if name == "undo":
         subject = store.undo()

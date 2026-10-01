@@ -14,6 +14,7 @@ import time
 from bot.agent.client import ModelClient, ToolCall
 from bot.agent.prompts import (
     BACKUP_NOTE,
+    PROJECTS_NOTE,
     CHAT_OCR_PROMPT,
     CONSOLIDATE_SYSTEM,
     CLASSIFY_PHOTO_SYSTEM,
@@ -33,7 +34,7 @@ from bot.agent.prompts import (
     TUTOR_SYSTEM,
     build_context,
 )
-from bot.agent.tools import TOOL_SCHEMAS, TUTOR_TOOLS, validate_call
+from bot.agent.tools import PROJECT_TOOLS, TOOL_SCHEMAS, TUTOR_TOOLS, validate_call
 from bot.knowledge.models import slugify, SOURCE_KINDS, Course, Event, Goal, Source, Todo
 from bot.knowledge.trackers import status_line
 
@@ -116,8 +117,12 @@ class Agent:
         clock: Callable[[], datetime],
         hard: ModelClient | None = None,
         search: bool = False,
+        projects: bool = False,
     ):
-        self.tools = TOOL_SCHEMAS if search else [t for t in TOOL_SCHEMAS if t["function"]["name"] != "search"]
+        self.tools = [t for t in TOOL_SCHEMAS
+                      if (search or t["function"]["name"] != "search")
+                      and (projects or t["function"]["name"] not in PROJECT_TOOLS)]
+        self.projects = projects
         self.client = client
         self.vision = vision
         self.store = store
@@ -150,6 +155,8 @@ class Agent:
         now = self.clock()
         profile = self.store.profile()
         system = CAPTURE_SYSTEM.format(assistant=profile.assistant_name, name=profile.name, now=now.isoformat(), voice=VOICE)
+        if self.projects:
+            system += "\n\n" + PROJECTS_NOTE
         if self.degraded:
             system += "\n\n" + BACKUP_NOTE  # same view as /hard: conversation + matching notes, not the vault
         context = self.context(now, awaiting, remote=client is not None and client is not self.client)
@@ -864,7 +871,7 @@ def apply_actions(store: KnowledgeStore, actions: list[ToolCall], now: datetime)
                 else:
                     store.add_memory(text, kind=kind)
                     summary.append("I'll keep that in mind." if kind == "state" else f"Remembered: {text}")
-            elif action.name in ("study", "directions", "search", "undo", "recall", "coach"):
+            elif action.name in ("study", "directions", "search", "undo", "recall", "coach") or action.name in PROJECT_TOOLS:
                 pass  # the router answers it after applying the rest
             elif action.name == "move_source":
                 target = _resolve_course(store, str(args.get("course", "")))

@@ -141,6 +141,7 @@ class RuntimeState:
     last_file: dict | None = None  # {"name", "text", "at": ISO} — the last file he sent to talk about
     review: dict | None = None  # an open recall session: queue, current, right, again
     recent: list = field(default_factory=list)  # last few [role, text] exchanges, capped
+    projects: dict = field(default_factory=dict)  # AgentHub: turns watched/reported, statuses seen
 
     def save(self, path: Path) -> None:
         path = Path(path)
@@ -162,6 +163,7 @@ class RuntimeState:
             "last_file": self.last_file,
             "review": self.review,
             "recent": [list(x) for x in self.recent],
+            "projects": self.projects,
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -189,6 +191,7 @@ class RuntimeState:
                 last_file=data.get("last_file"),
                 review=data.get("review"),
                 recent=[list(x) for x in data.get("recent", [])],
+                projects=data.get("projects") or {},
             )
         except Exception as exc:
             logger.warning("failed to load state from %s: %s", path, exc)

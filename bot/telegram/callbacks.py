@@ -8,7 +8,7 @@ from bot.knowledge.views import esc
 from bot.scheduler.chains import close_chain
 from bot.scheduler.outbound import Outbound
 from bot.scheduler.state import PendingVerify
-from bot.telegram import courses_ui, food_ui, notes_ui, schedule_ui, todo_ui
+from bot.telegram import courses_ui, food_ui, notes_ui, projects_ui, schedule_ui, todo_ui
 from bot.telegram.markdown import md_to_html
 
 SNOOZE_MINUTES = 30
@@ -28,6 +28,7 @@ async def handle(
     message_id: int | None = None,
     message_html: str | None = None,
     buttons: list[tuple[str, str]] | None = None,
+    projects=None,
 ) -> list[Outbound]:
     action, _, arg = data.partition(":")
     remaining = [b for b in (buttons or []) if b[1] != data]
@@ -49,6 +50,8 @@ async def handle(
         return notes_ui.handle(arg, store, state, now, message_id)
     if action == "food":
         return food_ui.handle(arg, store, state, now, message_id)
+    if action == "proj":
+        return await projects_ui.handle(arg, projects, state, now, message_id)
     if action == "resume":
         state.pause_until = None
         return [Outbound("Back on.", kind="reply")]

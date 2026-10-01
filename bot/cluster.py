@@ -46,9 +46,11 @@ class SparkStatus:
 class AgentHubStatus:
     """AgentHub's /api/state: projects (status, priority) and its job queue."""
 
-    def __init__(self, url: str, password: str | None = None, http: httpx.AsyncClient | None = None):
+    def __init__(self, url: str, password: str | None = None, http: httpx.AsyncClient | None = None,
+                 token: str | None = None):
         self._url = url.rstrip("/")
-        self._password = password
+        self._password = None if token else password  # the assistant token, when set, replaces the login
+        self._headers = {"Authorization": f"Bearer {token}"} if token else {}
         self._http = http or httpx.AsyncClient(timeout=8.0)
 
     async def snapshot(self) -> dict | None:
@@ -56,7 +58,7 @@ class AgentHubStatus:
             if self._password and not self._http.cookies.get("hub_session"):
                 login = await self._http.post(f"{self._url}/api/login", json={"password": self._password})
                 login.raise_for_status()
-            r = await self._http.get(f"{self._url}/api/state")
+            r = await self._http.get(f"{self._url}/api/state", headers=self._headers)
             r.raise_for_status()
             state = r.json()
         except (httpx.HTTPError, ValueError) as exc:

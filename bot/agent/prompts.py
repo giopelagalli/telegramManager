@@ -236,6 +236,12 @@ schedule, todos and goals, the conversation so far, and the notes that match thi
 the whole vault, and no voice. If they ask for something you don't have, say it waits
 until the Spark is back. Keep everything else the same."""
 
+PROJECTS_NOTE = """AgentHub runs his software projects (see "Projects on AgentHub" in the context). "Start a
+project: …" is `project_new`; "run a turn on X (focus on …)" is `project_turn`; "pause X" / "resume X"
+are `project_pause` / `project_resume`; "X runs first", "back to normal", "X only when idle" is
+`project_priority`. Use the slug from the context. "How's X going" is a plain `reply` from that block.
+Turns and planning report back by themselves when they land, so `reply` briefly."""
+
 
 def location_line(state, now: datetime) -> str | None:
     """'Location: shared 4 min ago (live)' — so the model never claims not to know where he is."""
@@ -343,6 +349,11 @@ def build_context(store, now: datetime, awaiting: str | None = None, minimal: bo
         lines.append("Courses:")
         for c in courses:
             lines.append(f"- {c.title} [{c.slug}] — {len(store.sources(c.slug))} sources")
+
+    projects = getattr(build_context, "projects", None)
+    block = projects.context_block() if projects is not None and not minimal else None
+    if block:
+        lines.append(block)
 
     lines.append(f"Now: {now.isoformat()}")
     if awaiting:

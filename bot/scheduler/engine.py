@@ -18,6 +18,7 @@ PENDING_VERIFY_TTL = timedelta(minutes=10)
 SENT_TIMES_CAP = 200
 PLANS_AFTER_HOUR = 8  # exam plans are drafted in the morning, not at midnight
 BACKEND_PROBE_EVERY = timedelta(seconds=60)
+PROJECTS_POLL_EVERY = timedelta(seconds=60)
 SPARK_DOWN_TEXT = (
     "Spark's down. Running on the backup until it's back — same as /hard, so everything works "
     "except voice. Replies start with ☁️ meanwhile."
@@ -28,7 +29,7 @@ SPARK_UP_TEXT = "Spark's back."
 class Engine:
     """Runs one deterministic pass over every scheduled job per tick."""
 
-    def __init__(self, store, agent, state, state_path: Path, clock, sender, maps, search=None):
+    def __init__(self, store, agent, state, state_path: Path, clock, sender, maps, search=None, projects=None):
         self.store = store
         self.agent = agent
         self.state = state
@@ -37,6 +38,8 @@ class Engine:
         self.sender = sender
         self.maps = maps
         self.search = search
+        self.projects = projects  # AgentHub reporting (bot/agenthub/projects.py)
+        self._last_projects_poll: datetime | None = None
         self.sent_times: list[datetime] = []
         self._last_probe: datetime | None = None
 
@@ -68,6 +71,7 @@ class Engine:
             self._sprint,
             self._critical_leave,
             self._briefings,
+            self._projects,
             self._plans,
             self._reflect,
             self._checkin,
@@ -160,6 +164,28 @@ class Engine:
     async def _briefings(self, now: datetime, sent: list[Outbound]) -> None:
         for out in await briefings.due_briefings(now, self.store, self.state, self.agent):
             await self._send(out, now, sent)
+
+    async def _projects(self, now: datetime, sent: list[Outbound]) -> None:
+        """AgentHub: finished planning and turns JD started, as they land; blocked projects and
+        failed turns once each, within the proactive budget."""
+        if self.projects is None:
+            return
+        for out in self.projects.drain():
+            await self._send(out, now, sent)
+        if self._last_projects_poll is not None and now < self._last_projects_poll + PROJECTS_POLL_EVERY:
+            return
+        self._last_projects_poll = now
+        profile = self.store.profile()
+        budget_ok(now, self.state, profile)  # prunes the window
+        left = max(0, profile.proactive_budget_per_hour - len(self.state.proactive_sends))
+        if self.state.pause_until is not None and now < self.state.pause_until:
+            left = 0  # snoozed: alerts wait; a turn he asked for still reports
+        reports, alerts = await self.projects.poll(self.state, now, left)
+        for out in reports:
+            await self._send(out, now, sent)
+        for out in alerts:
+            await self._send(out, now, sent)
+            record_send(now, self.state)
 
     async def _plans(self, now: datetime, sent: list[Outbound]) -> None:
         """An exam entering the study horizon gets its plan, once a day, in the morning."""

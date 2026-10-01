@@ -427,6 +427,80 @@ TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "project_new",
+            "description": "Start a new AgentHub project: \"start a project: a tide clock for the harbour\". Creates it, then drafts the PRD and roadmap (that part reports back by itself when done).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "short name, e.g. Tide clock"},
+                    "intent": {"type": "string", "description": "what it should do, in his words; the PRD is drafted from this"},
+                },
+                "required": ["title", "intent"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "project_turn",
+            "description": "Run one turn on an AgentHub project now: \"run a turn on rosenroot, focus on the ingest\". It reports back by itself when the turn lands.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slug": {"type": "string", "description": "the project's slug from the Projects context"},
+                    "instruction": {"type": "string", "description": "what to focus on, when he said"},
+                },
+                "required": ["slug"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "project_pause",
+            "description": "Stop an AgentHub project from being scheduled: \"pause the probability engine\".",
+            "parameters": {
+                "type": "object",
+                "properties": {"slug": {"type": "string", "description": "the project's slug from the Projects context"}},
+                "required": ["slug"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "project_resume",
+            "description": "Let a paused AgentHub project run again: \"resume rosenroot\".",
+            "parameters": {
+                "type": "object",
+                "properties": {"slug": {"type": "string", "description": "the project's slug from the Projects context"}},
+                "required": ["slug"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "project_priority",
+            "description": "How an AgentHub project queues for the models: \"rosenroot runs first\" (first), \"back to normal\" (normal), \"only when nothing else is running\" (idle).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slug": {"type": "string", "description": "the project's slug from the Projects context"},
+                    "order": {"type": "string", "enum": ["first", "normal", "idle"]},
+                },
+                "required": ["slug", "order"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "reply",
             "description": "The message to send back to the user. At most once.",
             "parameters": {
@@ -462,6 +536,10 @@ TUTOR_TOOLS: list[dict] = [
         },
     },
 ]
+
+PROJECT_TOOLS: frozenset[str] = frozenset(
+    {"project_new", "project_turn", "project_pause", "project_resume", "project_priority"}
+)
 
 _TOOLS_BY_NAME: dict[str, dict] = {t["function"]["name"]: t["function"] for t in TOOL_SCHEMAS}
 

@@ -126,6 +126,8 @@ class Settings:
     tts_instructions: str | None
     agenthub_url: str | None
     agenthub_password: str | None
+    agenthub_token: str | None  # an `assistant` API token (ah_…): the project tools and /projects
+    agenthub_label: str  # that token's label on the hub; turns it starts carry it as requestedBy
     twilio_account_sid: str | None
     twilio_auth_token: str | None
     twilio_from: str | None
@@ -217,6 +219,8 @@ class Settings:
             tts_instructions=opt("TTS_INSTRUCTIONS"),
             agenthub_url=opt("AGENTHUB_URL"),
             agenthub_password=opt("AGENTHUB_PASSWORD"),
+            agenthub_token=opt("AGENTHUB_TOKEN"),
+            agenthub_label=opt("AGENTHUB_LABEL") or "JD",
             twilio_account_sid=twilio["TWILIO_ACCOUNT_SID"],
             twilio_auth_token=twilio["TWILIO_AUTH_TOKEN"],
             twilio_from=twilio["TWILIO_FROM"],
