@@ -28,6 +28,7 @@ CONTEXT_SUMMARY_CHARS = 160
 CONTEXT_CHARS = 2500
 REPORT_SUMMARY_CHARS = 400
 REPORTED_CAP = 200
+BRIEFING_WAIT = 15.0  # seconds the briefing waits for the Projects line
 WATCH_MAX_MS = 3 * 3600 * 1000  # a turn JD fired that never lands is dropped after this
 
 
@@ -92,8 +93,7 @@ class Projects:
 
     async def refresh(self) -> list[dict] | None:
         try:
-            state = await self.client.state()
-            briefings = await self.client.briefings()
+            state, briefings = await asyncio.gather(self.client.state(), self.client.briefings())
         except AgentHubError as exc:
             logger.warning("projects refresh failed: %s", exc)
             return None
@@ -199,11 +199,18 @@ class Projects:
         if row is None:
             return f"No project called {esc(name)}."
         try:
-            await getattr(self.client, action)(row["slug"])
+            manifest = await getattr(self.client, action)(row["slug"])
         except AgentHubError as exc:
             return f"{esc(row['title'])}: {esc(str(exc))}"
-        await self.refresh()
+        self._adopt(row, manifest)
         return f"{done} {esc(row['title'])}."
+
+    @staticmethod
+    def _adopt(row: dict, manifest) -> None:
+        """A write answers with the manifest: take its status and priority instead of re-reading the hub."""
+        if isinstance(manifest, dict):
+            row["status"] = manifest.get("status") or row["status"]
+            row["priority"] = manifest.get("priority") or row["priority"]
 
     async def priority(self, name: str, order: str) -> str:
         """`order` is the owner's word (first/normal/idle) or the hub's own value."""
@@ -214,10 +221,10 @@ class Projects:
         if row is None:
             return f"No project called {esc(name)}."
         try:
-            await self.client.set_priority(row["slug"], priority)
+            manifest = await self.client.set_priority(row["slug"], priority)
         except AgentHubError as exc:
             return f"{esc(row['title'])}: {esc(str(exc))}"
-        await self.refresh()
+        self._adopt(row, manifest)
         return f"{esc(row['title'])} {ORDER_WORDS[priority]} now."
 
     # -- reporting ---------------------------------------------------------
@@ -288,10 +295,26 @@ class Projects:
 
     async def briefing_line(self, since: datetime) -> str | None:
         """"Projects: rosenroot 2 turns, probability-engine blocked on the odds API key." — the
-        turns JD didn't start (auto-run, the owner's own) since `since`, and what is blocked."""
+        turns JD didn't start (auto-run, the owner's own) since `since`, and what is blocked.
+        Capped at BRIEFING_WAIT seconds: a slow hub drops the line, never delays the briefing."""
+        try:
+            return await asyncio.wait_for(self._briefing_line(since), BRIEFING_WAIT)
+        except asyncio.TimeoutError:
+            logger.warning("projects line took longer than %ss; left out", BRIEFING_WAIT)
+            return None
+
+    async def _briefing_line(self, since: datetime) -> str | None:
         snapshot = await self.refresh()
         if not snapshot:
             return None
+
+        async def turns_of(slug: str) -> list[dict]:
+            try:
+                return (await self.client.turns(slug, _ms(since))).get("turns") or []
+            except AgentHubError:
+                return []
+        live = [r for r in snapshot if r["status"] not in ("blocked", "done")]
+        counted = dict(zip((r["slug"] for r in live), await asyncio.gather(*(turns_of(r["slug"]) for r in live))))
         bits = []
         for row in snapshot:
             if row["status"] == "blocked":
@@ -300,10 +323,7 @@ class Projects:
                 continue
             if row["status"] == "done":
                 continue
-            try:
-                turns = (await self.client.turns(row["slug"], _ms(since))).get("turns") or []
-            except AgentHubError:
-                continue
+            turns = counted.get(row["slug"], [])
             n = sum(1 for t in turns if t.get("requestedBy") != self.label)
             if n:
                 bits.append(f"{row['slug']} {n} turn{'s' if n != 1 else ''}")

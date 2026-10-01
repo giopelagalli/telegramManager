@@ -198,3 +198,26 @@ async def test_a_turn_that_never_reached_the_hub_is_an_error_not_a_watch(hub):
     state = RuntimeState()
     assert await projects.turn(state, "rosenroot", None, NOW) == "Rosenroot: AgentHub didn't answer in time."
     assert state.projects.get("watch", {}) == {}
+
+
+async def test_writes_adopt_the_returned_manifest_without_rereading(hub, client):
+    hub.add("rosenroot", "Rosenroot")
+    projects, _ = rig(client)
+    await projects.refresh()
+    hub.calls.clear()
+    await projects.pause("rosenroot")
+    await projects.priority("rosenroot", "idle")
+    assert [c[:2] for c in hub.calls] == [("POST", "/api/projects/rosenroot/pause"), ("POST", "/api/projects/rosenroot/priority")]
+    assert (projects.snapshot[0]["status"], projects.snapshot[0]["priority"]) == ("paused", "batch")
+
+
+async def test_a_slow_hub_drops_the_briefing_line_instead_of_delaying_it(hub, client, monkeypatch):
+    import bot.agenthub.projects as mod
+    hub.add("rosenroot")
+    projects, _ = rig(client)
+
+    async def slow(slug, since=None):
+        await asyncio.sleep(5)
+    monkeypatch.setattr(mod, "BRIEFING_WAIT", 0.05)
+    monkeypatch.setattr(client, "turns", slow)
+    assert await projects.briefing_line(NOW) is None

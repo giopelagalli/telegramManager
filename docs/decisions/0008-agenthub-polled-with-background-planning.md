@@ -22,6 +22,14 @@ C. The context block renders from the last poll's snapshot, so `build_context` s
 Watch and report bookkeeping lives in `RuntimeState.projects`, saved with the rest of the state.
 
 ## Consequences
-A report arrives up to a minute after the turn lands. A planning task in flight is lost on restart
+A report arrives up to a minute after the turn lands. Worst case against a hub that hangs
+(reads time out at 8 s; `/api/state` and `/api/briefings` are fetched together): a project tool
+in a message waits ~8 s to resolve the name (only when it isn't in the last snapshot) plus 8 s for
+the write (10 s for a turn) — about 18 s; `/projects` and each button ~8 s, because a write's
+returned manifest updates the snapshot instead of re-reading the hub; a briefing waits at most
+15 s for its Projects line (the `/turns` calls run together) and goes out without it after that;
+an engine poll ~8 s plus 8 s per watched project. A turn POST that times out *reading* is a turn
+running; one that times out connecting, writing or waiting for a pooled connection never reached
+the hub and is an error. A planning task in flight is lost on restart
 (the project exists; draft it from the hub UI). The label JD's turns carry is configuration
 (`AGENTHUB_LABEL`, default `JD`) because no allowed route says which token is calling.
