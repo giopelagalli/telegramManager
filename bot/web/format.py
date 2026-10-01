@@ -3,10 +3,11 @@
 The wire allows b i u s code pre a[href] and newlines. Telegram's synonyms map onto that subset,
 its other formatting (spoilers, quotes, custom emoji) keeps only the text, and anything Telegram
 itself would refuse (an unknown tag, unbalanced tags) goes out plain, the same fallback the
-Telegram sender takes.
+Telegram sender takes. So does a link that isn't http(s), mailto or tg: the browser renders this.
 """
 from __future__ import annotations
 
+import re
 from html import escape
 from html.parser import HTMLParser
 
@@ -15,6 +16,7 @@ from bot.telegram.sender import plain_text
 _SAME = {"b", "i", "u", "s", "code", "pre", "a"}
 _SYNONYM = {"strong": "b", "em": "i", "ins": "u", "strike": "s", "del": "s"}
 _TEXT_ONLY = {"span", "tg-spoiler", "tg-emoji", "blockquote"}
+_SAFE_HREF = re.compile(r"(?:https?|mailto|tg):", re.IGNORECASE)
 
 
 class _Unparsable(Exception):
@@ -36,8 +38,8 @@ class _Subset(HTMLParser):
             raise _Unparsable(tag)
         if name == "a":
             href = dict(attrs).get("href")
-            if not href:
-                raise _Unparsable("a without href")
+            if not href or not _SAFE_HREF.match(href):
+                raise _Unparsable("a without a safe href")
             self.out.append(f'<a href="{escape(href, quote=True)}">')
         else:
             self.out.append(f"<{name}>")

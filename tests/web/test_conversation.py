@@ -75,6 +75,22 @@ async def test_a_failed_synthesis_still_answers(tmp_path):
     ("milk &amp; eggs", ("milk & eggs", "plain")),
     ("use <course> here", ("use  here", "plain")),  # Telegram refuses an unknown tag; so do we
     ("<b>open", ("open", "plain")),
+    ('<a href="mailto:me@x.org">mail</a> <a href="tg://user?id=1">tg</a>',
+     ('<a href="mailto:me@x.org">mail</a> <a href="tg://user?id=1">tg</a>', "html")),
+    # Only http(s), mailto and tg links survive; anything else is the plain fallback.
+    ('<a href="javascript:alert(1)">x</a>', ("x", "plain")),
+    ('<a href="JavaScript:alert(1)">x</a>', ("x", "plain")),
+    ('<a href="java\tscript:alert(1)">x</a>', ("x", "plain")),
+    ('<a href=" javascript:alert(1)">x</a>', ("x", "plain")),
+    ('<a href="data:text/html,hi">x</a>', ("x", "plain")),
+    ('<a href="/relative">x</a>', ("x", "plain")),
 ])
 def test_telegram_html_maps_to_the_wire_subset(telegram, wire):
     assert to_wire(telegram) == wire
+
+
+def test_a_markdown_javascript_link_reaches_the_web_plain():
+    from bot.telegram.markdown import md_to_html
+
+    text, fmt = to_wire(md_to_html("see [this](javascript:alert(1))"))
+    assert fmt == "plain" and "javascript" not in text
