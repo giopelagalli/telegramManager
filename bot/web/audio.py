@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 MIME = "audio/mp4"
 KEEP_COUNT = 50
 KEEP_SECONDS = 24 * 3600
-_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+TRANSCODE_TIMEOUT = 60
+_ID_RE = re.compile(r"[0-9a-f]{32}")
 
 
 async def to_m4a(src: Path, dst: Path) -> None:
@@ -26,7 +27,12 @@ async def to_m4a(src: Path, dst: Path) -> None:
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await proc.communicate()
+    try:
+        _, stderr = await asyncio.wait_for(proc.communicate(), TRANSCODE_TIMEOUT)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise RuntimeError(f"ffmpeg took over {TRANSCODE_TIMEOUT}s")
     if proc.returncode != 0:
         tail = stderr[-2000:].decode(errors="replace") if stderr else ""
         raise RuntimeError(f"ffmpeg failed: {tail}")
@@ -54,7 +60,7 @@ class AudioStore:
         return audio_id
 
     def path(self, audio_id: str) -> Path | None:
-        if not _ID_RE.match(audio_id):
+        if not _ID_RE.fullmatch(audio_id):
             return None
         path = self.directory / f"{audio_id}.m4a"
         return path if path.is_file() else None

@@ -18,7 +18,7 @@ Map, not manual. Updated at the end of every session. Details live in the decisi
 
 ## In progress
 
-- The web door waits on the owner: deploy `jd-web-door` (after phase 1), `pip install -e .` once for aiohttp, `openssl rand -hex 32` on the Spark into both `.env`s as `JD_WEB_TOKEN` (hub also `JD_URL=http://127.0.0.1:8891`), restart both, run the plan's phase 2 acceptance from the hub's JD page.
+- The web door waits on the owner: deploy `jd-web-door` (after phase 1), `.venv/bin/pip install -e .` once for aiohttp, `openssl rand -hex 32` on the Spark into both `.env`s as `JD_WEB_TOKEN` (hub also `JD_URL=http://127.0.0.1:8891`), restart both, run the plan's phase 2 acceptance from the hub's JD page.
 - AgentHub phase 1 waits on the owner: mint an assistant token (label `JD`), set `AGENTHUB_URL` / `AGENTHUB_TOKEN`, deploy the branch, run the plan's acceptance (start a project from Telegram, see it in the hub, one message when its turn lands, see it in the next briefing).
 
 ## Next

@@ -23,4 +23,4 @@ starts in `post_init`, stops in `post_shutdown` (open streams closed with "going
 ## Consequences
 - One more dependency to keep current; it also pulls in its small helpers (yarl, multidict,
   frozenlist, aiosignal, propcache, aiohappyeyeballs).
-- Deploying this needs one `pip install -e .` on the Spark; a plain `git pull` is not enough.
+- Deploying this needs one `.venv/bin/pip install -e .` on the Spark; a plain `git pull` is not enough.

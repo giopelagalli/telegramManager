@@ -408,7 +408,7 @@ requests carrying `Authorization: Bearer <JD_WEB_TOKEN>`. The hub is its only cl
 
 - **Turn it on:** on the Spark, `openssl rand -hex 32`; put the value in JD's `.env` as
   `JD_WEB_TOKEN` and in AgentHub's `.env` as `JD_WEB_TOKEN` (with `JD_URL=http://127.0.0.1:8891`);
-  `.venv/bin/pip install -e '.[voice]'` once (the door needs `aiohttp`); restart both.
+  `.venv/bin/pip install -e .` once (the door needs `aiohttp`); restart both.
   Rotating it is the same two edits and two restarts. Never paste it into a chat.
 - **What it does:** a message on the web goes through the same router as a Telegram message
   (slash commands included) and is answered on the web only; it is still in JD's conversation

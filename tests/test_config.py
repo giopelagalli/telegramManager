@@ -226,3 +226,9 @@ def test_web_door_is_off_until_its_token_is_set():
     assert (s.jd_web_host, s.jd_web_port) == ("127.0.0.1", 8891)
     s = Settings.from_env(dict(BASE, JD_WEB_TOKEN="abc", JD_WEB_HOST="100.64.0.2", JD_WEB_PORT="9000"))
     assert (s.jd_web_token, s.jd_web_host, s.jd_web_port) == ("abc", "100.64.0.2", 9000)
+
+
+def test_a_bad_web_port_only_matters_with_the_door_on():
+    assert Settings.from_env(dict(BASE, JD_WEB_PORT="eighty")).jd_web_port == 8891
+    with pytest.raises(ValueError, match="JD_WEB_PORT"):
+        Settings.from_env(dict(BASE, JD_WEB_TOKEN="abc", JD_WEB_PORT="eighty"))

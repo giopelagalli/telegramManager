@@ -231,8 +231,17 @@ class Settings:
             phone=twilio["PHONE"],
             jd_web_token=opt("JD_WEB_TOKEN"),
             jd_web_host=opt("JD_WEB_HOST") or "127.0.0.1",
-            jd_web_port=int(opt("JD_WEB_PORT") or 8891),
+            jd_web_port=_web_port(opt("JD_WEB_TOKEN"), opt("JD_WEB_PORT")),
         )
+
+
+def _web_port(token: str | None, raw: str | None) -> int:
+    """Checked only when the web door is on: a stray value must not stop JD with the door off."""
+    if not token or not raw:
+        return 8891
+    if not raw.isdigit() or not 0 < int(raw) < 65536:
+        raise ValueError("JD_WEB_PORT must be a port number")
+    return int(raw)
 
 
 def _tristate(raw: str) -> bool | None:

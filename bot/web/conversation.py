@@ -77,8 +77,13 @@ class WebConversation:
         if existing is None:
             self._append(message)
             return message
-        self.messages[self.messages.index(existing)] = message
-        self._save()
+        # Look again after the await: a proactive message may have trimmed the original meanwhile.
+        index = next((i for i, m in enumerate(self.messages) if m["id"] == message["id"]), None)
+        if index is None:
+            self._append(message)
+        else:
+            self.messages[index] = message
+            self._save()
         return {**message, "edit": True}
 
     def history(self, limit: int) -> list[dict]:

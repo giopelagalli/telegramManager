@@ -94,3 +94,47 @@ def test_a_markdown_javascript_link_reaches_the_web_plain():
 
     text, fmt = to_wire(md_to_html("see [this](javascript:alert(1))"))
     assert fmt == "plain" and "javascript" not in text
+
+
+async def test_an_edit_whose_original_was_trimmed_meanwhile_still_lands(tmp_path):
+    class Slow:
+        async def synthesize(self, text, out_dir):
+            for n in range(3):  # proactive messages arrive while the voice note is made
+                conversation.owner(f"push {n}")
+            path = out_dir / "n.ogg"
+            path.write_bytes(b"x")
+            return path
+
+    conversation = WebConversation(tmp_path / "web.json", AudioStore(tmp_path / "a", fake_transcode), Slow(),
+                                   tmp_path / "tmp", cap=2)
+    original = conversation.owner("original")
+    edit = await conversation.render(Outbound("changed", voice=True, edit_message_id=int(original["id"])))
+    assert edit["edit"] is True and edit["id"] == original["id"]
+    assert conversation.history(5)[-1]["text"] == "changed"
+
+
+async def test_a_hung_ffmpeg_is_killed(tmp_path, monkeypatch):
+    import asyncio
+
+    from bot.web import audio
+
+    class Hung:
+        killed = False
+
+        async def communicate(self):
+            await asyncio.sleep(10)
+
+        def kill(self):
+            Hung.killed = True
+
+        async def wait(self):
+            return -9
+
+    async def spawn(*args, **kwargs):
+        return Hung()
+
+    monkeypatch.setattr(audio.asyncio, "create_subprocess_exec", spawn)
+    monkeypatch.setattr(audio, "TRANSCODE_TIMEOUT", 0.01)
+    with pytest.raises(RuntimeError, match="took over"):
+        await audio.to_m4a(tmp_path / "in.ogg", tmp_path / "out.m4a")
+    assert Hung.killed
