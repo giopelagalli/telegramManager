@@ -2,6 +2,7 @@
 import asyncio
 import importlib.util
 import sys
+import threading
 from pathlib import Path
 
 import openai
@@ -27,6 +28,8 @@ class Transcriber:
         self._model_size = model_size
         self._device = device
         self._model = None
+        # Telegram and the web door share this transcriber; two first calls must not load Whisper twice.
+        self._load_lock = threading.Lock()
 
     def _load_model(self):
         from faster_whisper import WhisperModel
@@ -39,8 +42,9 @@ class Transcriber:
         return WhisperModel(self._model_size, device=device, compute_type=compute_type)
 
     def _transcribe_sync(self, path: Path) -> tuple[str, float]:
-        if self._model is None:
-            self._model = self._load_model()
+        with self._load_lock:
+            if self._model is None:
+                self._model = self._load_model()
         segments, _ = self._model.transcribe(str(path))
         segments = list(segments)
         text = " ".join(seg.text.strip() for seg in segments)

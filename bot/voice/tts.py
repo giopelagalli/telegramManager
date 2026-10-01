@@ -2,6 +2,7 @@
 import asyncio
 import importlib.util
 import sys
+import threading
 import uuid
 from pathlib import Path
 
@@ -54,6 +55,7 @@ class Synthesizer:
         self._voices_path = voices_path
         self._voice = voice
         self._kokoro = None
+        self._load_lock = threading.Lock()  # shared by both connectors: load Kokoro once
 
     def _load_kokoro(self):
         from kokoro_onnx import Kokoro
@@ -63,8 +65,9 @@ class Synthesizer:
     def _synthesize_sync(self, text: str, out_path: Path) -> None:
         import soundfile as sf
 
-        if self._kokoro is None:
-            self._kokoro = self._load_kokoro()
+        with self._load_lock:
+            if self._kokoro is None:
+                self._kokoro = self._load_kokoro()
         samples, sample_rate = self._kokoro.create(text, voice=self._voice)
         sf.write(str(out_path), samples, sample_rate)
 

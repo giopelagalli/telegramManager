@@ -102,3 +102,25 @@ async def test_twilio_caller_failure_returns_none():
     from bot.voice.call import TwilioCaller
     c = TwilioCaller("AC1", "tok", "+1", "+2", transport=httpx.MockTransport(lambda r: httpx.Response(401)))
     assert await c.call("x") is None
+
+
+async def test_two_first_transcriptions_load_whisper_once(monkeypatch, tmp_path):
+    import asyncio, time
+    loads = []
+
+    class Seg:
+        text = "hi"; avg_logprob = -0.1
+
+    class WM:
+        def __init__(self, *a, **k):
+            loads.append(1)
+            time.sleep(0.05)  # a slow load, so both threads arrive while it runs
+
+        def transcribe(self, path, **k):
+            return [Seg()], None
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=WM))
+    monkeypatch.setitem(sys.modules, "ctranslate2", types.SimpleNamespace(get_cuda_device_count=lambda: 0))
+    t = stt.Transcriber()
+    await asyncio.gather(t.transcribe(tmp_path / "a.ogg"), t.transcribe(tmp_path / "b.webm"))
+    assert loads == [1]
